@@ -1,6 +1,6 @@
 import numpy as np
 
-def apply_custom(image: np.ndarray) -> np.ndarray:
+def apply_custom(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     """
     Apply Custom filtering to an image.
 
@@ -8,6 +8,8 @@ def apply_custom(image: np.ndarray) -> np.ndarray:
     ----------
     image:
         Input image represented as a NumPy array.
+    kernel:
+        Input custom kernel represented as NumPy array.
 
     Returns
     -------
