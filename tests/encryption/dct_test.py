@@ -1,0 +1,17 @@
+import numpy as np
+
+from batsignal.encryption.dct import DCT_Key, decrypt, encrypt
+
+image = np.arange(64 * 64, dtype=np.uint8).reshape(64, 64)
+
+key = DCT_Key(-1)
+
+cipher = encrypt(image, key)
+recovered = decrypt(cipher, key)
+
+assert np.allclose(
+    image,
+    recovered,
+    atol=1e-5,
+)
+print("DCT round trip passed!")
