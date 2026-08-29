@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def apply_sobel(image: np.ndarray) -> np.ndarray:
     """
     Apply Sobel filtering to an image.

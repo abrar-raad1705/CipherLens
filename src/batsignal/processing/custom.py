@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def apply_custom(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     """
     Apply Custom filtering to an image.
