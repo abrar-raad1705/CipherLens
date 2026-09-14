@@ -20,26 +20,26 @@ export function DoodleFrame({ children, className, onClick, title }: DoodleFrame
     <div
       onClick={onClick}
       title={title}
-      className={cn("relative p-3 select-none", className)}
+      className={cn("relative p-5 select-none", className)}
     >
-      {/* Hand-drawn SVG border layer */}
+      {/* Hand-drawn SVG border layer with uniform distance from image on all sides */}
       <svg
         className="absolute inset-0 w-full h-full pointer-events-none text-[#181818] dark:text-[#EFEFEA] opacity-90 overflow-visible"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
         fill="none"
       >
-        {/* Primary sketched stroke with slight organic wobble */}
+        {/* Primary sketched stroke with slight organic wobble and uniform ~2.2% perimeter margin */}
         <path
-          d="M 6,3 
-             C 25,2.4 75,2.8 94,3.2 
-             C 97.4,3.4 97.8,6.8 97.5,12 
-             C 97.2,35 97.6,72 97.3,92 
-             C 97.1,96.5 94.2,97.2 88,97.4 
-             C 65,97.7 28,97.2 8,97 
-             C 3.5,96.8 2.6,94.2 2.8,88 
-             C 3.2,65 2.7,28 3.1,8 
-             C 3.3,4.2 4.5,3.2 8,3 Z"
+          d="M 5,2.2 
+             C 25,1.9 75,2.3 95,2.1 
+             C 97.6,2.3 98.0,4.8 97.8,10 
+             C 97.6,32 97.9,68 97.7,90 
+             C 97.5,95.2 95.2,97.7 90,97.8 
+             C 68,97.9 32,97.6 10,97.8 
+             C 4.8,97.6 2.3,95.2 2.2,90 
+             C 2.3,68 2.0,32 2.2,10 
+             C 2.4,4.8 4.8,2.3 10,2.2 Z"
           stroke="currentColor"
           strokeWidth="1.2"
           strokeLinecap="round"
@@ -48,11 +48,11 @@ export function DoodleFrame({ children, className, onClick, title }: DoodleFrame
         />
         {/* Subtle secondary trace mimicking fine pen hesitation / double stroke */}
         <path
-          d="M 5.8,3.5 
-             C 30,3.1 70,3.3 94.2,3.6 
-             C 97.1,3.8 97.5,7 97.2,14
-             C 97,40 97.4,70 97.1,91.8
-             C 96.9,96.2 94,97 87.5,97.2"
+          d="M 5.2,2.5 
+             C 30,2.2 70,2.6 94.8,2.3 
+             C 97.4,2.5 97.7,5.2 97.5,12 
+             C 97.3,38 97.6,68 97.4,89.5 
+             C 97.2,94.8 94.8,97.4 89.5,97.5"
           stroke="currentColor"
           strokeWidth="0.6"
           strokeOpacity="0.35"

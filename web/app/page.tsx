@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowRight, Binary, ChevronDown, ImageIcon, Layers, RefreshCw, ShieldCheck } from "lucide-react";
+import { ArrowRight, Binary, ChevronDown, ImageIcon, Layers, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/hooks/use-image";
 import { ChangeImageModal } from "@/components/upload/ChangeImageModal";
+import { cn } from "@/lib/utils/cn";
 import {
   DoodleFrame,
   DoodleArrow,
@@ -15,6 +16,30 @@ import {
 export default function Home() {
   const { activeArtifact, isMounted } = useWorkspace();
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY || document.documentElement.scrollTop;
+      const scrollHeight = document.documentElement.scrollHeight;
+      const clientHeight = window.innerHeight;
+
+      // Only show when the page is scrollable and user is at the top of the website
+      const isScrollable = scrollHeight > clientHeight + 40;
+      const isAtTop = scrollY < 40;
+
+      setShowScrollButton(isScrollable && isAtTop);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll, { passive: true });
+    handleScroll();
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, []);
 
   const scrollToEnd = () => {
     const footer = document.getElementById("page-footer");
@@ -78,35 +103,35 @@ export default function Home() {
           </div>
 
           {/* Right Column: Research Notebook Annotation Layer with Hand-Drawn Frame */}
-          <div className="lg:col-span-5 flex justify-center py-12 sm:py-16">
+          <div className="lg:col-span-5 flex justify-center py-8 sm:py-10">
             {isMounted && activeArtifact && activeArtifact.dataUri ? (
               <div className="relative w-full max-w-[360px] select-none">
                 {/* DOODLE ANNOTATION 1: Color Mode (Top Left) */}
                 <div
-                  className="absolute -top-20 -left-6 sm:-left-12 z-20 flex flex-col items-start"
+                  className="absolute -top-12 -left-6 sm:-left-10 z-20 flex flex-col items-start"
                   style={{ transform: "rotate(-2deg)" }}
                 >
                   <div className="flex flex-col items-start">
-                    <span className="font-doodle text-3xl sm:text-4xl font-bold tracking-wide text-[#2563EB] dark:text-[#5B8CFF] leading-none">
+                    <span className="font-doodle text-lg sm:text-xl font-bold tracking-wide text-[#2563EB] dark:text-[#5B8CFF]">
                       RGB Color
                     </span>
-                    <DoodleUnderline className="w-32 sm:w-36 -mt-0.5 text-[#2563EB]/70 dark:text-[#5B8CFF]/70" />
+                    <DoodleUnderline className="w-20 -mt-1 text-[#2563EB]/70 dark:text-[#5B8CFF]/70" />
                   </div>
-                  <DoodleArrow direction="top-left" className="mt-0.5 ml-2 pointer-events-none" />
+                  <DoodleArrow direction="top-left" className="-mt-1 ml-2 pointer-events-none" />
                 </div>
 
                 {/* DOODLE ANNOTATION 2: Dimensions (Top Right) */}
                 <div
-                  className="absolute -top-20 -right-6 sm:-right-12 z-20 flex flex-col items-end"
+                  className="absolute -top-12 -right-6 sm:-right-10 z-20 flex flex-col items-end"
                   style={{ transform: "rotate(1.5deg)" }}
                 >
                   <div className="flex flex-col items-end">
-                    <span className="font-doodle text-3xl sm:text-4xl font-bold tracking-wide text-[#181818] dark:text-[#F2F2F0] leading-none">
+                    <span className="font-doodle text-lg sm:text-xl font-bold tracking-wide text-[#181818] dark:text-[#F2F2F0]">
                       {activeArtifact.width} × {activeArtifact.height} px
                     </span>
-                    <DoodleUnderline className="w-36 sm:w-44 -mt-0.5 text-[#7A7A75] dark:text-[#9A9A95]" />
+                    <DoodleUnderline className="w-24 -mt-1 text-[#7A7A75] dark:text-[#9A9A95]" />
                   </div>
-                  <DoodleArrow direction="top-right" className="mt-0.5 mr-2 pointer-events-none" />
+                  <DoodleArrow direction="top-right" className="-mt-1 mr-2 pointer-events-none" />
                 </div>
 
                 {/* Hand-Drawn Frame Encasing Clean Realistic Image */}
@@ -132,18 +157,18 @@ export default function Home() {
 
                 {/* DOODLE ANNOTATION 3: Image Name & Origin (Bottom Center) */}
                 <div
-                  className="absolute -bottom-24 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center"
+                  className="absolute -bottom-16 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center"
                   style={{ transform: "translateX(-50%) rotate(-1deg)" }}
                 >
-                  <DoodleArrow direction="bottom-up" className="-mb-0.5 pointer-events-none" />
-                  <div className="flex flex-col items-center max-w-[320px]">
+                  <DoodleArrow direction="bottom-up" className="-mb-1 pointer-events-none" />
+                  <div className="flex flex-col items-center max-w-[280px]">
                     <span
-                      className="font-doodle text-3xl sm:text-4xl font-bold tracking-wide text-[#181818] dark:text-[#F2F2F0] truncate max-w-full leading-none"
+                      className="font-doodle text-lg sm:text-xl font-bold tracking-wide text-[#181818] dark:text-[#F2F2F0] truncate max-w-full"
                       title={activeArtifact.name}
                     >
                       {activeArtifact.name}
                     </span>
-                    <DoodleUnderline className="w-40 sm:w-48 -mt-0.5 text-[#7A7A75] dark:text-[#9A9A95]" />
+                    <DoodleUnderline className="w-28 -mt-1 text-[#7A7A75] dark:text-[#9A9A95]" />
                   </div>
                 </div>
               </div>
@@ -171,17 +196,24 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Downward Arrow Navigation (Middle Down Side of Overview) */}
-        <div className="flex flex-col items-center justify-center -my-4 sm:-my-6">
-          <button
-            onClick={scrollToEnd}
-            aria-label="Scroll to end of website"
-            title="Scroll to end of website"
-            className="group flex items-center justify-center p-3 sm:p-3.5 rounded-full border border-[#E8E8E3] dark:border-[#2A2A2A] bg-white dark:bg-[#161616] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:border-[#D0D0C8] dark:hover:border-[#383838] transition-all cursor-pointer shadow-xs hover:shadow-md hover:scale-105 active:scale-95"
-          >
-            <ArrowDown className="h-5 w-5 sm:h-6 sm:w-6 animate-bounce text-[#2563EB] dark:text-[#5B8CFF]" />
-          </button>
-        </div>
+      {/* Downward Scroll Arrow in the middle down side (visible only when at top of website) */}
+      <div
+        className={cn(
+          "fixed bottom-7 left-1/2 -translate-x-1/2 md:left-[calc(50%+115px)] z-30 transition-all duration-300 ease-out",
+          showScrollButton
+            ? "opacity-100 translate-y-0 pointer-events-auto"
+            : "opacity-0 translate-y-3 pointer-events-none"
+        )}
+      >
+        <button
+          onClick={scrollToEnd}
+          aria-label="Scroll to end of website"
+          title="Scroll to end of website"
+          className="group flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/85 dark:bg-[#161616]/85 backdrop-blur-md border border-[#E0E0DA] dark:border-[#2A2A2A] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:border-[#C0C0B8] dark:hover:border-[#3E3E3E] shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3)] transition-all cursor-pointer animate-gentle-bob active:scale-95"
+        >
+          <ChevronDown className="h-4 w-4 sm:h-4.5 sm:w-4.5 transition-transform group-hover:translate-y-0.5 text-[#6F6F6A] dark:text-[#A0A09B] group-hover:text-[#2563EB] dark:group-hover:text-[#5B8CFF]" />
+        </button>
+      </div>
 
       {/* Experiments Index */}
       <section id="lab-experiments" className="space-y-4 scroll-mt-20">

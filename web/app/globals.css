@@ -125,3 +125,17 @@ input[type="range"]::-moz-range-thumb {
   content-visibility: auto;
   contain-intrinsic-size: auto 300px auto 600px;
 }
+
+/* Subtle, elegant downward indicator float */
+@keyframes gentle-bob {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+.animate-gentle-bob {
+  animation: gentle-bob 2.4s ease-in-out infinite;
+}
