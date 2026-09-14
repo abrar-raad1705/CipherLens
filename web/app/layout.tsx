@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
+import { Sidebar } from "@/components/layout/Sidebar";
 import { Footer } from "@/components/layout/Footer";
 import { WorkspaceProvider } from "@/hooks/use-image";
 import { ThemeProvider } from "@/hooks/use-theme";
 
 export const metadata: Metadata = {
-  title: "CipherLens | Computational Imaging Laboratory",
-  description: "Minimalist 2D Signal Processing and Optical Image Encryption Platform",
+  title: "Bat Signal | Computational Imaging Laboratory",
+  description: "Minimal computational imaging instrument for 2D signal processing and 4f optical DRPE encryption",
 };
 
 export default function RootLayout({
@@ -39,13 +40,16 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen flex flex-col bg-white text-[#37352F] dark:bg-[#191919] dark:text-[#E6E5E3] antialiased selection:bg-[#2383E2]/20 selection:text-inherit">
+      <body className="min-h-screen flex flex-col bg-[#FAFAF8] text-[#181818] dark:bg-[#101010] dark:text-[#F2F2F0] antialiased selection:bg-[#2563EB]/15 dark:selection:bg-[#5B8CFF]/20 selection:text-inherit">
         <ThemeProvider>
           <WorkspaceProvider>
             <Header />
-            <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
-              {children}
-            </main>
+            <div className="flex flex-1 w-full">
+              <Sidebar />
+              <main className="flex-1 min-w-0 px-4 sm:px-8 py-6 max-w-6xl">
+                {children}
+              </main>
+            </div>
             <Footer />
           </WorkspaceProvider>
         </ThemeProvider>

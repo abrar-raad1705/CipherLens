@@ -1,13 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import {
-  Columns2,
-  Download,
-  Eye,
-  Sparkles,
-  SplitSquareVertical,
-} from "lucide-react";
+import { Download, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface SplitCompareCanvasProps {
@@ -34,7 +28,6 @@ export function SplitCompareCanvas({
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [isHoldingOriginal, setIsHoldingOriginal] = useState(false);
 
-  // Compute difference heatmap when viewMode === 'difference'
   useEffect(() => {
     if (viewMode !== "difference" || !beforeSrc || !afterSrc) return;
     const canvas = diffCanvasRef.current;
@@ -80,7 +73,6 @@ export function SplitCompareCanvas({
         const diff = Math.abs(data2[i] - data1[i]);
         const amplified = Math.min(255, diff * 2.5);
 
-        // Heatmap color mapping
         out[i] = amplified > 128 ? 235 : Math.floor(amplified * 1.8);
         out[i + 1] = amplified;
         out[i + 2] = 255 - amplified;
@@ -96,7 +88,6 @@ export function SplitCompareCanvas({
     imgAfter.src = afterSrc;
   }, [viewMode, beforeSrc, afterSrc]);
 
-  // Pointer drag logic for split slider
   const handlePointerDown = () => setIsDragging(true);
 
   useEffect(() => {
@@ -128,90 +119,71 @@ export function SplitCompareCanvas({
     link.click();
   };
 
+  const baseSrc = isHoldingOriginal ? beforeSrc : afterSrc;
+  const hasBase = Boolean(baseSrc && baseSrc.trim().length > 0);
+  const hasBefore = Boolean(beforeSrc && beforeSrc.trim().length > 0);
+  const hasAfter = Boolean(afterSrc && afterSrc.trim().length > 0);
+
   return (
     <div
-      className={`flex flex-col rounded-lg bg-white dark:bg-[#202020] border border-[#EDEDEB] dark:border-[#2E2E2E] overflow-hidden shadow-xs ${className}`}
+      className={`flex flex-col rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] overflow-hidden ${className}`}
     >
-      {/* Top Bar: View Mode Selector & Tools */}
-      <div className="flex flex-wrap items-center justify-between px-3.5 py-2 border-b border-[#EDEDEB] dark:border-[#2E2E2E] bg-[#FAFAF9] dark:bg-[#252525] gap-2">
-        {/* Mode Selector Tabs */}
-        <div className="flex items-center gap-1 bg-[#F1F1EF] dark:bg-[#2A2A2A] p-0.5 rounded border border-[#EDEDEB] dark:border-[#333333]">
+      {/* Top Bar */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[#E8E8E3] dark:border-[#292929] text-xs">
+        {/* Mode Selector */}
+        <div className="flex items-center gap-4">
           <button
             onClick={() => setViewMode("split")}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors cursor-pointer font-medium ${
+            className={`cursor-pointer transition-colors pb-0.5 ${
               viewMode === "split"
-                ? "bg-white dark:bg-[#383838] text-[#37352F] dark:text-white shadow-xs"
-                : "text-[#787774] dark:text-[#9B9B9B] hover:text-[#37352F] dark:hover:text-white"
+                ? "text-[#181818] dark:text-[#F2F2F0] font-medium border-b border-[#2563EB] dark:border-[#5B8CFF]"
+                : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
             }`}
           >
-            <SplitSquareVertical className="h-3 w-3" />
-            <span>Split Slider</span>
+            Split
           </button>
           <button
             onClick={() => setViewMode("side-by-side")}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors cursor-pointer font-medium ${
+            className={`cursor-pointer transition-colors pb-0.5 ${
               viewMode === "side-by-side"
-                ? "bg-white dark:bg-[#383838] text-[#37352F] dark:text-white shadow-xs"
-                : "text-[#787774] dark:text-[#9B9B9B] hover:text-[#37352F] dark:hover:text-white"
+                ? "text-[#181818] dark:text-[#F2F2F0] font-medium border-b border-[#2563EB] dark:border-[#5B8CFF]"
+                : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
             }`}
           >
-            <Columns2 className="h-3 w-3" />
-            <span>Side-by-Side</span>
+            Side-by-side
           </button>
           <button
             onClick={() => setViewMode("difference")}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors cursor-pointer font-medium ${
+            className={`cursor-pointer transition-colors pb-0.5 ${
               viewMode === "difference"
-                ? "bg-white dark:bg-[#383838] text-[#37352F] dark:text-white shadow-xs"
-                : "text-[#787774] dark:text-[#9B9B9B] hover:text-[#37352F] dark:hover:text-white"
+                ? "text-[#181818] dark:text-[#F2F2F0] font-medium border-b border-[#2563EB] dark:border-[#5B8CFF]"
+                : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
             }`}
           >
-            <Sparkles className="h-3 w-3" />
-            <span>Diff Heatmap</span>
+            Difference
           </button>
         </div>
 
-        {/* Quick percentage buttons for Split mode */}
-        {viewMode === "split" && (
-          <div className="hidden sm:flex items-center gap-1 text-[11px] text-[#787774] dark:text-[#9B9B9B]">
-            <span>Snap:</span>
-            {[25, 50, 75].map((pct) => (
-              <button
-                key={pct}
-                onClick={() => setSliderPos(pct)}
-                className={`px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
-                  sliderPos === pct
-                    ? "bg-[#E3E2E0] dark:bg-[#383838] text-[#37352F] dark:text-white font-medium"
-                    : "hover:bg-[#EFEFED] dark:hover:bg-[#2E2E2E]"
-                }`}
-              >
-                {pct}%
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Action buttons */}
-        <div className="flex items-center gap-1.5">
-          {/* Quick hold to peek at original */}
+        {/* Tools */}
+        <div className="flex items-center gap-2">
           <button
             onMouseDown={() => setIsHoldingOriginal(true)}
             onMouseUp={() => setIsHoldingOriginal(false)}
             onTouchStart={() => setIsHoldingOriginal(true)}
             onTouchEnd={() => setIsHoldingOriginal(false)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded bg-white dark:bg-[#252525] hover:bg-[#F7F6F5] dark:hover:bg-[#2E2E2E] border border-[#EDEDEB] dark:border-[#2E2E2E] text-[#37352F] dark:text-[#E6E5E3] text-xs font-medium cursor-pointer transition-colors select-none shadow-xs"
-            title="Press and hold to temporarily view original unedited image"
+            className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#E8E8E3] dark:border-[#292929] text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] select-none transition-colors"
+            title="Press and hold to inspect original"
           >
-            <Eye className="h-3 w-3 text-[#787774] dark:text-[#9B9B9B]" />
-            <span>Peek Original</span>
+            <Eye className="h-3 w-3" />
+            <span>Hold for Original</span>
           </button>
 
           <Button
             size="sm"
-            variant="secondary"
-            className="h-7 text-xs"
+            variant="ghost"
+            className="h-6 text-[11px]"
             onClick={handleDownloadResult}
-            title="Download result image"
+            title="Export image"
           >
             <Download className="h-3 w-3" />
             <span>Export</span>
@@ -220,125 +192,113 @@ export function SplitCompareCanvas({
       </div>
 
       {/* Main Comparison Viewport */}
-      <div className="relative select-none overflow-hidden bg-[#F7F6F3] dark:bg-[#141414] flex items-center justify-center min-h-[380px] p-4">
-        {(() => {
-          const baseSrc = isHoldingOriginal ? beforeSrc : afterSrc;
-          const hasBase = Boolean(baseSrc && baseSrc.trim().length > 0);
-          const hasBefore = Boolean(beforeSrc && beforeSrc.trim().length > 0);
-          const hasAfter = Boolean(afterSrc && afterSrc.trim().length > 0);
+      <div className="relative select-none overflow-hidden bg-[#FAFAF8] dark:bg-[#101010] flex items-center justify-center min-h-[380px] p-6">
+        {/* MODE 1: SPLIT SLIDER */}
+        {viewMode === "split" && (
+          <div
+            ref={containerRef}
+            className="relative w-full max-w-[512px] h-[360px] sm:h-[440px] flex items-center justify-center overflow-hidden border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717]"
+          >
+            {hasBase ? (
+              <img
+                src={baseSrc}
+                alt={isHoldingOriginal ? beforeLabel : afterLabel}
+                className="max-h-full max-w-full object-contain pointer-events-none"
+              />
+            ) : (
+              <div className="font-mono text-xs text-[#999993] dark:text-[#6A6A6A]">
+                No image available
+              </div>
+            )}
 
-          return (
-            <>
-              {/* MODE 1: SPLIT SLIDER */}
-              {viewMode === "split" && (
-                <div
-                  ref={containerRef}
-                  className="relative w-full max-w-[512px] h-[360px] sm:h-[440px] flex items-center justify-center overflow-hidden rounded border border-[#EDEDEB] dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] shadow-sm"
-                >
-                  {/* After image (base) or peek original */}
-                  {hasBase ? (
-                    <img
-                      src={baseSrc}
-                      alt={isHoldingOriginal ? beforeLabel : afterLabel}
-                      className="max-h-full max-w-full object-contain pointer-events-none"
-                    />
-                  ) : (
-                    <div className="text-xs text-[#787774] dark:text-[#9B9B9B] font-mono">
-                      No image available
-                    </div>
-                  )}
+            {!isHoldingOriginal && hasBefore && (
+              <div
+                className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
+                style={{
+                  clipPath: `polygon(0 0, ${sliderPos}% 0, ${sliderPos}% 100%, 0 100%)`,
+                }}
+              >
+                <img
+                  src={beforeSrc}
+                  alt={beforeLabel}
+                  className="max-h-full max-w-full object-contain"
+                />
+              </div>
+            )}
 
-                  {/* Before image (clipped overlay) */}
-                  {!isHoldingOriginal && hasBefore && (
-                    <div
-                      className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-                      style={{
-                        clipPath: `polygon(0 0, ${sliderPos}% 0, ${sliderPos}% 100%, 0 100%)`,
-                      }}
-                    >
-                      <img
-                        src={beforeSrc}
-                        alt={beforeLabel}
-                        className="max-h-full max-w-full object-contain"
-                      />
-                    </div>
-                  )}
-
-                  {/* Draggable Divider Line */}
-                  {!isHoldingOriginal && (
-                    <div
-                      className="absolute top-0 bottom-0 w-0.5 bg-[#37352F] dark:bg-[#E6E5E3] cursor-ew-resize flex items-center justify-center"
-                      style={{ left: `${sliderPos}%` }}
-                      onPointerDown={handlePointerDown}
-                    >
-                      <div className="h-6 w-6 rounded-full bg-white dark:bg-[#202020] border-2 border-[#37352F] dark:border-[#E6E5E3] flex items-center justify-center shadow-md">
-                        <div className="h-2.5 w-0.5 bg-[#37352F] dark:bg-[#E6E5E3] mx-0.5 rounded-full" />
-                        <div className="h-2.5 w-0.5 bg-[#37352F] dark:bg-[#E6E5E3] mx-0.5 rounded-full" />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Badges */}
-                  <span className="absolute top-3 left-3 bg-white/90 dark:bg-[#202020]/90 backdrop-blur-xs border border-[#EDEDEB] dark:border-[#2E2E2E] text-[#37352F] dark:text-[#E6E5E3] text-[10px] font-medium px-2 py-0.5 rounded shadow-xs">
-                    {beforeLabel}
-                  </span>
-                  <span className="absolute top-3 right-3 bg-white/90 dark:bg-[#202020]/90 backdrop-blur-xs border border-[#EDEDEB] dark:border-[#2E2E2E] text-[#37352F] dark:text-[#E6E5E3] text-[10px] font-medium px-2 py-0.5 rounded shadow-xs">
-                    {isHoldingOriginal ? `${beforeLabel} (Peeking)` : afterLabel}
-                  </span>
+            {/* Draggable Divider Line */}
+            {!isHoldingOriginal && (
+              <div
+                className="absolute top-0 bottom-0 w-px bg-[#181818] dark:bg-[#F2F2F0] cursor-ew-resize flex items-center justify-center"
+                style={{ left: `${sliderPos}%` }}
+                onPointerDown={handlePointerDown}
+              >
+                <div className="h-4 w-4 rounded-full bg-white dark:bg-[#171717] border border-[#181818] dark:border-[#F2F2F0] flex items-center justify-center shadow-xs">
+                  <div className="h-1.5 w-0.5 bg-[#181818] dark:bg-[#F2F2F0]" />
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* MODE 2: SIDE-BY-SIDE */}
-              {viewMode === "side-by-side" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-4xl">
-                  <div className="flex flex-col items-center rounded border border-[#EDEDEB] dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] p-2 shadow-xs">
-                    <span className="text-[11px] font-medium text-[#787774] dark:text-[#9B9B9B] mb-2">
-                      {beforeLabel}
-                    </span>
-                    {hasBefore ? (
-                      <img
-                        src={beforeSrc}
-                        alt={beforeLabel}
-                        className="max-h-[360px] max-w-full object-contain rounded"
-                      />
-                    ) : (
-                      <div className="h-[200px] flex items-center justify-center text-xs text-[#787774]">
-                        No image
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-center rounded border border-[#EDEDEB] dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] p-2 shadow-xs">
-                    <span className="text-[11px] font-medium text-[#37352F] dark:text-[#E6E5E3] mb-2">
-                      {afterLabel}
-                    </span>
-                    {hasAfter ? (
-                      <img
-                        src={afterSrc}
-                        alt={afterLabel}
-                        className="max-h-[360px] max-w-full object-contain rounded"
-                      />
-                    ) : (
-                      <div className="h-[200px] flex items-center justify-center text-xs text-[#787774]">
-                        No image
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          );
-        })()}
+            {/* Minimal Corner Labels */}
+            <div className="absolute top-2 left-2 font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] bg-white/85 dark:bg-[#171717]/85 px-1.5 py-0.5 rounded border border-[#E8E8E3] dark:border-[#292929]">
+              {beforeLabel}
+            </div>
+            <div className="absolute top-2 right-2 font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] bg-white/85 dark:bg-[#171717]/85 px-1.5 py-0.5 rounded border border-[#E8E8E3] dark:border-[#292929]">
+              {isHoldingOriginal ? `${beforeLabel} (Peeking)` : afterLabel}
+            </div>
+          </div>
+        )}
+
+        {/* MODE 2: SIDE-BY-SIDE */}
+        {viewMode === "side-by-side" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-4xl">
+            <div className="flex flex-col items-center">
+              <div className="w-full flex items-center justify-between pb-1.5 font-mono text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
+                <span>ORIGINAL</span>
+                <span>{beforeLabel}</span>
+              </div>
+              <div className="w-full h-[320px] flex items-center justify-center border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] p-2">
+                {hasBefore ? (
+                  <img
+                    src={beforeSrc}
+                    alt={beforeLabel}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                ) : (
+                  <span className="font-mono text-xs text-[#999993]">No image</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center">
+              <div className="w-full flex items-center justify-between pb-1.5 font-mono text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
+                <span>RESULT</span>
+                <span>{afterLabel}</span>
+              </div>
+              <div className="w-full h-[320px] flex items-center justify-center border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] p-2">
+                {hasAfter ? (
+                  <img
+                    src={afterSrc}
+                    alt={afterLabel}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                ) : (
+                  <span className="font-mono text-xs text-[#999993]">No image</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* MODE 3: DIFFERENCE HEATMAP */}
         {viewMode === "difference" && (
           <div className="flex flex-col items-center gap-3">
             <canvas
               ref={diffCanvasRef}
-              className="max-h-[440px] max-w-full object-contain rounded border border-[#EDEDEB] dark:border-[#2E2E2E] shadow-sm bg-white dark:bg-[#1E1E1E]"
+              className="max-h-[420px] max-w-full object-contain border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717]"
             />
-            <div className="flex items-center gap-2 text-[11px] text-[#787774] dark:text-[#9B9B9B] bg-white dark:bg-[#202020] px-3 py-1 rounded-full border border-[#EDEDEB] dark:border-[#2E2E2E] shadow-xs">
-              <span className="h-2 w-2 rounded-full bg-[#2383E2]" />
-              <span>Difference Map: Dark = Identical • Saturated = Modified pixels</span>
+            <div className="font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B]">
+              Difference heatmap: Dark = Unchanged · Bright = Modified
             </div>
           </div>
         )}

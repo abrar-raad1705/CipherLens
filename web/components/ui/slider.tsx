@@ -13,15 +13,15 @@ export function Slider({ className, label, valueDisplay, hint, ...props }: Slide
       {(label || valueDisplay !== undefined) && (
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="text-[#37352F] dark:text-[#E6E5E3] font-medium">{label}</span>
+            <span className="text-[#181818] dark:text-[#F2F2F0] font-normal">{label}</span>
             {hint && (
-              <span className="text-[11px] text-[#9B9A97] dark:text-[#787774]">
-                ({hint})
+              <span className="text-[11px] text-[#999993] dark:text-[#6A6A6A]">
+                {hint}
               </span>
             )}
           </div>
           {valueDisplay !== undefined && (
-            <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-[#F1F1EF] dark:bg-[#2A2A2A] border border-[#EDEDEB] dark:border-[#333333] text-[#37352F] dark:text-[#E6E5E3] font-medium">
+            <span className="font-mono text-[11px] text-[#181818] dark:text-[#F2F2F0]">
               {valueDisplay}
             </span>
           )}

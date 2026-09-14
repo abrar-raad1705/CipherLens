@@ -14,7 +14,7 @@ interface HistogramChartProps {
 export function HistogramChart({
   plainBins,
   cipherBins,
-  title = "256-Bin Intensity Histogram Distribution",
+  title = "Intensity Distribution",
   className = "",
 }: HistogramChartProps) {
   const { theme } = useTheme();
@@ -25,48 +25,22 @@ export function HistogramChart({
   const series = [];
   if (plainBins && plainBins.length === 256) {
     series.push({
-      name: "Plaintext Target",
+      name: "Plaintext",
       type: "line",
       showSymbol: false,
       smooth: true,
-      lineStyle: { width: 1.5, color: isDark ? "#529CCA" : "#2383E2" },
-      areaStyle: {
-        color: {
-          type: "linear",
-          x: 0,
-          y: 0,
-          x2: 0,
-          y2: 1,
-          colorStops: [
-            { offset: 0, color: isDark ? "rgba(82, 156, 202, 0.25)" : "rgba(35, 131, 226, 0.2)" },
-            { offset: 1, color: "rgba(35, 131, 226, 0.01)" },
-          ],
-        },
-      },
+      lineStyle: { width: 1.2, color: isDark ? "#5B8CFF" : "#2563EB" },
       data: plainBins,
     });
   }
 
   if (cipherBins && cipherBins.length === 256) {
     series.push({
-      name: "Ciphertext (DRPE)",
+      name: "Ciphertext",
       type: "line",
       showSymbol: false,
       smooth: true,
-      lineStyle: { width: 1.5, color: isDark ? "#FFAB5E" : "#D9730D" },
-      areaStyle: {
-        color: {
-          type: "linear",
-          x: 0,
-          y: 0,
-          x2: 0,
-          y2: 1,
-          colorStops: [
-            { offset: 0, color: isDark ? "rgba(255, 171, 94, 0.25)" : "rgba(217, 115, 13, 0.2)" },
-            { offset: 1, color: "rgba(217, 115, 13, 0.01)" },
-          ],
-        },
-      },
+      lineStyle: { width: 1.2, color: isDark ? "#A0A09B" : "#6F6F6A" },
       data: cipherBins,
     });
   }
@@ -75,48 +49,50 @@ export function HistogramChart({
     backgroundColor: "transparent",
     tooltip: {
       trigger: "axis",
-      backgroundColor: isDark ? "#252525" : "#FFFFFF",
-      borderColor: isDark ? "#383838" : "#EDEDEB",
+      backgroundColor: isDark ? "#171717" : "#FFFFFF",
+      borderColor: isDark ? "#292929" : "#E8E8E3",
       borderWidth: 1,
-      textStyle: { color: isDark ? "#E6E5E3" : "#37352F", fontSize: 11, fontFamily: "sans-serif" },
-      axisPointer: { lineStyle: { color: isDark ? "#6A6A6A" : "#9B9A97", width: 1, type: "dashed" } },
+      textStyle: { color: isDark ? "#F2F2F0" : "#181818", fontSize: 11, fontFamily: "monospace" },
+      axisPointer: { lineStyle: { color: isDark ? "#383838" : "#D7D7D1", width: 1, type: "dashed" } },
     },
     legend: {
       data: series.map((s) => s.name),
-      textStyle: { color: isDark ? "#9B9B9B" : "#787774", fontSize: 11, fontFamily: "sans-serif" },
-      right: 12,
-      top: 8,
+      textStyle: { color: isDark ? "#A0A09B" : "#6F6F6A", fontSize: 11, fontFamily: "monospace" },
+      right: 8,
+      top: 0,
     },
-    grid: { left: 45, right: 20, top: 40, bottom: 30 },
+    grid: { left: 40, right: 10, top: 30, bottom: 25 },
     xAxis: {
       type: "category",
       data: xData,
-      axisLabel: { color: isDark ? "#787774" : "#9B9A97", fontSize: 10, fontFamily: "monospace" },
-      axisLine: { lineStyle: { color: isDark ? "#2E2E2E" : "#EDEDEB" } },
-      name: "Intensity (0-255)",
+      axisLabel: { color: isDark ? "#6A6A6A" : "#999993", fontSize: 9, fontFamily: "monospace" },
+      axisLine: { lineStyle: { color: isDark ? "#292929" : "#E8E8E3" } },
+      name: "Bin (0–255)",
       nameLocation: "middle",
-      nameGap: 18,
-      nameTextStyle: { color: isDark ? "#787774" : "#9B9A97", fontSize: 10 },
+      nameGap: 16,
+      nameTextStyle: { color: isDark ? "#6A6A6A" : "#999993", fontSize: 9, fontFamily: "monospace" },
     },
     yAxis: {
       type: "value",
-      axisLabel: { color: isDark ? "#787774" : "#9B9A97", fontSize: 10, fontFamily: "monospace" },
-      splitLine: { lineStyle: { color: isDark ? "#262626" : "#F1F1EF", type: "dashed" } },
+      axisLabel: { color: isDark ? "#6A6A6A" : "#999993", fontSize: 9, fontFamily: "monospace" },
+      splitLine: { lineStyle: { color: isDark ? "#1F1F1F" : "#F4F4F1", type: "dashed" } },
     },
     series,
   };
 
   return (
-    <div className={`rounded-lg bg-white dark:bg-[#202020] border border-[#EDEDEB] dark:border-[#2E2E2E] p-3.5 shadow-xs ${className}`}>
-      <div className="flex items-center justify-between px-1 pt-0.5 pb-2 border-b border-[#EDEDEB] dark:border-[#2E2E2E] mb-2">
-        <span className="text-xs font-semibold text-[#37352F] dark:text-[#E6E5E3]">
+    <div className={`space-y-2 ${className}`}>
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
           {title}
         </span>
-        <span className="text-[11px] text-[#787774] dark:text-[#9B9B9B]">
-          Ideal Cipher = Uniform Distribution
+        <span className="text-[10px] font-mono text-[#999993] dark:text-[#6A6A6A]">
+          256 Bins
         </span>
       </div>
-      <ReactECharts option={option} style={{ height: "260px", width: "100%" }} />
+      <div className="border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717] p-3">
+        <ReactECharts option={option} style={{ height: "220px", width: "100%" }} />
+      </div>
     </div>
   );
 }

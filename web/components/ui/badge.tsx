@@ -2,32 +2,30 @@ import * as React from "react";
 import { cn } from "@/lib/utils/cn";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: "default" | "signal" | "cyan" | "emerald" | "rose" | "purple" | "outline";
+  variant?: "default" | "signal" | "cyan" | "emerald" | "rose" | "outline";
   dot?: boolean;
 }
 
 export function Badge({ className, variant = "default", dot = false, children, ...props }: BadgeProps) {
   const base =
-    "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium leading-none transition-colors select-none";
+    "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono tracking-wider uppercase select-none";
 
   const variants = {
-    default: "bg-[#E3E2E0] text-[#32302C] dark:bg-[#37352F] dark:text-[#E6E5E3]",
-    signal: "bg-[#FADEC9] text-[#854C1D] dark:bg-[#593A19] dark:text-[#FFAB5E]",
-    cyan: "bg-[#D3E5EF] text-[#183347] dark:bg-[#1E394B] dark:text-[#529CCA]",
-    emerald: "bg-[#DBEDDB] text-[#1C3829] dark:bg-[#203D2E] dark:text-[#4DAB9A]",
-    rose: "bg-[#FFE2DD] text-[#5D1715] dark:bg-[#522525] dark:text-[#FF7369]",
-    purple: "bg-[#E8DEEE] text-[#412D4C] dark:bg-[#3D2C4D] dark:text-[#9A6DD7]",
-    outline: "border border-[#EDEDEB] dark:border-[#2E2E2E] text-[#787774] dark:text-[#9B9B9B] bg-transparent",
+    default: "bg-[#F4F4F1] dark:bg-[#1F1F1F] text-[#6F6F6A] dark:text-[#A0A09B] border border-[#E8E8E3] dark:border-[#292929]",
+    signal: "bg-[#F4F4F1] dark:bg-[#1F1F1F] text-[#2563EB] dark:text-[#5B8CFF] border border-[#2563EB]/20 dark:border-[#5B8CFF]/30",
+    cyan: "bg-[#F4F4F1] dark:bg-[#1F1F1F] text-[#2563EB] dark:text-[#5B8CFF] border border-[#2563EB]/20 dark:border-[#5B8CFF]/30",
+    emerald: "bg-[#F4F4F1] dark:bg-[#1F1F1F] text-[#059669] dark:text-[#34D399] border border-[#059669]/20 dark:border-[#34D399]/30",
+    rose: "bg-[#F4F4F1] dark:bg-[#1F1F1F] text-[#DC2626] dark:text-[#F87171] border border-[#DC2626]/20 dark:border-[#F87171]/30",
+    outline: "bg-transparent text-[#6F6F6A] dark:text-[#A0A09B] border border-[#E8E8E3] dark:border-[#292929]",
   };
 
   const dotColors = {
-    default: "bg-[#787774] dark:bg-[#9B9B9B]",
-    signal: "bg-[#D9730D] dark:bg-[#FFAB5E]",
-    cyan: "bg-[#2383E2] dark:bg-[#529CCA]",
-    emerald: "bg-[#0F7B6C] dark:bg-[#4DAB9A]",
-    rose: "bg-[#EB5757] dark:bg-[#FF7369]",
-    purple: "bg-[#9065B0] dark:bg-[#9A6DD7]",
-    outline: "bg-[#9B9A97] dark:bg-[#6A6A6A]",
+    default: "bg-[#999993] dark:bg-[#6A6A6A]",
+    signal: "bg-[#2563EB] dark:bg-[#5B8CFF]",
+    cyan: "bg-[#2563EB] dark:bg-[#5B8CFF]",
+    emerald: "bg-[#059669] dark:bg-[#34D399]",
+    rose: "bg-[#DC2626] dark:bg-[#F87171]",
+    outline: "bg-[#999993] dark:bg-[#6A6A6A]",
   };
 
   return (

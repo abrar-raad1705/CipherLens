@@ -25,91 +25,59 @@ export function CorrelationScatterChart({
 
   const data = points.map((p) => [p.x, p.y]);
   const isPlain = imageLabel === "Plaintext";
-  const color = isPlain
-    ? isDark ? "#529CCA" : "#2383E2"
-    : isDark ? "#FFAB5E" : "#D9730D";
-
-  const isZeroCorrelation = coefficient !== undefined && Math.abs(coefficient) < 0.05;
+  const pointColor = isPlain
+    ? isDark ? "#5B8CFF" : "#2563EB"
+    : isDark ? "#A0A09B" : "#6F6F6A";
 
   const option = {
     backgroundColor: "transparent",
     tooltip: {
       trigger: "item",
-      formatter: (params: { data: number[] }) => `Pixel (x, y): (${params.data[0]}, ${params.data[1]})`,
-      backgroundColor: isDark ? "#252525" : "#FFFFFF",
-      borderColor: isDark ? "#383838" : "#EDEDEB",
-      textStyle: { color: isDark ? "#E6E5E3" : "#37352F", fontSize: 11, fontFamily: "sans-serif" },
+      formatter: (params: { data: number[] }) => `Pixel: (${params.data[0]}, ${params.data[1]})`,
+      backgroundColor: isDark ? "#171717" : "#FFFFFF",
+      borderColor: isDark ? "#292929" : "#E8E8E3",
+      textStyle: { color: isDark ? "#F2F2F0" : "#181818", fontSize: 11, fontFamily: "monospace" },
     },
-    grid: { left: 40, right: 20, top: 30, bottom: 35 },
+    grid: { left: 35, right: 10, top: 20, bottom: 25 },
     xAxis: {
       type: "value",
       min: 0,
       max: 255,
-      axisLabel: { color: isDark ? "#787774" : "#9B9A97", fontSize: 10, fontFamily: "monospace" },
-      splitLine: { lineStyle: { color: isDark ? "#262626" : "#F1F1EF", type: "dashed" } },
-      axisLine: { lineStyle: { color: isDark ? "#2E2E2E" : "#EDEDEB" } },
-      name: "Pixel (x, y)",
-      nameLocation: "middle",
-      nameGap: 20,
-      nameTextStyle: { color: isDark ? "#787774" : "#9B9A97", fontSize: 10 },
+      axisLabel: { color: isDark ? "#6A6A6A" : "#999993", fontSize: 9, fontFamily: "monospace" },
+      splitLine: { lineStyle: { color: isDark ? "#1F1F1F" : "#F4F4F1", type: "dashed" } },
+      axisLine: { lineStyle: { color: isDark ? "#292929" : "#E8E8E3" } },
     },
     yAxis: {
       type: "value",
       min: 0,
       max: 255,
-      axisLabel: { color: isDark ? "#787774" : "#9B9A97", fontSize: 10, fontFamily: "monospace" },
-      splitLine: { lineStyle: { color: isDark ? "#262626" : "#F1F1EF", type: "dashed" } },
-      axisLine: { lineStyle: { color: isDark ? "#2E2E2E" : "#EDEDEB" } },
-      name: "Adjacent Pixel",
-      nameLocation: "middle",
-      nameGap: 24,
-      nameTextStyle: { color: isDark ? "#787774" : "#9B9A97", fontSize: 10 },
+      axisLabel: { color: isDark ? "#6A6A6A" : "#999993", fontSize: 9, fontFamily: "monospace" },
+      splitLine: { lineStyle: { color: isDark ? "#1F1F1F" : "#F4F4F1", type: "dashed" } },
+      axisLine: { lineStyle: { color: isDark ? "#292929" : "#E8E8E3" } },
     },
     series: [
       {
         type: "scatter",
-        symbolSize: 3,
-        itemStyle: { color, opacity: 0.6 },
+        symbolSize: 2.5,
+        itemStyle: { color: pointColor, opacity: 0.5 },
         data,
       },
     ],
   };
 
   return (
-    <div className={`rounded-lg bg-white dark:bg-[#202020] border border-[#EDEDEB] dark:border-[#2E2E2E] p-3 shadow-xs ${className}`}>
-      {/* Header with Pearson r coefficient */}
-      <div className="flex items-center justify-between px-1 pt-0.5 pb-2 border-b border-[#EDEDEB] dark:border-[#2E2E2E] mb-1">
-        <div className="flex items-center gap-2">
-          <span
-            className="h-2 w-2 rounded-full"
-            style={{ backgroundColor: color }}
-          />
-          <span className="text-xs font-semibold text-[#37352F] dark:text-[#E6E5E3]">
-            {imageLabel} ({direction})
-          </span>
-        </div>
-        <div className="flex items-center gap-1 font-mono text-[11px]">
-          <span className="text-[#787774] dark:text-[#9B9B9B]">r =</span>
-          <span
-            className={`font-semibold px-1.5 py-0.5 rounded text-[11px] ${
-              isPlain
-                ? "bg-[#D3E5EF] text-[#183347] dark:bg-[#1E394B] dark:text-[#529CCA]"
-                : isZeroCorrelation
-                ? "bg-[#DBEDDB] text-[#1C3829] dark:bg-[#203D2E] dark:text-[#4DAB9A]"
-                : "bg-[#FADEC9] text-[#854C1D] dark:bg-[#593A19] dark:text-[#FFAB5E]"
-            }`}
-          >
-            {coefficient !== undefined ? coefficient.toFixed(4) : "—"}
-          </span>
-        </div>
+    <div className={`space-y-1.5 ${className}`}>
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
+          {imageLabel} ({direction})
+        </span>
+        <span className="font-mono text-[11px] text-[#181818] dark:text-[#F2F2F0]">
+          r = {coefficient !== undefined ? coefficient.toFixed(4) : "—"}
+        </span>
       </div>
 
-      <ReactECharts option={option} style={{ height: "230px", width: "100%" }} />
-
-      <div className="mt-1 px-1 text-[10px] text-[#787774] dark:text-[#9B9B9B] text-center">
-        {isPlain
-          ? "Diagonal alignment shows high correlation between neighbor pixels."
-          : "Uniform random cloud proves all spatial correlation is destroyed (r ~ 0)."}
+      <div className="border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717] p-2">
+        <ReactECharts option={option} style={{ height: "180px", width: "100%" }} />
       </div>
     </div>
   );

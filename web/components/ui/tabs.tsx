@@ -22,7 +22,7 @@ export function Tabs({ items, activeId, onChange, className }: TabsProps) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-1 p-1 rounded-lg bg-[#F7F6F5] dark:bg-[#202020] border border-[#EDEDEB] dark:border-[#2E2E2E]",
+        "flex flex-wrap items-center gap-6 border-b border-[#E8E8E3] dark:border-[#292929] px-0.5",
         className
       )}
     >
@@ -34,17 +34,19 @@ export function Tabs({ items, activeId, onChange, className }: TabsProps) {
             key={tab.id}
             onClick={() => onChange(tab.id)}
             className={cn(
-              "px-3 py-1.5 text-xs rounded-md transition-all duration-150 font-medium flex items-center gap-2 cursor-pointer select-none",
+              "pb-2 text-xs transition-colors font-medium flex items-center gap-1.5 cursor-pointer select-none relative -mb-px",
               isActive
-                ? "bg-white dark:bg-[#2C2C2C] text-[#37352F] dark:text-[#FFFFFF] shadow-xs font-semibold"
-                : "text-[#787774] dark:text-[#9B9B9B] hover:text-[#37352F] dark:hover:text-[#E6E5E3] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+                ? "text-[#181818] dark:text-[#F2F2F0] border-b-2 border-[#2563EB] dark:border-[#5B8CFF]"
+                : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] border-b-2 border-transparent"
             )}
           >
             {Icon && (
               <Icon
                 className={cn(
                   "h-3.5 w-3.5",
-                  isActive ? "text-[#37352F] dark:text-[#FFFFFF]" : "text-[#9B9A97]"
+                  isActive
+                    ? "text-[#2563EB] dark:text-[#5B8CFF]"
+                    : "text-[#999993] dark:text-[#6A6A6A]"
                 )}
               />
             )}
@@ -52,10 +54,10 @@ export function Tabs({ items, activeId, onChange, className }: TabsProps) {
             {tab.badge && (
               <span
                 className={cn(
-                  "text-[10px] px-1.5 py-0.5 rounded font-mono font-medium",
+                  "text-[9px] px-1 py-0.2 rounded font-mono",
                   isActive
-                    ? "bg-[#E8DEEE] text-[#412D4C] dark:bg-[#3D2C4D] dark:text-[#9A6DD7]"
-                    : "bg-[#EDEDEB] text-[#787774] dark:bg-[#2E2E2E] dark:text-[#9B9B9B]"
+                    ? "text-[#2563EB] dark:text-[#5B8CFF]"
+                    : "text-[#999993] dark:text-[#6A6A6A]"
                 )}
               >
                 {tab.badge}
