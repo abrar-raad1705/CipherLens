@@ -289,7 +289,7 @@ export default function Home() {
                     Select Target Image
                   </div>
                   <div className="text-xs text-[#999993] dark:text-[#6A6A6A]">
-                    Click to choose a preset or upload an image
+                    Click to select or upload an image target
                   </div>
                 </div>
                 <Button variant="outline" size="sm" className="pointer-events-none">
