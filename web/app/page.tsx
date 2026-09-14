@@ -18,47 +18,94 @@ export default function Home() {
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [colorMode, setColorMode] = useState<"RGB Color" | "Grayscale">("RGB Color");
+  const [displayUri, setDisplayUri] = useState<string>("");
 
-  // Dynamically determine whether the active image is RGB Color or Grayscale
+  // Dynamically determine whether the active image is RGB Color or Grayscale, and trim any artificial letterbox black borders
   useEffect(() => {
-    if (!activeArtifact?.dataUri) return;
-
-    if (activeArtifact.metadata?.isGrayscale === true || activeArtifact.metadata?.channels === 1) {
-      setColorMode("Grayscale");
+    if (!activeArtifact?.dataUri) {
+      setDisplayUri("");
       return;
     }
 
+    const dataUri = activeArtifact.dataUri;
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
       try {
         const canvas = document.createElement("canvas");
-        const w = Math.min(img.naturalWidth || img.width || 32, 32);
-        const h = Math.min(img.naturalHeight || img.height || 32, 32);
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0, w, h);
+        if (!ctx) {
+          setDisplayUri(dataUri);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
         const imgData = ctx.getImageData(0, 0, w, h).data;
 
+        // 1. Color mode check
         let isGray = true;
-        for (let i = 0; i < imgData.length; i += 4) {
+        for (let i = 0; i < imgData.length; i += 16) {
           const r = imgData[i];
           const g = imgData[i + 1];
           const b = imgData[i + 2];
-          // If color channels differ by more than tolerance, image has chrominance
           if (Math.abs(r - g) > 6 || Math.abs(g - b) > 6 || Math.abs(r - b) > 6) {
             isGray = false;
             break;
           }
         }
         setColorMode(isGray ? "Grayscale" : "RGB Color");
+
+        // 2. Check for artificial solid black borders on edges (from previous crop math)
+        let top = 0;
+        let bottom = h - 1;
+        let left = 0;
+        let right = w - 1;
+
+        const isRowBlack = (y: number) => {
+          for (let x = 0; x < w; x += 4) {
+            const idx = (y * w + x) * 4;
+            if (imgData[idx] > 20 || imgData[idx + 1] > 20 || imgData[idx + 2] > 20) return false;
+          }
+          return true;
+        };
+
+        const isColBlack = (x: number) => {
+          for (let y = 0; y < h; y += 4) {
+            const idx = (y * w + x) * 4;
+            if (imgData[idx] > 20 || imgData[idx + 1] > 20 || imgData[idx + 2] > 20) return false;
+          }
+          return true;
+        };
+
+        while (top < bottom && isRowBlack(top)) top++;
+        while (bottom > top && isRowBlack(bottom)) bottom--;
+        while (left < right && isColBlack(left)) left++;
+        while (right > left && isColBlack(right)) right--;
+
+        // If at least 10px solid black border was detected on all 4 sides, trim it cleanly
+        if (top >= 10 && (h - 1 - bottom) >= 10 && left >= 10 && (w - 1 - right) >= 10) {
+          const trimW = right - left + 1;
+          const trimH = bottom - top + 1;
+          const outCanvas = document.createElement("canvas");
+          outCanvas.width = 512;
+          outCanvas.height = 512;
+          const outCtx = outCanvas.getContext("2d");
+          if (outCtx) {
+            outCtx.drawImage(canvas, left, top, trimW, trimH, 0, 0, 512, 512);
+            setDisplayUri(outCanvas.toDataURL("image/png"));
+            return;
+          }
+        }
+        setDisplayUri(dataUri);
       } catch {
+        setDisplayUri(dataUri);
         setColorMode("RGB Color");
       }
     };
-    img.src = activeArtifact.dataUri;
+    img.src = dataUri;
   }, [activeArtifact?.dataUri, activeArtifact?.metadata]);
 
   useEffect(() => {
@@ -122,7 +169,7 @@ export default function Home() {
 
   return (
     <>
-      <div className="max-w-6xl py-8 sm:py-14 space-y-16">
+      <div className="max-w-6xl py-6 sm:py-10 space-y-8 sm:space-y-10">
         {/* Introductory Area: Hero + Target Image Display Side-by-Side */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-center">
           {/* Left Column: Title & Mission */}
@@ -146,7 +193,7 @@ export default function Home() {
           </div>
 
           {/* Right Column: Research Notebook Annotation Layer with Hand-Drawn Frame */}
-          <div className="lg:col-span-5 flex justify-center py-8 sm:py-10">
+          <div className="lg:col-span-5 flex justify-center py-6 sm:py-8">
             {isMounted && activeArtifact && activeArtifact.dataUri ? (
               <div className="relative w-full max-w-[360px] select-none">
                 {/* DOODLE ANNOTATION 1: Color Mode (Top Left) */}
@@ -198,7 +245,7 @@ export default function Home() {
                   className="w-full aspect-square group cursor-pointer"
                 >
                   <img
-                    src={activeArtifact.dataUri}
+                    src={displayUri || activeArtifact.dataUri}
                     alt={activeArtifact.name}
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                   />
@@ -253,10 +300,10 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Downward Scroll Arrow placed a little bit down, right before the experiments section */}
+        {/* Downward Scroll Arrow right above the experiments section */}
         <div
           className={cn(
-            "flex flex-col items-center justify-center pt-8 pb-2 transition-all duration-300 ease-out",
+            "flex flex-col items-center justify-center -my-2 sm:-my-3 transition-all duration-300 ease-out",
             showScrollButton
               ? "opacity-100 scale-100 pointer-events-auto"
               : "opacity-0 scale-95 pointer-events-none"
@@ -266,9 +313,9 @@ export default function Home() {
             onClick={scrollToEnd}
             aria-label="Scroll to end of website"
             title="Scroll to end of website"
-            className="group relative flex items-center justify-center w-11 h-11 rounded-full bg-white/95 dark:bg-[#181818]/95 backdrop-blur-md border border-[#D5D5CF] dark:border-[#333333] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:border-[#2563EB]/40 dark:hover:border-[#5B8CFF]/40 cursor-pointer animate-float-levitate transition-colors active:scale-95"
+            className="group relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 dark:bg-[#181818]/95 backdrop-blur-md border border-[#D5D5CF] dark:border-[#333333] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:border-[#2563EB]/40 dark:hover:border-[#5B8CFF]/40 cursor-pointer animate-float-levitate transition-colors active:scale-95 shadow-sm"
           >
-            <ChevronDown className="h-5 w-5 transition-transform group-hover:translate-y-0.5 text-[#555550] dark:text-[#A0A09B] group-hover:text-[#2563EB] dark:group-hover:text-[#5B8CFF]" />
+            <ChevronDown className="h-4.5 w-4.5 transition-transform group-hover:translate-y-0.5 text-[#555550] dark:text-[#A0A09B] group-hover:text-[#2563EB] dark:group-hover:text-[#5B8CFF]" />
           </button>
         </div>
 

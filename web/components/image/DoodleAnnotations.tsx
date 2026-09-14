@@ -20,7 +20,7 @@ export function DoodleFrame({ children, className, onClick, title }: DoodleFrame
     <div
       onClick={onClick}
       title={title}
-      className={cn("relative p-3.5 sm:p-4 select-none", className)}
+      className={cn("relative p-2 sm:p-2.5 select-none", className)}
     >
       {/* Hand-drawn SVG border layer with organic doodle pen style */}
       <svg
@@ -62,7 +62,7 @@ export function DoodleFrame({ children, className, onClick, title }: DoodleFrame
       </svg>
 
       {/* Clean inner content / actual image container */}
-      <div className="relative w-full h-full rounded-lg overflow-hidden bg-[#0A0A0A] flex items-center justify-center">
+      <div className="relative w-full h-full rounded-md overflow-hidden flex items-center justify-center">
         {children}
       </div>
     </div>

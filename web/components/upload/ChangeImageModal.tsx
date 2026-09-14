@@ -113,7 +113,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
 
     const img = imageRef.current;
     const box = containerRef.current.getBoundingClientRect();
-    const size = Math.min(box.width, box.height);
+    const apertureSize = 240; // Exact visual aperture size
 
     // Create 512x512 square canvas
     const outputCanvas = document.createElement("canvas");
@@ -123,28 +123,22 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
     const ctx = outputCanvas.getContext("2d");
     if (!ctx) return;
 
-    const displayedWidth = img.width * zoom;
-    const displayedHeight = img.height * zoom;
+    // Use exact rendered screen positions
+    const imgRect = img.getBoundingClientRect();
+    const containerCenterX = box.left + box.width / 2;
+    const containerCenterY = box.top + box.height / 2;
 
-    const containerCenterX = box.width / 2;
-    const containerCenterY = box.height / 2;
+    const apertureLeft = containerCenterX - apertureSize / 2;
+    const apertureTop = containerCenterY - apertureSize / 2;
 
-    const imgLeft = containerCenterX - displayedWidth / 2 + offset.x;
-    const imgTop = containerCenterY - displayedHeight / 2 + offset.y;
-
-    const cropWindowLeft = containerCenterX - size / 2;
-    const cropWindowTop = containerCenterY - size / 2;
-
-    const scaleFactor = targetSize / size;
-    ctx.fillStyle = "#000000";
-    ctx.fillRect(0, 0, targetSize, targetSize);
+    const scale = targetSize / apertureSize;
 
     ctx.drawImage(
       img,
-      (imgLeft - cropWindowLeft) * scaleFactor,
-      (imgTop - cropWindowTop) * scaleFactor,
-      displayedWidth * scaleFactor,
-      displayedHeight * scaleFactor
+      (imgRect.left - apertureLeft) * scale,
+      (imgRect.top - apertureTop) * scale,
+      imgRect.width * scale,
+      imgRect.height * scale
     );
 
     const croppedDataUri = outputCanvas.toDataURL("image/png");
