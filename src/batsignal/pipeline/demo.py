@@ -4,28 +4,35 @@ import numpy as np
 
 # 1. Processing Modules
 from batsignal.processing.gaussian import apply_gaussian
-from batsignal.processing.deconvolution import apply_deconvolution  # update path if named differently
+from batsignal.processing.deconvolution import apply_deconvolution
 
 # 2. Encryption Algorithms (Contract Section 3)
-from batsignal.encryption import arnold_xor
-from batsignal.encryption import dct
-from batsignal.encryption import fourier
-from batsignal.encryption import drpe
+from batsignal.encryption import arnold_xor, dct, drpe, fourier
+from batsignal.encryption.arnold_xor import ArnoldXORKey
+from batsignal.encryption.dct import DCT_Key
+from batsignal.encryption.drpe import DRPEKey
+from batsignal.encryption.fourier import FourierKey
 
 # 3. Analysis Metrics (Contract Section 4)
 from batsignal.analysis import (
-    calculate_entropy,
     calculate_correlation,
-    calculate_npcr,
-    calculate_uaci,
+    calculate_entropy,
     calculate_mse,
+    calculate_npcr,
     calculate_psnr,
     calculate_ssim,
+    calculate_uaci,
 )
 
 
-def run_full_pipeline(input_image_path: str, output_dir: str = "output"):
+def run_full_pipeline(input_image_path: str = "cat512.png", output_dir: str = "output"):
     os.makedirs(output_dir, exist_ok=True)
+
+    # Locate image file either relative to current working directory or relative to script directory
+    if not os.path.exists(input_image_path):
+        script_dir_file = os.path.join(os.path.dirname(__file__), os.path.basename(input_image_path))
+        if os.path.exists(script_dir_file):
+            input_image_path = script_dir_file
 
     # 1. Load input image (Grayscale uint8 per Section 1)
     image = cv2.imread(input_image_path, cv2.IMREAD_GRAYSCALE)
@@ -44,10 +51,10 @@ def run_full_pipeline(input_image_path: str, output_dir: str = "output"):
 
     # Algorithms under test
     algorithms = {
-        "Arnold_XOR": {"module": arnold_xor, "key": (3, 5, 10, 0xAA)},
-        "DCT":        {"module": dct,        "key": 42},
-        "Fourier":    {"module": fourier,    "key": 100},
-        "DRPE":       {"module": drpe,       "key": (1234, 5678)},
+        "Arnold_XOR": {"module": arnold_xor, "key": ArnoldXORKey(3, 0xAA)},
+        "DCT":        {"module": dct,        "key": DCT_Key(42)},
+        "Fourier":    {"module": fourier,    "key": FourierKey(100)},
+        "DRPE":       {"module": drpe,       "key": DRPEKey(1234, 5678)},
     }
 
     report_lines = [
@@ -70,10 +77,11 @@ def run_full_pipeline(input_image_path: str, output_dir: str = "output"):
 
         # 4. Decrypt
         decrypted = module.decrypt(ciphertext1, key)
-        cv2.imwrite(os.path.join(output_dir, f"03_{name}_decrypted.png"), decrypted)
+        decrypted_img = np.clip(np.real(decrypted), 0, 255).astype(np.uint8)
+        cv2.imwrite(os.path.join(output_dir, f"03_{name}_decrypted.png"), decrypted_img)
 
         # 5. Deconvolution (Restoration)
-        restored = apply_deconvolution(decrypted)
+        restored = apply_deconvolution(decrypted_img)
         cv2.imwrite(os.path.join(output_dir, f"04_{name}_final_restored.png"), restored)
 
         # 6. Analysis Metrics (per Section 5 contracts)
@@ -84,9 +92,9 @@ def run_full_pipeline(input_image_path: str, output_dir: str = "output"):
         uaci = calculate_uaci(ciphertext1, ciphertext2)
 
         # Decryption / Quality metrics (comparing convolved input vs decrypted)
-        mse = calculate_mse(blurred, decrypted)
-        psnr = calculate_psnr(blurred, decrypted)
-        ssim = calculate_ssim(blurred, decrypted)
+        mse = calculate_mse(blurred, decrypted_img)
+        psnr = calculate_psnr(blurred, decrypted_img)
+        ssim = calculate_ssim(blurred, decrypted_img)
 
         report_lines.append(
             f"{name:<15} | {entropy:<8.4f} | {corr['horizontal']:<8.4f} | {npcr:<9.2f} | {mse:<8.2f} | {psnr:<10.2f} | {ssim:<6.4f}"

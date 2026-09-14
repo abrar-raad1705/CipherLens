@@ -1,5 +1,23 @@
 import numpy as np
-from Gaussian import gaussian_kernel_2d
+from .gaussian import gaussian_kernel_2d
+
+def apply_deconvolution(
+    image: np.ndarray,
+    mode: str = "GAUSSIAN",
+    kernel: np.ndarray | None = None,
+    kernel_size: int = 5,
+    sigma: float = 1.0,
+    K: float = 0.01,
+) -> np.ndarray:
+    """Apply deconvolution/restoration to an image."""
+    return reverse_filter(
+        image=image,
+        mode=mode,
+        kernel=kernel,
+        kernel_size=kernel_size,
+        sigma=sigma,
+        K=K,
+    )
 
 def wiener_deconvolve(image: np.ndarray, kernel: np.ndarray, K: float = 0.01):
     img_h, img_w = image.shape

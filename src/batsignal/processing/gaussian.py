@@ -1,5 +1,5 @@
 import numpy as np
-from Convolution import convolve2d_single_channel
+from .convolution import convolve2d_single_channel
 
 def gaussian_kernel_2d(kernel_size: int = 5, sigma: float = 1.0):
     radius = kernel_size // 2

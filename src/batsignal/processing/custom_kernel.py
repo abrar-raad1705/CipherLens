@@ -1,5 +1,5 @@
 import numpy as np
-from Convolution import convolve2d_single_channel
+from .convolution import convolve2d_single_channel
 
 def apply_custom_kernel(
     image: np.ndarray,

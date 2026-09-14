@@ -1,5 +1,5 @@
 import numpy as np
-from MSE import calculate_mse
+from .mse import calculate_mse
 def calculate_psnr(original: np.ndarray, recovered: np.ndarray) -> float:
     """
     Peak Signal-to-Noise Ratio (PSNR) in decibels (dB).

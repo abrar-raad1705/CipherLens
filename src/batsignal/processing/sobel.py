@@ -1,5 +1,5 @@
 import numpy as np
-from Convolution import convolve2d_single_channel
+from .convolution import convolve2d_single_channel
 
 def sobel_kernels():
     # Detects vertical edges (horizontal rate of change: dI/dx)
