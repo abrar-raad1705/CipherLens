@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Serif_Display } from "next/font/google";
+import { DM_Serif_Display, Caveat } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -14,6 +14,13 @@ const dmSerifDisplay = DM_Serif_Display({
   display: "swap",
 });
 
+const doodleFont = Caveat({
+  weight: ["400", "700"],
+  subsets: ["latin"],
+  variable: "--font-doodle",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "CipherLens | Computational Imaging Laboratory",
   description: "Minimal computational imaging instrument for 2D signal processing and 4f optical DRPE encryption",
@@ -25,7 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={dmSerifDisplay.variable}>
+    <html lang="en" suppressHydrationWarning className={`${dmSerifDisplay.variable} ${doodleFont.variable}`}>
       <head>
         <script
           dangerouslySetInnerHTML={{

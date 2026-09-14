@@ -115,6 +115,11 @@ input[type="range"]::-moz-range-thumb {
   letter-spacing: -0.01em;
 }
 
+/* Playful Doodle Handwritten Typeface */
+.font-doodle {
+  font-family: var(--font-doodle), "Caveat", "Comic Sans MS", "Chalkboard SE", cursive;
+}
+
 /* Performance containment */
 .contained-region {
   content-visibility: auto;
