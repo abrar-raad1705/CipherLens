@@ -17,6 +17,49 @@ export default function Home() {
   const { activeArtifact, isMounted } = useWorkspace();
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [colorMode, setColorMode] = useState<"RGB Color" | "Grayscale">("RGB Color");
+
+  // Dynamically determine whether the active image is RGB Color or Grayscale
+  useEffect(() => {
+    if (!activeArtifact?.dataUri) return;
+
+    if (activeArtifact.metadata?.isGrayscale === true || activeArtifact.metadata?.channels === 1) {
+      setColorMode("Grayscale");
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const w = Math.min(img.naturalWidth || img.width || 32, 32);
+        const h = Math.min(img.naturalHeight || img.height || 32, 32);
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0, w, h);
+        const imgData = ctx.getImageData(0, 0, w, h).data;
+
+        let isGray = true;
+        for (let i = 0; i < imgData.length; i += 4) {
+          const r = imgData[i];
+          const g = imgData[i + 1];
+          const b = imgData[i + 2];
+          // If color channels differ by more than tolerance, image has chrominance
+          if (Math.abs(r - g) > 6 || Math.abs(g - b) > 6 || Math.abs(r - b) > 6) {
+            isGray = false;
+            break;
+          }
+        }
+        setColorMode(isGray ? "Grayscale" : "RGB Color");
+      } catch {
+        setColorMode("RGB Color");
+      }
+    };
+    img.src = activeArtifact.dataUri;
+  }, [activeArtifact?.dataUri, activeArtifact?.metadata]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -79,7 +122,7 @@ export default function Home() {
 
   return (
     <>
-      <div className="max-w-6xl py-8 sm:py-14 space-y-20">
+      <div className="max-w-6xl py-8 sm:py-14 space-y-16">
         {/* Introductory Area: Hero + Target Image Display Side-by-Side */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-center">
           {/* Left Column: Title & Mission */}
@@ -112,10 +155,24 @@ export default function Home() {
                   style={{ transform: "rotate(-2deg)" }}
                 >
                   <div className="flex flex-col items-start">
-                    <span className="font-doodle text-lg sm:text-xl font-bold tracking-wide text-[#2563EB] dark:text-[#5B8CFF]">
-                      RGB Color
+                    <span
+                      className={cn(
+                        "font-doodle text-lg sm:text-xl font-bold tracking-wide",
+                        colorMode === "Grayscale"
+                          ? "text-[#181818] dark:text-[#F2F2F0]"
+                          : "text-[#2563EB] dark:text-[#5B8CFF]"
+                      )}
+                    >
+                      {colorMode}
                     </span>
-                    <DoodleUnderline className="w-20 -mt-1 text-[#2563EB]/70 dark:text-[#5B8CFF]/70" />
+                    <DoodleUnderline
+                      className={cn(
+                        "-mt-1",
+                        colorMode === "Grayscale"
+                          ? "w-22 text-[#7A7A75] dark:text-[#9A9A95]"
+                          : "w-20 text-[#2563EB]/70 dark:text-[#5B8CFF]/70"
+                      )}
+                    />
                   </div>
                   <DoodleArrow direction="top-left" className="-mt-1 ml-2 pointer-events-none" />
                 </div>
@@ -143,7 +200,7 @@ export default function Home() {
                   <img
                     src={activeArtifact.dataUri}
                     alt={activeArtifact.name}
-                    className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                   />
 
                   {/* Subtle Research Annotation Hover Prompt */}
@@ -196,24 +253,24 @@ export default function Home() {
           </div>
         </section>
 
-      {/* Downward Scroll Arrow in the middle down side (visible only when at top of website) */}
-      <div
-        className={cn(
-          "fixed bottom-7 left-1/2 -translate-x-1/2 md:left-[calc(50%+115px)] z-30 transition-all duration-300 ease-out",
-          showScrollButton
-            ? "opacity-100 translate-y-0 pointer-events-auto"
-            : "opacity-0 translate-y-3 pointer-events-none"
-        )}
-      >
-        <button
-          onClick={scrollToEnd}
-          aria-label="Scroll to end of website"
-          title="Scroll to end of website"
-          className="group flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/85 dark:bg-[#161616]/85 backdrop-blur-md border border-[#E0E0DA] dark:border-[#2A2A2A] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:border-[#C0C0B8] dark:hover:border-[#3E3E3E] shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3)] transition-all cursor-pointer animate-gentle-bob active:scale-95"
+        {/* Downward Scroll Arrow placed a little bit down, right before the experiments section */}
+        <div
+          className={cn(
+            "flex flex-col items-center justify-center pt-8 pb-2 transition-all duration-300 ease-out",
+            showScrollButton
+              ? "opacity-100 scale-100 pointer-events-auto"
+              : "opacity-0 scale-95 pointer-events-none"
+          )}
         >
-          <ChevronDown className="h-4 w-4 sm:h-4.5 sm:w-4.5 transition-transform group-hover:translate-y-0.5 text-[#6F6F6A] dark:text-[#A0A09B] group-hover:text-[#2563EB] dark:group-hover:text-[#5B8CFF]" />
-        </button>
-      </div>
+          <button
+            onClick={scrollToEnd}
+            aria-label="Scroll to end of website"
+            title="Scroll to end of website"
+            className="group relative flex items-center justify-center w-11 h-11 rounded-full bg-white/95 dark:bg-[#181818]/95 backdrop-blur-md border border-[#D5D5CF] dark:border-[#333333] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:border-[#2563EB]/40 dark:hover:border-[#5B8CFF]/40 cursor-pointer animate-float-levitate transition-colors active:scale-95"
+          >
+            <ChevronDown className="h-5 w-5 transition-transform group-hover:translate-y-0.5 text-[#555550] dark:text-[#A0A09B] group-hover:text-[#2563EB] dark:group-hover:text-[#5B8CFF]" />
+          </button>
+        </div>
 
       {/* Experiments Index */}
       <section id="lab-experiments" className="space-y-4 scroll-mt-20">

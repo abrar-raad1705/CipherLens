@@ -126,16 +126,19 @@ input[type="range"]::-moz-range-thumb {
   contain-intrinsic-size: auto 300px auto 600px;
 }
 
-/* Subtle, elegant downward indicator float */
-@keyframes gentle-bob {
+/* Visible floating levitation animation with dynamic shadow */
+@keyframes float-levitate {
   0%, 100% {
-    transform: translateY(0);
+    transform: translateY(0px);
+    box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
   }
   50% {
-    transform: translateY(3px);
+    transform: translateY(-8px);
+    box-shadow: 0 16px 26px -3px rgba(0, 0, 0, 0.14), 0 8px 12px -2px rgba(0, 0, 0, 0.08);
   }
 }
 
-.animate-gentle-bob {
-  animation: gentle-bob 2.4s ease-in-out infinite;
+.animate-float-levitate {
+  animation: float-levitate 3s ease-in-out infinite;
 }
+
