@@ -7,7 +7,7 @@ import { WorkspaceProvider } from "@/hooks/use-image";
 import { ThemeProvider } from "@/hooks/use-theme";
 
 export const metadata: Metadata = {
-  title: "Bat Signal | Computational Imaging Laboratory",
+  title: "CipherLens | Computational Imaging Laboratory",
   description: "Minimal computational imaging instrument for 2D signal processing and 4f optical DRPE encryption",
 };
 
@@ -40,13 +40,13 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen flex flex-col bg-[#FAFAF8] text-[#181818] dark:bg-[#101010] dark:text-[#F2F2F0] antialiased selection:bg-[#2563EB]/15 dark:selection:bg-[#5B8CFF]/20 selection:text-inherit">
+      <body className="min-h-screen flex flex-col bg-[#FAFAF8] text-[#181818] dark:bg-[#101010] dark:text-[#F2F2F0] antialiased selection:bg-[#2563EB]/15 dark:selection:bg-[#5B8CFF]/20 selection:text-inherit text-sm">
         <ThemeProvider>
           <WorkspaceProvider>
             <Header />
             <div className="flex flex-1 w-full">
               <Sidebar />
-              <main className="flex-1 min-w-0 px-4 sm:px-8 py-6 max-w-6xl">
+              <main className="flex-1 min-w-0 px-4 sm:px-8 py-6 max-w-7xl">
                 {children}
               </main>
             </div>

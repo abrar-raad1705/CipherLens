@@ -23,9 +23,9 @@ export function OpticalBenchDiagram({
   ];
 
   return (
-    <div className={cn("py-4 select-none", className)}>
+    <div className={cn("py-3 select-none", className)}>
       {/* Scientific Diagram: ORIGINAL ── R₁ ── FFT ── R₂ ── OUTPUT */}
-      <div className="flex items-center justify-between w-full max-w-2xl mx-auto px-2">
+      <div className="flex items-center justify-between w-full max-w-2xl mx-auto px-1">
         {stages.map((st, idx) => {
           const isSelected = activeStage === st.id;
           const isLast = idx === stages.length - 1;
@@ -39,7 +39,7 @@ export function OpticalBenchDiagram({
               >
                 <div
                   className={cn(
-                    "font-mono text-xs px-2.5 py-1 rounded transition-colors border",
+                    "font-mono text-xs px-3 py-1.5 rounded transition-colors border",
                     isSelected
                       ? "border-[#2563EB] text-[#2563EB] dark:border-[#5B8CFF] dark:text-[#5B8CFF] bg-[#2563EB]/5 font-medium"
                       : "border-[#E8E8E3] dark:border-[#292929] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] bg-white dark:bg-[#171717]"
@@ -47,7 +47,7 @@ export function OpticalBenchDiagram({
                 >
                   {st.label}
                 </div>
-                <span className="font-mono text-[9px] text-[#999993] dark:text-[#6A6A6A] mt-1">
+                <span className="font-mono text-[10px] text-[#999993] dark:text-[#6A6A6A] mt-1 font-medium">
                   {st.sub}
                 </span>
               </button>

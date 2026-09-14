@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Save } from "lucide-react";
+import React, { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowRight, Check, Play, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
@@ -12,8 +12,9 @@ import { formatMs } from "@/lib/utils/format";
 
 type FilterMode = "gaussian" | "median" | "sobel" | "custom" | "deconvolution";
 
-export default function ConvolutionBenchPage() {
+function ConvolutionBenchContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { activeArtifact, presets, loadPresetById, addArtifact } = useWorkspace();
   const {
     loading,
@@ -26,7 +27,13 @@ export default function ConvolutionBenchPage() {
     executeDeconvolution,
   } = useProcessing();
 
-  const [mode, setMode] = useState<FilterMode>("gaussian");
+  const urlMode = searchParams.get("mode") as FilterMode | null;
+  const validModes: FilterMode[] = ["gaussian", "median", "sobel", "custom", "deconvolution"];
+  const [modeOverride, setModeOverride] = useState<FilterMode | null>(null);
+  const mode: FilterMode =
+    modeOverride ?? (urlMode && validModes.includes(urlMode) ? urlMode : "gaussian");
+  const setMode = (m: FilterMode) => setModeOverride(m);
+
   const [kernelSize, setKernelSize] = useState<number>(5);
   const [sigma, setSigma] = useState<number>(1.5);
   const [deconvK, setDeconvK] = useState<number>(0.01);
@@ -79,20 +86,20 @@ export default function ConvolutionBenchPage() {
     { id: "gaussian", label: "Gaussian" },
     { id: "median", label: "Median" },
     { id: "sobel", label: "Sobel" },
-    { id: "custom", label: "Custom" },
+    { id: "custom", label: "Custom 2D" },
     { id: "deconvolution", label: "Deconvolution" },
   ];
 
   return (
-    <div className="space-y-8 max-w-4xl py-4">
+    <div className="space-y-6 max-w-7xl py-2">
       {/* Header */}
-      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-4">
+      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
         <div>
-          <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-            CONVOLUTION
+          <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+            PROCESSING
           </div>
-          <h1 className="text-xl font-normal text-[#181818] dark:text-[#F2F2F0] mt-0.5">
-            Spatial image filtering
+          <h1 className="text-2xl font-normal text-[#181818] dark:text-[#F2F2F0] mt-0.5">
+            2D Convolution &amp; Spatial Filtering
           </h1>
         </div>
 
@@ -104,89 +111,90 @@ export default function ConvolutionBenchPage() {
               onClick={() => handleSaveArtifact(false)}
             >
               {savedSuccess ? (
-                <Check className="h-3 w-3 text-[#059669]" />
+                <Check className="h-3.5 w-3.5 text-[#059669]" />
               ) : (
-                <Save className="h-3 w-3 text-[#6F6F6A]" />
+                <Save className="h-3.5 w-3.5 text-[#6F6F6A]" />
               )}
-              <span>{savedSuccess ? "Saved" : "Save"}</span>
+              <span>{savedSuccess ? "Saved" : "Save Artifact"}</span>
             </Button>
             <Button
               variant="primary"
               size="sm"
               onClick={() => handleSaveArtifact(true)}
             >
-              <span>To Encryption</span>
-              <ArrowRight className="h-3 w-3" />
+              <span>Promote to DRPE</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </div>
         )}
       </div>
 
-      {/* Main Visualization */}
-      <section className="space-y-2">
-        {activeArtifact && activeArtifact.dataUri ? (
-          <SplitCompareCanvas
-            beforeSrc={activeArtifact.dataUri}
-            afterSrc={result ? result.output_image : activeArtifact.dataUri}
-            beforeLabel="ORIGINAL"
-            afterLabel={result ? result.filter.toUpperCase() : "RESULT"}
-          />
-        ) : (
-          <div className="h-[360px] flex flex-col items-center justify-center rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-xs gap-3 p-6 text-center">
-            <span className="font-medium text-[#181818] dark:text-[#F2F2F0]">
-              No Target Selected
-            </span>
-            <p className="text-[#6F6F6A] dark:text-[#A0A09B] max-w-sm">
-              Load an optical calibration target or upload an image to begin spatial filtering experiments.
-            </p>
-            {presets.length > 0 && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => loadPresetById(presets[0].id)}
-              >
-                Load {presets[0].name}
-              </Button>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* Controls Area (Inline, separated by thin rules, no cards) */}
-      <section className="space-y-6 pt-2">
-        {/* Method Selector */}
-        <div className="space-y-2">
-          <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-            METHOD
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {methods.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setMode(m.id)}
-                className={`px-3 py-1 text-xs rounded transition-colors cursor-pointer border ${
-                  mode === m.id
-                    ? "border-[#2563EB] text-[#2563EB] dark:border-[#5B8CFF] dark:text-[#5B8CFF] font-medium bg-[#2563EB]/5"
-                    : "border-[#E8E8E3] dark:border-[#292929] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] bg-white dark:bg-[#171717]"
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
+      {/* Main Operation Area: Left = Visualization Canvas, Right = User Inputs/Controls */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Visual Viewfield (8 cols on desktop) */}
+        <div className="lg:col-span-8 space-y-3">
+          {activeArtifact && activeArtifact.dataUri ? (
+            <SplitCompareCanvas
+              beforeSrc={activeArtifact.dataUri}
+              afterSrc={result ? result.output_image : activeArtifact.dataUri}
+              beforeLabel="ORIGINAL"
+              afterLabel={result ? result.filter.toUpperCase() : "RESULT"}
+            />
+          ) : (
+            <div className="h-[400px] flex flex-col items-center justify-center rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-sm gap-3 p-6 text-center">
+              <span className="font-medium text-[#181818] dark:text-[#F2F2F0]">
+                No Target Selected
+              </span>
+              <p className="text-[#6F6F6A] dark:text-[#A0A09B] max-w-sm text-xs">
+                Select an optical calibration preset or upload an image in Workspace to execute spatial operations.
+              </p>
+              {presets.length > 0 && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => loadPresetById(presets[0].id)}
+                >
+                  Load {presets[0].name}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Mode Parameters */}
-        <div className="border-t border-[#E8E8E3] dark:border-[#292929] pt-4 space-y-4">
-          <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-            {mode.toUpperCase()} PARAMETERS
+        {/* Right Column: User Inputs & Controls Panel (4 cols on desktop) */}
+        <div className="lg:col-span-4 border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717] p-5 space-y-6">
+          {/* Method Selector */}
+          <div className="space-y-2.5">
+            <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+              FILTER METHOD
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {methods.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setMode(m.id)}
+                  className={`px-3 py-2 text-xs rounded transition-colors cursor-pointer border text-left ${
+                    mode === m.id
+                      ? "border-[#2563EB] text-[#2563EB] dark:border-[#5B8CFF] dark:text-[#5B8CFF] font-medium bg-[#2563EB]/5"
+                      : "border-[#E8E8E3] dark:border-[#292929] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] bg-transparent"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="max-w-md space-y-4">
+          {/* Mode-Specific Parameter Sliders */}
+          <div className="space-y-4 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
+            <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+              {mode.toUpperCase()} PARAMETERS
+            </div>
+
             {(mode === "gaussian" || mode === "median" || mode === "deconvolution") && (
               <Slider
-                label="Kernel size"
-                hint="Odd dimension"
+                label="Kernel Size"
+                hint="Odd matrix size"
                 valueDisplay={`${kernelSize} × ${kernelSize}`}
                 min={3}
                 max={15}
@@ -198,7 +206,7 @@ export default function ConvolutionBenchPage() {
 
             {(mode === "gaussian" || mode === "deconvolution") && (
               <Slider
-                label="Sigma (σ)"
+                label="Gaussian Spread (σ)"
                 hint="Standard deviation"
                 valueDisplay={sigma.toFixed(1)}
                 min={0.5}
@@ -211,7 +219,7 @@ export default function ConvolutionBenchPage() {
 
             {mode === "deconvolution" && (
               <Slider
-                label="Regularization (K)"
+                label="Wiener Regularization (K)"
                 hint="Noise-to-signal ratio"
                 valueDisplay={deconvK.toFixed(3)}
                 min={0.001}
@@ -225,20 +233,20 @@ export default function ConvolutionBenchPage() {
             {mode === "custom" && (
               <div className="space-y-2">
                 <div className="text-xs text-[#6F6F6A] dark:text-[#A0A09B]">
-                  2D Kernel Matrix
+                  2D Matrix (JSON format)
                 </div>
                 <textarea
                   value={customKernelStr}
                   onChange={(e) => setCustomKernelStr(e.target.value)}
                   rows={3}
-                  className="w-full bg-white dark:bg-[#171717] border border-[#E8E8E3] dark:border-[#292929] text-[#181818] dark:text-[#F2F2F0] font-mono text-xs p-2.5 rounded outline-none focus:border-[#2563EB]"
+                  className="w-full bg-[#FAFAF8] dark:bg-[#101010] border border-[#E8E8E3] dark:border-[#292929] text-[#181818] dark:text-[#F2F2F0] font-mono text-xs p-2.5 rounded outline-none focus:border-[#2563EB]"
                 />
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 text-xs">
                   <button
                     onClick={() =>
                       setCustomKernelStr("[[0, -1, 0], [-1, 5, -1], [0, -1, 0]]")
                     }
-                    className="text-[11px] text-[#6F6F6A] hover:text-[#181818] dark:text-[#A0A09B] dark:hover:text-[#F2F2F0] underline"
+                    className="text-xs text-[#6F6F6A] hover:text-[#181818] dark:text-[#A0A09B] dark:hover:text-[#F2F2F0] underline"
                   >
                     Sharpen
                   </button>
@@ -247,7 +255,7 @@ export default function ConvolutionBenchPage() {
                     onClick={() =>
                       setCustomKernelStr("[[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]]")
                     }
-                    className="text-[11px] text-[#6F6F6A] hover:text-[#181818] dark:text-[#A0A09B] dark:hover:text-[#F2F2F0] underline"
+                    className="text-xs text-[#6F6F6A] hover:text-[#181818] dark:text-[#A0A09B] dark:hover:text-[#F2F2F0] underline"
                   >
                     Laplacian
                   </button>
@@ -256,7 +264,7 @@ export default function ConvolutionBenchPage() {
                     onClick={() =>
                       setCustomKernelStr("[[-2, -1, 0], [-1, 1, 1], [0, 1, 2]]")
                     }
-                    className="text-[11px] text-[#6F6F6A] hover:text-[#181818] dark:text-[#A0A09B] dark:hover:text-[#F2F2F0] underline"
+                    className="text-xs text-[#6F6F6A] hover:text-[#181818] dark:text-[#A0A09B] dark:hover:text-[#F2F2F0] underline"
                   >
                     Emboss
                   </button>
@@ -271,24 +279,41 @@ export default function ConvolutionBenchPage() {
             </div>
           )}
 
-          <div className="flex items-center gap-4 pt-2">
+          {/* Action Button & Telemetry */}
+          <div className="pt-2 space-y-3">
             <Button
               variant="primary"
               onClick={handleApply}
               disabled={loading || !activeArtifact}
-              className="h-8"
+              className="w-full h-9"
             >
-              <span>{loading ? "Computing..." : "Apply"}</span>
+              <Play className="h-3.5 w-3.5 fill-current mr-1" />
+              <span>{loading ? "Computing via FastAPI..." : "Apply Filter"}</span>
             </Button>
 
             {result && (
-              <div className="font-mono text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
-                Latency: {formatMs(result.latency_ms)}
+              <div className="p-2.5 rounded border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] text-xs font-mono text-[#6F6F6A] dark:text-[#A0A09B] space-y-1">
+                <div className="flex justify-between">
+                  <span>Operator:</span>
+                  <span className="text-[#181818] dark:text-[#F2F2F0]">{result.filter}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Latency:</span>
+                  <span className="text-[#181818] dark:text-[#F2F2F0]">{formatMs(result.latency_ms)}</span>
+                </div>
               </div>
             )}
           </div>
         </div>
-      </section>
+      </div>
     </div>
+  );
+}
+
+export default function ConvolutionBenchPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-[#6F6F6A]">Loading convolution bench...</div>}>
+      <ConvolutionBenchContent />
+    </Suspense>
   );
 }

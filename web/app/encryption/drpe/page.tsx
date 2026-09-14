@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import React, { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowRight, Lock, Shield, Unlock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Tabs } from "@/components/ui/tabs";
 import { CanvasViewer } from "@/components/image/CanvasViewer";
 import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
 import { OpticalBenchDiagram } from "@/components/encryption/OpticalBenchDiagram";
@@ -13,8 +12,11 @@ import { useWorkspace } from "@/hooks/use-image";
 import { useEncryption } from "@/hooks/use-encryption";
 import { formatMs } from "@/lib/utils/format";
 
-export default function DRPEBenchPage() {
+type EncryptionAlgo = "drpe" | "fourier" | "dct" | "arnold";
+
+function DRPEBenchContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { activeArtifact, presets, loadPresetById, addArtifact } = useWorkspace();
   const {
     loading,
@@ -29,7 +31,13 @@ export default function DRPEBenchPage() {
     executeArnoldXOR,
   } = useEncryption();
 
-  const [activeTab, setActiveTab] = useState<"drpe" | "fourier" | "dct" | "arnold">("drpe");
+  const urlAlgo = searchParams.get("algo") as EncryptionAlgo | null;
+  const validAlgos: EncryptionAlgo[] = ["drpe", "fourier", "dct", "arnold"];
+  const [tabOverride, setTabOverride] = useState<EncryptionAlgo | null>(null);
+  const activeTab: EncryptionAlgo =
+    tabOverride ?? (urlAlgo && validAlgos.includes(urlAlgo) ? urlAlgo : "drpe");
+  const setActiveTab = (t: EncryptionAlgo) => setTabOverride(t);
+
   const [activeStageKey, setActiveStageKey] = useState<string>("ciphertext");
 
   // DRPE Seeds
@@ -96,28 +104,41 @@ export default function DRPEBenchPage() {
 
   const stagesList = [
     { id: "original", label: "Original" },
-    { id: "r1_phase", label: "R₁" },
-    { id: "fourier_spectrum", label: "Fourier" },
-    { id: "r2_phase", label: "R₂" },
+    { id: "r1_phase", label: "R₁ Spatial" },
+    { id: "fourier_spectrum", label: "Fourier FFT" },
+    { id: "r2_phase", label: "R₂ Phase" },
     { id: "ciphertext", label: "Ciphertext" },
+  ];
+
+  const algos: { id: EncryptionAlgo; label: string }[] = [
+    { id: "drpe", label: "4f DRPE Optics" },
+    { id: "fourier", label: "Fourier Phase" },
+    { id: "dct", label: "DCT Permutation" },
+    { id: "arnold", label: "Arnold Cat Map" },
   ];
 
   const isExactKeyMatch = decryptSeed1 === seed1 && decryptSeed2 === seed2;
 
   return (
-    <div className="space-y-8 max-w-4xl py-4">
+    <div className="space-y-6 max-w-7xl py-2">
       {/* Header */}
-      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-4">
+      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
         <div>
-          <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-            ENCRYPTION
+          <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+            OPTICAL ENCRYPTION
           </div>
-          <h1 className="text-xl font-normal text-[#181818] dark:text-[#F2F2F0] mt-0.5">
-            Double Random Phase Encoding
+          <h1 className="text-2xl font-normal text-[#181818] dark:text-[#F2F2F0] mt-0.5">
+            {activeTab === "drpe"
+              ? "4f Double Random Phase Encoding"
+              : activeTab === "fourier"
+              ? "Fourier Phase Transform Cryptosystem"
+              : activeTab === "dct"
+              ? "Discrete Cosine Transform Permutation"
+              : "Arnold Cat Map Chaotic Diffeomorphism"}
           </h1>
         </div>
 
-        {drpeEncryptResult && (
+        {drpeEncryptResult && activeTab === "drpe" && (
           <Button
             variant="primary"
             size="sm"
@@ -126,223 +147,253 @@ export default function DRPEBenchPage() {
             }
           >
             <span>Analyze Ciphertext</span>
-            <ArrowRight className="h-3 w-3" />
+            <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         )}
       </div>
 
-      {/* Algorithm Tabs */}
-      <Tabs
-        activeId={activeTab}
-        onChange={(id) => setActiveTab(id as "drpe" | "fourier" | "dct" | "arnold")}
-        items={[
-          { id: "drpe", label: "4f DRPE" },
-          { id: "fourier", label: "Fourier Phase" },
-          { id: "dct", label: "DCT Permutation" },
-          { id: "arnold", label: "Arnold Cat Map" },
-        ]}
-      />
+      {/* Main Operations Area: Left = Visualization & Diagram, Right = User Inputs/Controls */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Visualization & Stage Inspection (8 cols on desktop) */}
+        <div className="lg:col-span-8 space-y-6">
+          {activeTab === "drpe" && (
+            <>
+              {/* Scientific Optical Schematic */}
+              <div className="border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717] px-4 py-2">
+                <OpticalBenchDiagram
+                  activeStage={activeStageKey}
+                  onSelectStage={(k) => {
+                    if (drpeEncryptResult) {
+                      setActiveStageKey(k);
+                    }
+                  }}
+                />
+              </div>
 
-      {/* DRPE COHERENT OPTICS BENCH */}
-      {activeTab === "drpe" && (
-        <div className="space-y-8">
-          {/* Scientific Diagram: ORIGINAL ── R₁ ── FFT ── R₂ ── OUTPUT */}
-          <OpticalBenchDiagram
-            activeStage={activeStageKey}
-            onSelectStage={(k) => {
-              if (drpeEncryptResult) {
-                setActiveStageKey(k);
-              }
-            }}
-          />
+              {/* Stage Selector Navigation */}
+              <div className="flex items-center gap-6 border-b border-[#E8E8E3] dark:border-[#292929] pb-2 text-xs">
+                {stagesList.map((st) => {
+                  const isSelected = activeStageKey === st.id;
+                  const isAvailable = Boolean(drpeEncryptResult);
 
-          {/* Central Visualization Canvas */}
-          <section className="space-y-3">
-            {/* Stage Selector directly above canvas */}
-            <div className="flex items-center gap-6 border-b border-[#E8E8E3] dark:border-[#292929] pb-1.5 text-xs">
-              {stagesList.map((st) => {
-                const isSelected = activeStageKey === st.id;
-                const isAvailable = Boolean(drpeEncryptResult);
+                  return (
+                    <button
+                      key={st.id}
+                      onClick={() => isAvailable && setActiveStageKey(st.id)}
+                      disabled={!isAvailable}
+                      className={`cursor-pointer transition-colors pb-1 -mb-2 border-b-2 font-mono text-xs ${
+                        isSelected
+                          ? "text-[#2563EB] dark:text-[#5B8CFF] border-[#2563EB] dark:border-[#5B8CFF] font-medium"
+                          : isAvailable
+                          ? "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] border-transparent"
+                          : "text-[#999993] dark:text-[#6A6A6A] border-transparent opacity-40 cursor-not-allowed"
+                      }`}
+                    >
+                      {st.label}
+                    </button>
+                  );
+                })}
+              </div>
 
-                return (
-                  <button
-                    key={st.id}
-                    onClick={() => isAvailable && setActiveStageKey(st.id)}
-                    disabled={!isAvailable}
-                    className={`cursor-pointer transition-colors pb-1 -mb-2 border-b-2 font-mono text-[11px] ${
-                      isSelected
-                        ? "text-[#2563EB] dark:text-[#5B8CFF] border-[#2563EB] dark:border-[#5B8CFF] font-medium"
-                        : isAvailable
-                        ? "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] border-transparent"
-                        : "text-[#999993] dark:text-[#6A6A6A] border-transparent opacity-40 cursor-not-allowed"
-                    }`}
-                  >
-                    {st.label}
-                  </button>
-                );
-              })}
-            </div>
+              {/* Canvas Viewport */}
+              {drpeEncryptResult ? (
+                <div className="space-y-6">
+                  <CanvasViewer
+                    imageSrc={
+                      drpeEncryptResult.stages[
+                        activeStageKey as keyof typeof drpeEncryptResult.stages
+                      ]
+                    }
+                    title={activeStageKey.toUpperCase()}
+                    subtitle="Coherent Wavefront State"
+                  />
 
-            {drpeEncryptResult ? (
-              <div className="space-y-6">
+                  {/* Decrypted Recovery Comparison */}
+                  {drpeDecryptResult && drpeDecryptResult.decrypted_image && activeArtifact?.dataUri && (
+                    <div className="space-y-2 pt-4 border-t border-[#E8E8E3] dark:border-[#292929]">
+                      <div className="flex items-center justify-between text-xs pb-1">
+                        <span className="font-mono text-xs text-[#6F6F6A] dark:text-[#A0A09B]">
+                          DECRYPTION RECONSTRUCTION COMPARISON
+                        </span>
+                        <div className="flex items-center gap-3 font-mono text-xs">
+                          <span>SSIM: {drpeDecryptResult.quality?.ssim?.toFixed(4) || "0.0000"}</span>
+                          <span>·</span>
+                          <span className={isExactKeyMatch ? "text-[#059669] dark:text-[#34D399]" : "text-[#DC2626] dark:text-[#F87171]"}>
+                            {isExactKeyMatch ? "Exact Key" : "Perturbed (Noise)"}
+                          </span>
+                        </div>
+                      </div>
+                      <SplitCompareCanvas
+                        beforeSrc={activeArtifact.dataUri}
+                        afterSrc={drpeDecryptResult.decrypted_image}
+                        beforeLabel="ORIGINAL"
+                        afterLabel={isExactKeyMatch ? "DECRYPTED (MATCHED)" : "DECRYPTED (WRONG KEY)"}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="h-[400px] flex flex-col items-center justify-center rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-sm gap-3 p-6 text-center">
+                  <div className="p-3 rounded-full bg-[#FAFAF8] dark:bg-[#1F1F1F] border border-[#E8E8E3] dark:border-[#292929]">
+                    <Shield className="h-5 w-5 text-[#999993] dark:text-[#6A6A6A]" />
+                  </div>
+                  <span className="font-medium text-[#181818] dark:text-[#F2F2F0]">
+                    Awaiting 4f DRPE Simulation
+                  </span>
+                  <p className="text-[#6F6F6A] dark:text-[#A0A09B] max-w-sm text-xs">
+                    Configure the random phase mask key seeds on the right panel and execute optical encryption.
+                  </p>
+                  {activeArtifact ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleEncryptDRPE}
+                      disabled={loading}
+                    >
+                      Encrypt {activeArtifact.name}
+                    </Button>
+                  ) : presets.length > 0 ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => loadPresetById(presets[0].id)}
+                    >
+                      Load {presets[0].name}
+                    </Button>
+                  ) : null}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Alternative Transforms Viewport */}
+          {activeTab !== "drpe" && (
+            <div className="space-y-4">
+              {transformResult ? (
                 <CanvasViewer
-                  imageSrc={
-                    drpeEncryptResult.stages[
-                      activeStageKey as keyof typeof drpeEncryptResult.stages
-                    ]
-                  }
-                  title={activeStageKey.toUpperCase()}
-                  subtitle="Coherent Wavefront Stage"
+                  imageSrc={transformResult.output_image}
+                  title={`${transformResult.algorithm} — ${transformResult.action.toUpperCase()}`}
+                  subtitle={`Latency: ${formatMs(transformResult.latency_ms)}`}
+                />
+              ) : (
+                <div className="h-[400px] flex flex-col items-center justify-center rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-sm gap-3 p-6 text-center">
+                  <span className="font-medium text-[#181818] dark:text-[#F2F2F0]">
+                    {activeTab.toUpperCase()} Transform Ready
+                  </span>
+                  <p className="text-[#6F6F6A] dark:text-[#A0A09B] max-w-sm text-xs">
+                    Adjust key parameters on the right and click Encrypt or Decrypt.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: User Inputs & Key Parameters Panel (4 cols on desktop) */}
+        <div className="lg:col-span-4 border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717] p-5 space-y-6">
+          {/* Algorithm Selector Buttons */}
+          <div className="space-y-2">
+            <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+              ALGORITHM
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {algos.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => setActiveTab(a.id)}
+                  className={`px-3 py-2 text-xs rounded transition-colors cursor-pointer border text-left ${
+                    activeTab === a.id
+                      ? "border-[#2563EB] text-[#2563EB] dark:border-[#5B8CFF] dark:text-[#5B8CFF] font-medium bg-[#2563EB]/5"
+                      : "border-[#E8E8E3] dark:border-[#292929] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] bg-transparent"
+                  }`}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* DRPE Key Inputs */}
+          {activeTab === "drpe" && (
+            <div className="space-y-5 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
+              {/* Encryption Phase Seeds */}
+              <div className="space-y-3">
+                <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                  PHASE KEYS (ENCRYPTION)
+                </div>
+                <Slider
+                  label="Spatial Mask Seed (R₁)"
+                  valueDisplay={seed1}
+                  min={100}
+                  max={9999}
+                  step={1}
+                  value={seed1}
+                  onChange={(e) => setSeed1(Number(e.target.value))}
+                />
+                <Slider
+                  label="Fourier Mask Seed (R₂)"
+                  valueDisplay={seed2}
+                  min={100}
+                  max={9999}
+                  step={1}
+                  value={seed2}
+                  onChange={(e) => setSeed2(Number(e.target.value))}
+                />
+                <Button
+                  variant="primary"
+                  onClick={handleEncryptDRPE}
+                  disabled={loading || !activeArtifact}
+                  className="w-full h-9 mt-1"
+                >
+                  <Lock className="h-3.5 w-3.5 mr-1" />
+                  <span>{loading ? "Simulating Wavefront..." : "Execute 4f Encryption"}</span>
+                </Button>
+              </div>
+
+              {/* Decryption & Keyspace Sensitivity */}
+              <div className="space-y-3 pt-4 border-t border-[#E8E8E3] dark:border-[#292929]">
+                <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                  KEY SENSITIVITY TEST
+                </div>
+                <p className="text-xs text-[#6F6F6A] dark:text-[#A0A09B] leading-relaxed">
+                  In a secure optical cryptosystem, perturbing a seed by just +1 must yield stationary white noise.
+                </p>
+                <Slider
+                  label="Decrypt Seed 1"
+                  valueDisplay={decryptSeed1}
+                  min={100}
+                  max={9999}
+                  step={1}
+                  value={decryptSeed1}
+                  onChange={(e) => setDecryptSeed1(Number(e.target.value))}
+                />
+                <Slider
+                  label="Decrypt Seed 2"
+                  valueDisplay={decryptSeed2}
+                  min={100}
+                  max={9999}
+                  step={1}
+                  value={decryptSeed2}
+                  onChange={(e) => setDecryptSeed2(Number(e.target.value))}
                 />
 
-                {/* Decrypted Recovery Comparison */}
-                {drpeDecryptResult && drpeDecryptResult.decrypted_image && activeArtifact?.dataUri && (
-                  <div className="space-y-2 pt-4 border-t border-[#E8E8E3] dark:border-[#292929]">
-                    <div className="flex items-center justify-between text-xs pb-1">
-                      <span className="font-mono text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
-                        DECRYPTION RECOVERY
-                      </span>
-                      <div className="flex items-center gap-4 font-mono text-[11px]">
-                        <span>SSIM: {drpeDecryptResult.quality?.ssim?.toFixed(4) || "0.0000"}</span>
-                        <span>·</span>
-                        <span>PSNR: {typeof drpeDecryptResult.quality?.psnr === "number" ? `${drpeDecryptResult.quality.psnr.toFixed(2)} dB` : "—"}</span>
-                        <span>·</span>
-                        <span className={isExactKeyMatch ? "text-[#059669] dark:text-[#34D399]" : "text-[#DC2626] dark:text-[#F87171]"}>
-                          {isExactKeyMatch ? "Exact Key" : "Perturbed (Noise)"}
-                        </span>
-                      </div>
-                    </div>
-                    <SplitCompareCanvas
-                      beforeSrc={activeArtifact.dataUri}
-                      afterSrc={drpeDecryptResult.decrypted_image}
-                      beforeLabel="ORIGINAL"
-                      afterLabel={isExactKeyMatch ? "DECRYPTED (MATCHED)" : "DECRYPTED (WRONG KEY)"}
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="h-[360px] flex flex-col items-center justify-center rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-xs gap-3 p-6 text-center">
-                <span className="font-medium text-[#181818] dark:text-[#F2F2F0]">
-                  Awaiting Optical Simulation
-                </span>
-                <p className="text-[#6F6F6A] dark:text-[#A0A09B] max-w-sm">
-                  Configure phase mask seeds below and execute 4f DRPE encryption.
-                </p>
-                {activeArtifact ? (
+                <div className="flex gap-2 pt-1">
                   <Button
-                    variant="primary"
+                    variant="outline"
                     size="sm"
-                    onClick={handleEncryptDRPE}
-                    disabled={loading}
-                  >
-                    Encrypt {activeArtifact.name}
-                  </Button>
-                ) : presets.length > 0 ? (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => loadPresetById(presets[0].id)}
-                  >
-                    Load {presets[0].name}
-                  </Button>
-                ) : null}
-              </div>
-            )}
-          </section>
-
-          {/* Compact Parameters Area */}
-          <section className="border-t border-[#E8E8E3] dark:border-[#292929] pt-6 space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-              {/* Encryption Keys */}
-              <div className="space-y-4">
-                <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-                  ENCRYPTION KEYS
-                </div>
-
-                <div className="space-y-3">
-                  <Slider
-                    label="Spatial Mask (R₁)"
-                    valueDisplay={seed1}
-                    min={100}
-                    max={9999}
-                    step={1}
-                    value={seed1}
-                    onChange={(e) => setSeed1(Number(e.target.value))}
-                  />
-                  <Slider
-                    label="Fourier Mask (R₂)"
-                    valueDisplay={seed2}
-                    min={100}
-                    max={9999}
-                    step={1}
-                    value={seed2}
-                    onChange={(e) => setSeed2(Number(e.target.value))}
-                  />
-                </div>
-
-                <div className="pt-1">
-                  <Button
-                    variant="primary"
-                    onClick={handleEncryptDRPE}
-                    disabled={loading || !activeArtifact}
-                    className="h-8"
-                  >
-                    <span>{loading ? "Simulating..." : "Encrypt"}</span>
-                  </Button>
-                </div>
-              </div>
-
-              {/* Decryption & Sensitivity Test */}
-              <div className="space-y-4">
-                <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-                  DECRYPTION KEYS
-                </div>
-
-                <div className="space-y-3">
-                  <Slider
-                    label="Seed 1"
-                    valueDisplay={decryptSeed1}
-                    min={100}
-                    max={9999}
-                    step={1}
-                    value={decryptSeed1}
-                    onChange={(e) => setDecryptSeed1(Number(e.target.value))}
-                  />
-                  <Slider
-                    label="Seed 2"
-                    valueDisplay={decryptSeed2}
-                    min={100}
-                    max={9999}
-                    step={1}
-                    value={decryptSeed2}
-                    onChange={(e) => setDecryptSeed2(Number(e.target.value))}
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <Button
-                    variant="secondary"
-                    onClick={handleDecryptDRPE}
-                    disabled={loading || !drpeEncryptResult}
-                    className="h-8"
-                  >
-                    <span>Decrypt</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                    className="flex-1 text-xs"
                     onClick={() => {
                       setDecryptSeed1(seed1);
                       setDecryptSeed2(seed2);
                     }}
                     disabled={!drpeEncryptResult}
                   >
-                    Match keys
+                    Match Keys
                   </Button>
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
+                    className="flex-1 text-xs"
                     onClick={() => {
                       setDecryptSeed1(seed1 + 1);
                       setDecryptSeed2(seed2);
@@ -353,72 +404,87 @@ export default function DRPEBenchPage() {
                     Perturb (+1)
                   </Button>
                 </div>
+
+                <Button
+                  variant="secondary"
+                  onClick={handleDecryptDRPE}
+                  disabled={loading || !drpeEncryptResult}
+                  className="w-full h-9"
+                >
+                  <Unlock className="h-3.5 w-3.5 mr-1" />
+                  <span>Attempt Decryption</span>
+                </Button>
+
+                {/* Telemetry HUD */}
+                {drpeDecryptResult && drpeDecryptResult.quality && (
+                  <div className="p-3 rounded border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] text-xs font-mono text-[#6F6F6A] dark:text-[#A0A09B] space-y-1.5">
+                    <div className="flex justify-between">
+                      <span>Verdict:</span>
+                      <span className={isExactKeyMatch ? "text-[#059669] dark:text-[#34D399] font-medium" : "text-[#DC2626] dark:text-[#F87171] font-medium"}>
+                        {isExactKeyMatch ? "Exact Recovery" : "Zero Recovery (Noise)"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>SSIM Fidelity:</span>
+                      <span className="text-[#181818] dark:text-[#F2F2F0]">{drpeDecryptResult.quality.ssim?.toFixed(4) || "0.0000"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>PSNR:</span>
+                      <span className="text-[#181818] dark:text-[#F2F2F0]">{typeof drpeDecryptResult.quality.psnr === "number" ? `${drpeDecryptResult.quality.psnr.toFixed(2)} dB` : drpeDecryptResult.quality.psnr || "—"}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
+          )}
 
-            {error && (
-              <div className="text-xs text-[#DC2626] font-mono">
-                Error: {error}
+          {/* Alternative Transforms Inputs */}
+          {activeTab !== "drpe" && (
+            <div className="space-y-4 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
+              <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                {activeTab.toUpperCase()} PARAMETERS
               </div>
-            )}
-          </section>
-        </div>
-      )}
 
-      {/* Alternative Transforms (Fourier, DCT, Arnold) */}
-      {activeTab !== "drpe" && (
-        <div className="space-y-6">
-          <div className="max-w-md space-y-4">
-            <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-              {activeTab.toUpperCase()} PARAMETERS
-            </div>
+              {activeTab === "arnold" ? (
+                <Slider
+                  label="Cat Map Iterations"
+                  valueDisplay={`${arnoldItr} cycles`}
+                  min={1}
+                  max={25}
+                  value={arnoldItr}
+                  onChange={(e) => setArnoldItr(Number(e.target.value))}
+                />
+              ) : (
+                <Slider
+                  label="Permutation Seed"
+                  valueDisplay={singleSeed}
+                  min={1}
+                  max={500}
+                  value={singleSeed}
+                  onChange={(e) => setSingleSeed(Number(e.target.value))}
+                />
+              )}
 
-            {activeTab === "arnold" ? (
-              <Slider
-                label="Cat Map Iterations"
-                valueDisplay={`${arnoldItr} cycles`}
-                min={1}
-                max={25}
-                value={arnoldItr}
-                onChange={(e) => setArnoldItr(Number(e.target.value))}
-              />
-            ) : (
-              <Slider
-                label="Key Seed"
-                valueDisplay={singleSeed}
-                min={1}
-                max={500}
-                value={singleSeed}
-                onChange={(e) => setSingleSeed(Number(e.target.value))}
-              />
-            )}
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="primary"
+                  onClick={() => handleTransform(activeTab, "encrypt")}
+                  disabled={loading || !activeArtifact}
+                  className="flex-1 h-9"
+                >
+                  <span>Encrypt</span>
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => handleTransform(activeTab, "decrypt")}
+                  disabled={loading || !activeArtifact}
+                  className="flex-1 h-9"
+                >
+                  <span>Decrypt</span>
+                </Button>
+              </div>
 
-            <div className="flex items-center gap-3 pt-2">
-              <Button
-                variant="primary"
-                onClick={() => handleTransform(activeTab, "encrypt")}
-                disabled={loading || !activeArtifact}
-                className="h-8"
-              >
-                <span>Encrypt</span>
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => handleTransform(activeTab, "decrypt")}
-                disabled={loading || !activeArtifact}
-                className="h-8"
-              >
-                <span>Decrypt</span>
-              </Button>
-            </div>
-          </div>
-
-          {transformResult && (
-            <div className="space-y-4 pt-4 border-t border-[#E8E8E3] dark:border-[#292929]">
-              <div className="flex items-center justify-between">
-                <div className="font-mono text-xs text-[#6F6F6A] dark:text-[#A0A09B]">
-                  {transformResult.algorithm} · Latency: {formatMs(transformResult.latency_ms)}
-                </div>
+              {transformResult && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -428,20 +494,30 @@ export default function DRPEBenchPage() {
                       `${transformResult.algorithm} Cipher`
                     )
                   }
+                  className="w-full mt-2"
                 >
                   <span>Promote to Analysis</span>
-                  <ArrowRight className="h-3 w-3" />
+                  <ArrowRight className="h-3 w-3 ml-1" />
                 </Button>
-              </div>
+              )}
+            </div>
+          )}
 
-              <CanvasViewer
-                imageSrc={transformResult.output_image}
-                title={`${transformResult.algorithm} Output`}
-              />
+          {error && (
+            <div className="text-xs text-[#DC2626] font-mono py-1">
+              Error: {error}
             </div>
           )}
         </div>
-      )}
+      </div>
     </div>
+  );
+}
+
+export default function DRPEBenchPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-[#6F6F6A]">Loading encryption bench...</div>}>
+      <DRPEBenchContent />
+    </Suspense>
   );
 }

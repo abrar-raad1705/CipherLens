@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Play } from "lucide-react";
+import { Play, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/hooks/use-image";
 import { useAnalysis } from "@/hooks/use-analysis";
@@ -88,51 +88,31 @@ export default function AnalysisBenchPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-4xl py-4">
+    <div className="space-y-6 max-w-7xl py-2">
       {/* Header */}
-      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-4">
+      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
         <div>
-          <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
+          <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
             ANALYSIS
           </div>
-          <h1 className="text-xl font-normal text-[#181818] dark:text-[#F2F2F0] mt-0.5">
-            Encryption quality
+          <h1 className="text-2xl font-normal text-[#181818] dark:text-[#F2F2F0] mt-0.5">
+            Quantitative Security &amp; Cryptanalysis
           </h1>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleQuickDRPEAnalysis}
-            disabled={autoRunning || loading || !plainArt}
-          >
-            <span>{autoRunning ? "Simulating..." : "Auto DRPE & Analyze"}</span>
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleRunAnalysis}
-            disabled={loading || autoRunning || !plainArt || !cipherArt}
-          >
-            <Play className="h-3 w-3 fill-current" />
-            <span>{loading ? "Evaluating..." : "Run Analysis"}</span>
-          </Button>
         </div>
       </div>
 
-      {/* Target Pair Selection Row */}
-      <section className="flex flex-wrap items-center justify-between gap-4 text-xs py-1">
-        <div className="flex flex-wrap items-center gap-6">
+      {/* User Inputs & Controls placed on TOP of the viewfield */}
+      <section className="p-4 rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-6 text-sm">
           {/* Plaintext Selector */}
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[11px] text-[#999993] dark:text-[#6A6A6A] uppercase">
+            <span className="font-mono text-xs text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
               PLAIN:
             </span>
             <select
               value={plainId}
               onChange={(e) => setSelectedPlainId(e.target.value)}
-              className="bg-white dark:bg-[#171717] border border-[#E8E8E3] dark:border-[#292929] rounded px-2 py-1 text-xs text-[#181818] dark:text-[#F2F2F0] outline-none cursor-pointer"
+              className="bg-[#FAFAF8] dark:bg-[#101010] border border-[#E8E8E3] dark:border-[#292929] rounded px-3 py-1.5 text-sm text-[#181818] dark:text-[#F2F2F0] outline-none cursor-pointer"
             >
               {artifacts.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -144,13 +124,13 @@ export default function AnalysisBenchPage() {
 
           {/* Ciphertext Selector */}
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[11px] text-[#999993] dark:text-[#6A6A6A] uppercase">
+            <span className="font-mono text-xs text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
               CIPHER:
             </span>
             <select
               value={cipherId}
               onChange={(e) => setSelectedCipherId(e.target.value)}
-              className="bg-white dark:bg-[#171717] border border-[#E8E8E3] dark:border-[#292929] rounded px-2 py-1 text-xs text-[#181818] dark:text-[#F2F2F0] outline-none cursor-pointer"
+              className="bg-[#FAFAF8] dark:bg-[#101010] border border-[#E8E8E3] dark:border-[#292929] rounded px-3 py-1.5 text-sm text-[#181818] dark:text-[#F2F2F0] outline-none cursor-pointer"
             >
               {artifacts.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -160,6 +140,28 @@ export default function AnalysisBenchPage() {
             </select>
           </div>
         </div>
+
+        {/* Action Controls on Top */}
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="md"
+            onClick={handleQuickDRPEAnalysis}
+            disabled={autoRunning || loading || !plainArt}
+          >
+            <Sparkles className="h-3.5 w-3.5 text-[#2563EB] dark:text-[#5B8CFF] mr-1" />
+            <span>{autoRunning ? "Simulating..." : "Auto DRPE & Analyze"}</span>
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={handleRunAnalysis}
+            disabled={loading || autoRunning || !plainArt || !cipherArt}
+          >
+            <Play className="h-3.5 w-3.5 fill-current mr-1" />
+            <span>{loading ? "Computing..." : "Run Analysis"}</span>
+          </Button>
+        </div>
       </section>
 
       {error && (
@@ -168,7 +170,7 @@ export default function AnalysisBenchPage() {
         </div>
       )}
 
-      {/* Clean Metric Row (Section 18) */}
+      {/* Clean Metric Row */}
       {fullAnalysis ? (
         <CryptanalysisSummary
           entropyPlain={fullAnalysis.entropy.plain}
@@ -181,9 +183,9 @@ export default function AnalysisBenchPage() {
           correlationCipher={fullAnalysis.correlation.cipher[scatterDir]}
         />
       ) : (
-        <div className="py-6 border-y border-[#E8E8E3] dark:border-[#292929] text-center">
-          <p className="text-xs text-[#6F6F6A] dark:text-[#A0A09B]">
-            Select target pair and click &quot;Run Analysis&quot; or &quot;Auto DRPE &amp; Analyze&quot; to compute entropy, NPCR, UACI and correlation.
+        <div className="py-8 border-y border-[#E8E8E3] dark:border-[#292929] text-center">
+          <p className="text-sm text-[#6F6F6A] dark:text-[#A0A09B]">
+            Select target pair above and click &quot;Run Analysis&quot; or &quot;Auto DRPE &amp; Analyze&quot; to compute entropy, NPCR, UACI and correlation.
           </p>
         </div>
       )}
@@ -202,10 +204,10 @@ export default function AnalysisBenchPage() {
             {/* Correlation Scatter Cloud */}
             <div className="space-y-2">
               <div className="flex items-baseline justify-between">
-                <span className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-                  Neighbor Correlation
+                <span className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                  Adjacent Pixel Correlation
                 </span>
-                <div className="flex items-center gap-2 text-[10px] font-mono">
+                <div className="flex items-center gap-2 text-xs font-mono">
                   {(["horizontal", "vertical", "diagonal"] as const).map((d) => (
                     <button
                       key={d}
@@ -253,8 +255,8 @@ export default function AnalysisBenchPage() {
 
           {/* Original / Encrypted Comparison */}
           {plainArt?.dataUri && cipherArt?.dataUri && (
-            <div className="space-y-3 pt-6 border-t border-[#E8E8E3] dark:border-[#292929]">
-              <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
+            <div className="space-y-3 pt-4 border-t border-[#E8E8E3] dark:border-[#292929]">
+              <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
                 IMAGE COMPARISON
               </div>
               <SplitCompareCanvas
