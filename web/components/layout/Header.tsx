@@ -55,12 +55,11 @@ export function Header() {
 
           <Link
             href="/"
-            className="flex items-center gap-2 text-base font-semibold tracking-tight text-[#181818] dark:text-[#F2F2F0] hover:opacity-80 transition-opacity"
+            className="flex items-center hover:opacity-85 transition-opacity"
           >
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 text-[#2563EB] dark:text-[#5B8CFF]">
-              <Compass className="h-3.5 w-3.5" />
-            </div>
-            <span>CipherLens</span>
+            <span className="font-brand font-serif text-[21px] sm:text-[22px] font-medium tracking-tight text-[#181818] dark:text-[#F2F2F0] select-none">
+              CipherLens
+            </span>
           </Link>
         </div>
 

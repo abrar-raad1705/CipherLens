@@ -168,23 +168,6 @@ function SidebarNav() {
 export function Sidebar() {
   return (
     <aside className="hidden md:flex flex-col w-[230px] shrink-0 border-r border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] p-4 select-none sticky top-13 h-[calc(100vh-3.25rem)] overflow-y-auto">
-      {/* Brand Header inside Sidebar */}
-      <div className="pb-4 mb-4 border-b border-[#E8E8E3] dark:border-[#292929] px-2">
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 text-[#2563EB] dark:text-[#5B8CFF]">
-            <Compass className="h-3.5 w-3.5" />
-          </div>
-          <div>
-            <div className="text-sm font-semibold tracking-tight text-[#181818] dark:text-[#F2F2F0]">
-              CipherLens
-            </div>
-            <div className="text-[10px] font-mono text-[#999993] dark:text-[#6A6A6A]">
-              OPTICAL PLATFORM
-            </div>
-          </div>
-        </div>
-      </div>
-
       <Suspense fallback={<div className="text-xs text-[#999993] p-2">Loading nav...</div>}>
         <SidebarNav />
       </Suspense>

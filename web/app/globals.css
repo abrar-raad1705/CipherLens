@@ -109,6 +109,12 @@ input[type="range"]::-moz-range-thumb {
   font-variant-numeric: tabular-nums;
 }
 
+/* Elegant Brand Display Typeface */
+.font-brand {
+  font-family: "Newsreader", "Charter", "Bitstream Charter", "Iowan Old Style", "Apple Garamond", "Baskerville", "Georgia", serif;
+  letter-spacing: -0.02em;
+}
+
 /* Performance containment */
 .contained-region {
   content-visibility: auto;
