@@ -10,7 +10,6 @@ import {
   DoodleFrame,
   DoodleArrow,
   DoodleUnderline,
-  DoodleSparkle,
 } from "@/components/image/DoodleAnnotations";
 
 export default function Home() {
@@ -135,10 +134,6 @@ export default function Home() {
                     <DoodleUnderline className="w-28 -mt-1 text-[#7A7A75] dark:text-[#9A9A95]" />
                   </div>
                 </div>
-
-                {/* Sparse Margin Doodle Touches: Tiny Star Details */}
-                <DoodleSparkle className="absolute -top-3 -right-2 hidden sm:block opacity-60 pointer-events-none" />
-                <DoodleSparkle className="absolute bottom-1 -left-3 hidden sm:block opacity-60 pointer-events-none" />
               </div>
             ) : isMounted ? (
               <div

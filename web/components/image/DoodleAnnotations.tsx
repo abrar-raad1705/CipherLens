@@ -103,23 +103,28 @@ interface DoodleArrowProps {
 
 export function DoodleArrow({ direction = "top-right", className }: DoodleArrowProps) {
   if (direction === "top-left") {
-    // Curves from top-left annotation down-right toward top-left corner of the frame
+    // Rounder path with inside loop-de-loop curving from top-left text down to the corner
     return (
       <svg
-        className={cn("w-14 h-12 text-[#6F6F6A] dark:text-[#A0A09B] overflow-visible", className)}
-        viewBox="0 0 56 48"
+        className={cn("w-16 h-14 text-[#6F6F6A] dark:text-[#A0A09B] overflow-visible", className)}
+        viewBox="0 0 64 56"
         fill="none"
       >
+        {/* Rounder curve with complete inside loop */}
         <path
-          d="M 8,6 C 18,12 34,16 38,28 C 41,36 44,42 46,45"
+          d="M 12,4 
+             C 18,12 36,12 38,22 
+             C 39.5,29 28,30 27,23 
+             C 26,16 38,18 44,28 
+             C 48,35 50,42 53,49"
           stroke="currentColor"
           strokeWidth="1.6"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* Hand-drawn arrowhead */}
+        {/* Hand-drawn arrowhead pointing to top-left image corner */}
         <path
-          d="M 39,40 L 46,45 L 48,37"
+          d="M 46,45 L 53,49 L 55,42"
           stroke="currentColor"
           strokeWidth="1.6"
           strokeLinecap="round"
@@ -130,23 +135,28 @@ export function DoodleArrow({ direction = "top-right", className }: DoodleArrowP
   }
 
   if (direction === "top-right") {
-    // Curves from top-right annotation down-left toward top-right corner of the frame
+    // Rounder path with inside loop-de-loop curving from top-right text down to the corner
     return (
       <svg
-        className={cn("w-14 h-12 text-[#6F6F6A] dark:text-[#A0A09B] overflow-visible", className)}
-        viewBox="0 0 56 48"
+        className={cn("w-16 h-14 text-[#6F6F6A] dark:text-[#A0A09B] overflow-visible", className)}
+        viewBox="0 0 64 56"
         fill="none"
       >
+        {/* Rounder curve with complete inside loop */}
         <path
-          d="M 48,6 C 38,12 22,16 18,28 C 15,36 12,42 10,45"
+          d="M 52,4 
+             C 46,12 28,12 26,22 
+             C 24.5,29 36,30 37,23 
+             C 38,16 26,18 20,28 
+             C 16,35 14,42 11,49"
           stroke="currentColor"
           strokeWidth="1.6"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* Hand-drawn arrowhead */}
+        {/* Hand-drawn arrowhead pointing to top-right image corner */}
         <path
-          d="M 17,40 L 10,45 L 8,37"
+          d="M 18,45 L 11,49 L 9,42"
           stroke="currentColor"
           strokeWidth="1.6"
           strokeLinecap="round"
@@ -156,23 +166,28 @@ export function DoodleArrow({ direction = "top-right", className }: DoodleArrowP
     );
   }
 
-  // bottom-up: Points from bottom annotation up into the bottom edge of the frame
+  // bottom-up: Rounder path with an inside loop pointing up into bottom edge of image
   return (
     <svg
-      className={cn("w-8 h-12 text-[#6F6F6A] dark:text-[#A0A09B] overflow-visible", className)}
-      viewBox="0 0 32 48"
+      className={cn("w-12 h-14 text-[#6F6F6A] dark:text-[#A0A09B] overflow-visible", className)}
+      viewBox="0 0 48 56"
       fill="none"
     >
+      {/* Rounder vertical curve with inside loop */}
       <path
-        d="M 16,44 C 18,34 14,22 16,7"
+        d="M 24,52 
+           C 28,42 38,36 34,26 
+           C 30,19 19,20 20,28 
+           C 21,34 31,30 26,18 
+           C 24,14 24,8 24,5"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      {/* Hand-drawn arrowhead */}
+      {/* Hand-drawn arrowhead pointing upward */}
       <path
-        d="M 10,13 L 16,6 L 22,13"
+        d="M 18,11 L 24,5 L 30,11"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
