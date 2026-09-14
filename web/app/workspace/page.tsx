@@ -179,11 +179,13 @@ export default function WorkspacePage() {
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <img
-                          src={p.image}
-                          alt={p.name}
-                          className="h-8 w-8 rounded border border-[#EDEDEB] dark:border-[#383838] object-cover flex-shrink-0"
-                        />
+                        {p.image ? (
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            className="h-8 w-8 rounded border border-[#EDEDEB] dark:border-[#383838] object-cover flex-shrink-0"
+                          />
+                        ) : null}
                         <div className="min-w-0">
                           <div className="text-xs font-medium text-[#37352F] dark:text-[#E6E5E3] truncate">
                             {p.name}
@@ -230,11 +232,13 @@ export default function WorkspacePage() {
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <img
-                        src={art.dataUri}
-                        alt={art.name}
-                        className="h-7 w-7 rounded border border-[#EDEDEB] dark:border-[#383838] object-cover flex-shrink-0"
-                      />
+                      {art.dataUri ? (
+                        <img
+                          src={art.dataUri}
+                          alt={art.name}
+                          className="h-7 w-7 rounded border border-[#EDEDEB] dark:border-[#383838] object-cover flex-shrink-0"
+                        />
+                      ) : null}
                       <div className="min-w-0">
                         <div className="text-xs truncate text-[#37352F] dark:text-[#E6E5E3]">
                           {art.name}

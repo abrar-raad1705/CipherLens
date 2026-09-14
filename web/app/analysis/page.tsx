@@ -137,13 +137,13 @@ export default function AnalysisBenchPage() {
             <div className="flex items-center gap-2">
               <span className="text-[#787774] dark:text-[#9B9B9B] font-medium">Plaintext:</span>
               <div className="flex items-center gap-2 bg-[#F7F6F5] dark:bg-[#252525] px-2.5 py-1 rounded-md border border-[#EDEDEB] dark:border-[#333333]">
-                {plainArt && (
+                {plainArt?.dataUri ? (
                   <img
                     src={plainArt.dataUri}
                     alt={plainArt.name}
                     className="h-4 w-4 rounded object-cover"
                   />
-                )}
+                ) : null}
                 <select
                   value={plainId}
                   onChange={(e) => setSelectedPlainId(e.target.value)}
@@ -162,13 +162,13 @@ export default function AnalysisBenchPage() {
             <div className="flex items-center gap-2">
               <span className="text-[#787774] dark:text-[#9B9B9B] font-medium">Ciphertext:</span>
               <div className="flex items-center gap-2 bg-[#F7F6F5] dark:bg-[#252525] px-2.5 py-1 rounded-md border border-[#EDEDEB] dark:border-[#333333]">
-                {cipherArt && (
+                {cipherArt?.dataUri ? (
                   <img
                     src={cipherArt.dataUri}
                     alt={cipherArt.name}
                     className="h-4 w-4 rounded object-cover"
                   />
-                )}
+                ) : null}
                 <select
                   value={cipherId}
                   onChange={(e) => setSelectedCipherId(e.target.value)}

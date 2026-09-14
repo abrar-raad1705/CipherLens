@@ -408,7 +408,7 @@ export default function ConvolutionBenchPage() {
 
         {/* Right Column: Split Comparison Canvas (8 cols) */}
         <div className="lg:col-span-8 space-y-4">
-          {activeArtifact ? (
+          {activeArtifact && activeArtifact.dataUri ? (
             <div className="space-y-2">
               <SplitCompareCanvas
                 beforeSrc={activeArtifact.dataUri}

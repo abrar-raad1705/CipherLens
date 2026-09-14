@@ -396,7 +396,7 @@ export default function DRPEBenchPage() {
                   />
 
                   {/* Decrypted Recovered Canvas Split Compare */}
-                  {drpeDecryptResult && (
+                  {drpeDecryptResult && drpeDecryptResult.decrypted_image && activeArtifact?.dataUri && (
                     <div className="space-y-2 pt-2">
                       <div className="flex items-center justify-between text-xs text-[#37352F] dark:text-[#E6E5E3] px-1 font-medium">
                         <div className="flex items-center gap-1.5">
@@ -405,7 +405,7 @@ export default function DRPEBenchPage() {
                         </div>
                       </div>
                       <SplitCompareCanvas
-                        beforeSrc={activeArtifact?.dataUri || ""}
+                        beforeSrc={activeArtifact.dataUri}
                         afterSrc={drpeDecryptResult.decrypted_image}
                         beforeLabel="Original Target"
                         afterLabel={isExactKeyMatch ? "Decrypted (Matched)" : "Decrypted (Wrong Key)"}

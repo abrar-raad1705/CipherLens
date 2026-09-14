@@ -125,7 +125,7 @@ export function Header() {
                   <div className="h-5 w-5 rounded bg-[#F1F1EF] dark:bg-[#2A2A2A] animate-pulse" />
                   <div className="h-3 w-16 bg-[#F1F1EF] dark:bg-[#2A2A2A] rounded animate-pulse hidden sm:block" />
                 </div>
-              ) : activeArtifact ? (
+              ) : activeArtifact && activeArtifact.dataUri ? (
                 <>
                   <div className="h-5 w-5 rounded overflow-hidden flex-shrink-0 border border-[#EDEDEB] dark:border-[#383838]">
                     <img
@@ -182,11 +182,13 @@ export function Header() {
                         )}
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <img
-                            src={art.dataUri}
-                            alt={art.name}
-                            className="h-6 w-6 rounded border border-[#EDEDEB] dark:border-[#383838] object-cover flex-shrink-0"
-                          />
+                          {art.dataUri ? (
+                            <img
+                              src={art.dataUri}
+                              alt={art.name}
+                              className="h-6 w-6 rounded border border-[#EDEDEB] dark:border-[#383838] object-cover flex-shrink-0"
+                            />
+                          ) : null}
                           <div className="min-w-0">
                             <div className="truncate text-xs">{art.name}</div>
                             <div className="text-[10px] text-[#9B9A97] dark:text-[#787774]">
@@ -215,11 +217,13 @@ export function Header() {
                           }}
                           className="flex items-center gap-1.5 p-1.5 rounded bg-[#F7F6F5] dark:bg-[#2A2A2A] hover:bg-[#EFEFED] dark:hover:bg-[#333333] text-[11px] text-[#37352F] dark:text-[#E6E5E3] transition-colors cursor-pointer text-left"
                         >
-                          <img
-                            src={p.image}
-                            alt={p.name}
-                            className="h-4 w-4 rounded object-cover flex-shrink-0"
-                          />
+                          {p.image ? (
+                            <img
+                              src={p.image}
+                              alt={p.name}
+                              className="h-4 w-4 rounded object-cover flex-shrink-0"
+                            />
+                          ) : null}
                           <span className="truncate">{p.name.split(" ")[0]}</span>
                         </button>
                       ))}

@@ -221,84 +221,113 @@ export function SplitCompareCanvas({
 
       {/* Main Comparison Viewport */}
       <div className="relative select-none overflow-hidden bg-[#F7F6F3] dark:bg-[#141414] flex items-center justify-center min-h-[380px] p-4">
-        {/* MODE 1: SPLIT SLIDER */}
-        {viewMode === "split" && (
-          <div
-            ref={containerRef}
-            className="relative w-full max-w-[512px] h-[360px] sm:h-[440px] flex items-center justify-center overflow-hidden rounded border border-[#EDEDEB] dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] shadow-sm"
-          >
-            {/* After image (base) or peek original */}
-            <img
-              src={isHoldingOriginal ? beforeSrc : afterSrc}
-              alt={isHoldingOriginal ? beforeLabel : afterLabel}
-              className="max-h-full max-w-full object-contain pointer-events-none"
-            />
+        {(() => {
+          const baseSrc = isHoldingOriginal ? beforeSrc : afterSrc;
+          const hasBase = Boolean(baseSrc && baseSrc.trim().length > 0);
+          const hasBefore = Boolean(beforeSrc && beforeSrc.trim().length > 0);
+          const hasAfter = Boolean(afterSrc && afterSrc.trim().length > 0);
 
-            {/* Before image (clipped overlay) */}
-            {!isHoldingOriginal && (
-              <div
-                className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-                style={{
-                  clipPath: `polygon(0 0, ${sliderPos}% 0, ${sliderPos}% 100%, 0 100%)`,
-                }}
-              >
-                <img
-                  src={beforeSrc}
-                  alt={beforeLabel}
-                  className="max-h-full max-w-full object-contain"
-                />
-              </div>
-            )}
+          return (
+            <>
+              {/* MODE 1: SPLIT SLIDER */}
+              {viewMode === "split" && (
+                <div
+                  ref={containerRef}
+                  className="relative w-full max-w-[512px] h-[360px] sm:h-[440px] flex items-center justify-center overflow-hidden rounded border border-[#EDEDEB] dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] shadow-sm"
+                >
+                  {/* After image (base) or peek original */}
+                  {hasBase ? (
+                    <img
+                      src={baseSrc}
+                      alt={isHoldingOriginal ? beforeLabel : afterLabel}
+                      className="max-h-full max-w-full object-contain pointer-events-none"
+                    />
+                  ) : (
+                    <div className="text-xs text-[#787774] dark:text-[#9B9B9B] font-mono">
+                      No image available
+                    </div>
+                  )}
 
-            {/* Draggable Divider Line */}
-            {!isHoldingOriginal && (
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-[#37352F] dark:bg-[#E6E5E3] cursor-ew-resize flex items-center justify-center"
-                style={{ left: `${sliderPos}%` }}
-                onPointerDown={handlePointerDown}
-              >
-                <div className="h-6 w-6 rounded-full bg-white dark:bg-[#202020] border-2 border-[#37352F] dark:border-[#E6E5E3] flex items-center justify-center shadow-md">
-                  <div className="h-2.5 w-0.5 bg-[#37352F] dark:bg-[#E6E5E3] mx-0.5 rounded-full" />
-                  <div className="h-2.5 w-0.5 bg-[#37352F] dark:bg-[#E6E5E3] mx-0.5 rounded-full" />
+                  {/* Before image (clipped overlay) */}
+                  {!isHoldingOriginal && hasBefore && (
+                    <div
+                      className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
+                      style={{
+                        clipPath: `polygon(0 0, ${sliderPos}% 0, ${sliderPos}% 100%, 0 100%)`,
+                      }}
+                    >
+                      <img
+                        src={beforeSrc}
+                        alt={beforeLabel}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                  )}
+
+                  {/* Draggable Divider Line */}
+                  {!isHoldingOriginal && (
+                    <div
+                      className="absolute top-0 bottom-0 w-0.5 bg-[#37352F] dark:bg-[#E6E5E3] cursor-ew-resize flex items-center justify-center"
+                      style={{ left: `${sliderPos}%` }}
+                      onPointerDown={handlePointerDown}
+                    >
+                      <div className="h-6 w-6 rounded-full bg-white dark:bg-[#202020] border-2 border-[#37352F] dark:border-[#E6E5E3] flex items-center justify-center shadow-md">
+                        <div className="h-2.5 w-0.5 bg-[#37352F] dark:bg-[#E6E5E3] mx-0.5 rounded-full" />
+                        <div className="h-2.5 w-0.5 bg-[#37352F] dark:bg-[#E6E5E3] mx-0.5 rounded-full" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Badges */}
+                  <span className="absolute top-3 left-3 bg-white/90 dark:bg-[#202020]/90 backdrop-blur-xs border border-[#EDEDEB] dark:border-[#2E2E2E] text-[#37352F] dark:text-[#E6E5E3] text-[10px] font-medium px-2 py-0.5 rounded shadow-xs">
+                    {beforeLabel}
+                  </span>
+                  <span className="absolute top-3 right-3 bg-white/90 dark:bg-[#202020]/90 backdrop-blur-xs border border-[#EDEDEB] dark:border-[#2E2E2E] text-[#37352F] dark:text-[#E6E5E3] text-[10px] font-medium px-2 py-0.5 rounded shadow-xs">
+                    {isHoldingOriginal ? `${beforeLabel} (Peeking)` : afterLabel}
+                  </span>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Badges */}
-            <span className="absolute top-3 left-3 bg-white/90 dark:bg-[#202020]/90 backdrop-blur-xs border border-[#EDEDEB] dark:border-[#2E2E2E] text-[#37352F] dark:text-[#E6E5E3] text-[10px] font-medium px-2 py-0.5 rounded shadow-xs">
-              {beforeLabel}
-            </span>
-            <span className="absolute top-3 right-3 bg-white/90 dark:bg-[#202020]/90 backdrop-blur-xs border border-[#EDEDEB] dark:border-[#2E2E2E] text-[#37352F] dark:text-[#E6E5E3] text-[10px] font-medium px-2 py-0.5 rounded shadow-xs">
-              {isHoldingOriginal ? `${beforeLabel} (Peeking)` : afterLabel}
-            </span>
-          </div>
-        )}
-
-        {/* MODE 2: SIDE-BY-SIDE */}
-        {viewMode === "side-by-side" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-4xl">
-            <div className="flex flex-col items-center rounded border border-[#EDEDEB] dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] p-2 shadow-xs">
-              <span className="text-[11px] font-medium text-[#787774] dark:text-[#9B9B9B] mb-2">
-                {beforeLabel}
-              </span>
-              <img
-                src={beforeSrc}
-                alt={beforeLabel}
-                className="max-h-[360px] max-w-full object-contain rounded"
-              />
-            </div>
-            <div className="flex flex-col items-center rounded border border-[#EDEDEB] dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] p-2 shadow-xs">
-              <span className="text-[11px] font-medium text-[#37352F] dark:text-[#E6E5E3] mb-2">
-                {afterLabel}
-              </span>
-              <img
-                src={afterSrc}
-                alt={afterLabel}
-                className="max-h-[360px] max-w-full object-contain rounded"
-              />
-            </div>
-          </div>
-        )}
+              {/* MODE 2: SIDE-BY-SIDE */}
+              {viewMode === "side-by-side" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-4xl">
+                  <div className="flex flex-col items-center rounded border border-[#EDEDEB] dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] p-2 shadow-xs">
+                    <span className="text-[11px] font-medium text-[#787774] dark:text-[#9B9B9B] mb-2">
+                      {beforeLabel}
+                    </span>
+                    {hasBefore ? (
+                      <img
+                        src={beforeSrc}
+                        alt={beforeLabel}
+                        className="max-h-[360px] max-w-full object-contain rounded"
+                      />
+                    ) : (
+                      <div className="h-[200px] flex items-center justify-center text-xs text-[#787774]">
+                        No image
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-center rounded border border-[#EDEDEB] dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] p-2 shadow-xs">
+                    <span className="text-[11px] font-medium text-[#37352F] dark:text-[#E6E5E3] mb-2">
+                      {afterLabel}
+                    </span>
+                    {hasAfter ? (
+                      <img
+                        src={afterSrc}
+                        alt={afterLabel}
+                        className="max-h-[360px] max-w-full object-contain rounded"
+                      />
+                    ) : (
+                      <div className="h-[200px] flex items-center justify-center text-xs text-[#787774]">
+                        No image
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* MODE 3: DIFFERENCE HEATMAP */}
         {viewMode === "difference" && (
