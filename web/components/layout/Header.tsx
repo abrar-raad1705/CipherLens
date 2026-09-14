@@ -8,8 +8,10 @@ import {
   Binary,
   Compass,
   FolderKanban,
+  ImageIcon,
   Menu,
   Moon,
+  RefreshCw,
   ShieldCheck,
   Shuffle,
   Sliders,
@@ -21,12 +23,14 @@ import {
 import { useWorkspace } from "@/hooks/use-image";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils/cn";
+import { ChangeImageModal } from "@/components/upload/ChangeImageModal";
 
 export function Header() {
   const pathname = usePathname();
-  const { activeArtifact, isBackendConnected, isMounted } = useWorkspace();
-  const { theme, toggleTheme, isMounted: isThemeMounted } = useTheme();
+  const { activeArtifact, isMounted } = useWorkspace();
+  const { theme, toggleTheme, isThemeMounted } = useTheme() as { theme: string; toggleTheme: () => void; isMounted?: boolean; isThemeMounted?: boolean };
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
 
   const navLinks = [
     { label: "Overview", href: "/", icon: Compass },
@@ -41,73 +45,76 @@ export function Header() {
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8]/95 dark:bg-[#101010]/95 backdrop-blur-md">
-      <div className="flex h-13 items-center justify-between px-4 sm:px-6">
-        {/* Left: Brand & Mobile Trigger */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-1.5 text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] rounded"
-            aria-label="Toggle navigation menu"
-          >
-            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-
-          <Link
-            href="/"
-            className="flex items-center hover:opacity-85 transition-opacity"
-          >
-            <span className="font-brand text-[22px] sm:text-[24px] font-normal tracking-tight text-[#181818] dark:text-[#F2F2F0] select-none">
-              CipherLens
-            </span>
-          </Link>
-        </div>
-
-        {/* Right: Current Image Metadata & System Status */}
-        <div className="flex items-center gap-4 text-sm">
-          {/* Active Image Metadata */}
-          {isMounted && activeArtifact && activeArtifact.dataUri ? (
-            <div className="flex items-center gap-2.5 text-[#6F6F6A] dark:text-[#A0A09B]">
-              <span className="hidden sm:inline font-medium text-xs truncate max-w-[150px] text-[#181818] dark:text-[#F2F2F0]">
-                {activeArtifact.name}
-              </span>
-              <span className="hidden sm:inline text-[#D7D7D1] dark:text-[#383838]">·</span>
-              <span className="font-mono text-xs">
-                {activeArtifact.width} × {activeArtifact.height} · RGB
-              </span>
-              <Link
-                href="/workspace"
-                className="text-xs text-[#2563EB] dark:text-[#5B8CFF] hover:underline font-medium ml-1"
-              >
-                Change
-              </Link>
-            </div>
-          ) : isMounted ? (
-            <Link
-              href="/workspace"
-              className="text-xs text-[#999993] dark:text-[#6A6A6A] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
+    <>
+      <header className="sticky top-0 z-40 w-full border-b border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8]/95 dark:bg-[#101010]/95 backdrop-blur-md">
+        <div className="flex h-13 items-center justify-between px-4 sm:px-6">
+          {/* Left: Brand & Mobile Toggle */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-1.5 text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] rounded"
+              aria-label="Toggle navigation menu"
             >
-              No image loaded
-            </Link>
-          ) : null}
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
 
-          {/* Core FastAPI Status Dot */}
-          <div
-            className="flex items-center gap-1.5"
-            title={isBackendConnected ? "Core FastAPI Connected (Port 8000)" : "FastAPI Offline"}
-          >
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                isBackendConnected ? "bg-[#059669] dark:bg-[#34D399]" : "bg-[#D7D7D1] dark:bg-[#383838]"
-              )}
-            />
-            <span className="hidden lg:inline text-xs text-[#999993] dark:text-[#6A6A6A]">
-              {isBackendConnected ? "Core Online" : "FastAPI Offline"}
-            </span>
+            <Link
+              href="/"
+              className="flex items-center hover:opacity-85 transition-opacity"
+            >
+              <span className="font-brand text-[22px] sm:text-[24px] font-normal tracking-tight text-[#181818] dark:text-[#F2F2F0] select-none">
+                CipherLens
+              </span>
+            </Link>
           </div>
 
-          {/* Theme Switcher */}
+          {/* Right: Current Image Controller & Theme Switcher */}
+          <div className="flex items-center gap-3">
+            {/* Active Image Target Pill / Switcher */}
+            {isMounted && activeArtifact && activeArtifact.dataUri ? (
+              <div className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-full border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#161616] shadow-2xs hover:border-[#D0D0C8] dark:hover:border-[#383838] transition-colors">
+                {/* Thumbnail */}
+                <div className="h-5.5 w-5.5 rounded-full overflow-hidden shrink-0 border border-black/10 dark:border-white/10 bg-[#EFEFEA] dark:bg-[#202020]">
+                  <img
+                    src={activeArtifact.dataUri}
+                    alt={activeArtifact.name}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+
+                {/* Info */}
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span
+                    className="font-medium text-[#181818] dark:text-[#F2F2F0] max-w-[100px] sm:max-w-[140px] truncate"
+                    title={activeArtifact.name}
+                  >
+                    {activeArtifact.name}
+                  </span>
+                  <span className="hidden sm:inline text-[#A0A09B] dark:text-[#6A6A6A] font-mono text-[11px]">
+                    ({activeArtifact.width}×{activeArtifact.height})
+                  </span>
+                </div>
+
+                {/* Change Button */}
+                <button
+                  onClick={() => setIsChangeModalOpen(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#181818] dark:text-[#F2F2F0] bg-black/[0.04] dark:bg-white/[0.07] hover:bg-black/[0.08] dark:hover:bg-white/[0.12] rounded-full transition-colors cursor-pointer ml-1"
+                >
+                  <RefreshCw className="h-3 w-3 text-[#6F6F6A] dark:text-[#A0A09B]" />
+                  <span>Change</span>
+                </button>
+              </div>
+            ) : isMounted ? (
+              <button
+                onClick={() => setIsChangeModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] border border-dashed border-[#D7D7D1] dark:border-[#333333] hover:border-[#999993] dark:hover:border-[#555555] rounded-full bg-white dark:bg-[#161616] transition-colors cursor-pointer"
+              >
+                <ImageIcon className="h-3.5 w-3.5 text-[#888880]" />
+                <span>Select Target Image</span>
+              </button>
+            ) : null}
+
+            {/* Theme Switcher */}
           <button
             onClick={toggleTheme}
             className="p-1.5 text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
@@ -160,5 +167,12 @@ export function Header() {
         </div>
       )}
     </header>
+
+    {/* Change Image Modal with Artifact Gallery, Upload & Crop/Zoom */}
+    <ChangeImageModal
+      isOpen={isChangeModalOpen}
+      onClose={() => setIsChangeModalOpen(false)}
+    />
+  </>
   );
 }
