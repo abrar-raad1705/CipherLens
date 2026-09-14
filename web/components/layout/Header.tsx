@@ -57,7 +57,7 @@ export function Header() {
             href="/"
             className="flex items-center hover:opacity-85 transition-opacity"
           >
-            <span className="font-brand font-serif text-[21px] sm:text-[22px] font-medium tracking-tight text-[#181818] dark:text-[#F2F2F0] select-none">
+            <span className="font-brand text-[22px] sm:text-[24px] font-normal tracking-tight text-[#181818] dark:text-[#F2F2F0] select-none">
               CipherLens
             </span>
           </Link>

@@ -111,8 +111,8 @@ input[type="range"]::-moz-range-thumb {
 
 /* Elegant Brand Display Typeface */
 .font-brand {
-  font-family: "Newsreader", "Charter", "Bitstream Charter", "Iowan Old Style", "Apple Garamond", "Baskerville", "Georgia", serif;
-  letter-spacing: -0.02em;
+  font-family: var(--font-dm-serif), "DM Serif Display", "Newsreader", "Charter", "Georgia", serif;
+  letter-spacing: -0.01em;
 }
 
 /* Performance containment */

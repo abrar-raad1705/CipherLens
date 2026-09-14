@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
+import { DM_Serif_Display } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Footer } from "@/components/layout/Footer";
 import { WorkspaceProvider } from "@/hooks/use-image";
 import { ThemeProvider } from "@/hooks/use-theme";
+
+const dmSerifDisplay = DM_Serif_Display({
+  weight: ["400"],
+  subsets: ["latin"],
+  variable: "--font-dm-serif",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "CipherLens | Computational Imaging Laboratory",
@@ -17,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={dmSerifDisplay.variable}>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -40,7 +48,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen flex flex-col bg-[#FAFAF8] text-[#181818] dark:bg-[#101010] dark:text-[#F2F2F0] antialiased selection:bg-[#2563EB]/15 dark:selection:bg-[#5B8CFF]/20 selection:text-inherit text-sm">
+      <body className={`${dmSerifDisplay.variable} min-h-screen flex flex-col bg-[#FAFAF8] text-[#181818] dark:bg-[#101010] dark:text-[#F2F2F0] antialiased selection:bg-[#2563EB]/15 dark:selection:bg-[#5B8CFF]/20 selection:text-inherit text-sm`}>
         <ThemeProvider>
           <WorkspaceProvider>
             <Header />

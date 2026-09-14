@@ -38,8 +38,8 @@ export default function Home() {
       {/* Introductory Area */}
       <section className="space-y-6">
         <div className="space-y-1.5">
-          <div className="text-xs font-mono tracking-widest text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-            CIPHERLENS
+          <div className="font-brand text-xl sm:text-2xl text-[#181818] dark:text-[#F2F2F0]">
+            CipherLens
           </div>
           <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-[#181818] dark:text-[#F2F2F0]">
             Computational Imaging Laboratory
