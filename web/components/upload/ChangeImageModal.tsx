@@ -407,7 +407,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
           <div className="p-5 space-y-6 overflow-y-auto">
             {/* Upload Area */}
             <div className="space-y-2">
-              <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+              <div className="text-xs font-semibold tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
                 Upload New Image
               </div>
               <div
@@ -446,14 +446,14 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
             {/* Workspace Artifacts: Facebook-Style Photo Gallery Grid */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium flex items-center gap-2">
+                <div className="text-xs font-semibold tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase flex items-center gap-2">
                   <span>Workspace Artifacts</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-black/5 dark:bg-white/10 text-[10px]">
+                  <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] font-medium text-[#6F6F6A] dark:text-[#A0A09B]">
                     {artifacts.length}
                   </span>
                 </div>
                 {artifacts.length > 0 && (
-                  <span className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
+                  <span className="text-xs text-[#6F6F6A] dark:text-[#A0A09B]">
                     Click to activate or crop
                   </span>
                 )}
@@ -490,9 +490,9 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                           </div>
                         )}
 
-                        {/* Active Selection Badge */}
+                        {/* Active Selection Badge on Left Corner */}
                         {isSelected && (
-                          <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full bg-[#2563EB] dark:bg-[#5B8CFF] text-white text-[10px] font-medium flex items-center gap-1 shadow-md z-10">
+                          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-[#2563EB] dark:bg-[#5B8CFF] text-white text-[10px] font-medium flex items-center gap-1 shadow-md z-10">
                             <Check className="h-3 w-3" />
                             <span>Active</span>
                           </div>
@@ -520,7 +520,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                             <div className="text-xs font-medium truncate drop-shadow-sm">
                               {art.name}
                             </div>
-                            <div className="font-mono text-[10px] text-white/80 drop-shadow-sm">
+                            <div className="text-[11px] text-white/80 drop-shadow-sm font-normal">
                               {art.width} × {art.height} px
                             </div>
                           </div>
@@ -599,7 +599,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                     </div>
 
                     {/* Live Dimension Badge Floating on Selection Border */}
-                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-[#181818]/95 border border-white/20 text-[#F2F2F0] font-mono text-[11px] font-medium tracking-wide shadow-xl pointer-events-none whitespace-nowrap z-30 flex items-center gap-1.5">
+                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-[#181818]/95 border border-white/20 text-[#F2F2F0] text-xs font-medium tracking-normal shadow-xl pointer-events-none whitespace-nowrap z-30 flex items-center gap-1.5">
                       <span>{curPixelW} × {curPixelH} px</span>
                     </div>
 
@@ -640,7 +640,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                 <Button
                   variant={aspectRatio === "1:1" ? "primary" : "outline"}
                   size="sm"
-                  className="h-7 text-xs px-2.5 font-mono"
+                  className="h-7 text-xs px-2.5 font-medium"
                   onClick={() => {
                     setAspectRatio("1:1");
                     const side = Math.min(cropBox.w, cropBox.h);
@@ -652,7 +652,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                 <Button
                   variant={aspectRatio === "free" ? "primary" : "outline"}
                   size="sm"
-                  className="h-7 text-xs px-2.5 font-mono"
+                  className="h-7 text-xs px-2.5 font-medium"
                   onClick={() => setAspectRatio("free")}
                 >
                   Free Form
@@ -665,7 +665,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-xs px-2 font-mono text-[#6F6F6A] dark:text-[#A0A09B]"
+                    className="h-7 text-xs px-2 font-medium text-[#6F6F6A] dark:text-[#A0A09B]"
                     onClick={() => {
                       setAspectRatio("1:1");
                       const targetW = Math.round((512 / naturalDim.w) * imgDim.w);
@@ -683,7 +683,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 text-xs px-2 font-mono"
+                  className="h-7 text-xs px-2 font-medium"
                   onClick={() => {
                     const side = Math.min(imgDim.w, imgDim.h);
                     const boxX = Math.round((imgDim.w - side) / 2);
