@@ -33,8 +33,7 @@ Ciphertext dtype may be algorithm-dependent. Do not force transform-domain ciphe
 import numpy as np
 
 
-def apply_gaussian(image: np.ndarray) -> np.ndarray:
-    ...
+def apply_gaussian(image: np.ndarray) -> np.ndarray: ...
 ```
 
 ### Sobel
@@ -43,8 +42,7 @@ def apply_gaussian(image: np.ndarray) -> np.ndarray:
 import numpy as np
 
 
-def apply_sobel(image: np.ndarray) -> np.ndarray:
-    ...
+def apply_sobel(image: np.ndarray) -> np.ndarray: ...
 ```
 
 ### Custom 2D Kernel
@@ -56,8 +54,7 @@ import numpy as np
 def apply_custom_kernel(
     image: np.ndarray,
     kernel: np.ndarray,
-) -> np.ndarray:
-    ...
+) -> np.ndarray: ...
 ```
 
 ---
@@ -67,56 +64,46 @@ def apply_custom_kernel(
 Every encryption algorithm must expose:
 
 ```python
-def encrypt(image: np.ndarray, key) -> np.ndarray:
-    ...
+def encrypt(image: np.ndarray, key) -> np.ndarray: ...
 
 
-def decrypt(ciphertext: np.ndarray, key) -> np.ndarray:
-    ...
+def decrypt(ciphertext: np.ndarray, key) -> np.ndarray: ...
 ```
 
 ### Arnold + XOR
 
 ```python
-def encrypt(image: np.ndarray, key) -> np.ndarray:
-    ...
+def encrypt(image: np.ndarray, key) -> np.ndarray: ...
 
 
-def decrypt(ciphertext: np.ndarray, key) -> np.ndarray:
-    ...
+def decrypt(ciphertext: np.ndarray, key) -> np.ndarray: ...
 ```
 
 ### DCT
 
 ```python
-def encrypt(image: np.ndarray, key) -> np.ndarray:
-    ...
+def encrypt(image: np.ndarray, key) -> np.ndarray: ...
 
 
-def decrypt(ciphertext: np.ndarray, key) -> np.ndarray:
-    ...
+def decrypt(ciphertext: np.ndarray, key) -> np.ndarray: ...
 ```
 
 ### Fourier
 
 ```python
-def encrypt(image: np.ndarray, key) -> np.ndarray:
-    ...
+def encrypt(image: np.ndarray, key) -> np.ndarray: ...
 
 
-def decrypt(ciphertext: np.ndarray, key) -> np.ndarray:
-    ...
+def decrypt(ciphertext: np.ndarray, key) -> np.ndarray: ...
 ```
 
 ### DRPE
 
 ```python
-def encrypt(image: np.ndarray, key) -> np.ndarray:
-    ...
+def encrypt(image: np.ndarray, key) -> np.ndarray: ...
 
 
-def decrypt(ciphertext: np.ndarray, key) -> np.ndarray:
-    ...
+def decrypt(ciphertext: np.ndarray, key) -> np.ndarray: ...
 ```
 
 ---
@@ -129,8 +116,7 @@ def decrypt(ciphertext: np.ndarray, key) -> np.ndarray:
 import numpy as np
 
 
-def calculate_entropy(image: np.ndarray) -> float:
-    ...
+def calculate_entropy(image: np.ndarray) -> float: ...
 ```
 
 ### Correlation
@@ -141,8 +127,7 @@ import numpy as np
 
 def calculate_correlation(
     image: np.ndarray,
-) -> dict[str, float]:
-    ...
+) -> dict[str, float]: ...
 ```
 
 Expected result:
@@ -164,8 +149,7 @@ import numpy as np
 def calculate_npcr(
     ciphertext1: np.ndarray,
     ciphertext2: np.ndarray,
-) -> float:
-    ...
+) -> float: ...
 ```
 
 ### UACI
@@ -177,8 +161,7 @@ import numpy as np
 def calculate_uaci(
     ciphertext1: np.ndarray,
     ciphertext2: np.ndarray,
-) -> float:
-    ...
+) -> float: ...
 ```
 
 ### MSE
@@ -190,8 +173,7 @@ import numpy as np
 def calculate_mse(
     original: np.ndarray,
     recovered: np.ndarray,
-) -> float:
-    ...
+) -> float: ...
 ```
 
 ### PSNR
@@ -203,8 +185,7 @@ import numpy as np
 def calculate_psnr(
     original: np.ndarray,
     recovered: np.ndarray,
-) -> float:
-    ...
+) -> float: ...
 ```
 
 ### SSIM
@@ -216,8 +197,7 @@ import numpy as np
 def calculate_ssim(
     original: np.ndarray,
     recovered: np.ndarray,
-) -> float:
-    ...
+) -> float: ...
 ```
 
 ---
