@@ -71,8 +71,8 @@ export function Header() {
 
           {/* Right: Current Image Controller & Theme Switcher */}
           <div className="flex items-center gap-3">
-            {/* Active Image Target Pill / Switcher */}
-            {isMounted && activeArtifact && activeArtifact.dataUri ? (
+            {/* Active Image Target Pill / Switcher (Hidden on Overview page where target card is prominently displayed) */}
+            {pathname !== "/" && isMounted && activeArtifact && activeArtifact.dataUri ? (
               <div className="relative">
                 <div
                   className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-full border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#161616] shadow-2xs hover:border-[#D0D0C8] dark:hover:border-[#383838] transition-colors"
@@ -146,7 +146,7 @@ export function Header() {
                   </div>
                 )}
               </div>
-            ) : isMounted ? (
+            ) : pathname !== "/" && isMounted ? (
               <button
                 onClick={() => setIsChangeModalOpen(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] border border-dashed border-[#D7D7D1] dark:border-[#333333] hover:border-[#999993] dark:hover:border-[#555555] rounded-full bg-white dark:bg-[#161616] transition-colors cursor-pointer"

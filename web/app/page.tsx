@@ -61,53 +61,49 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right Column: Prominent Research Target Card with Big Format Display */}
+          {/* Right Column: Prominent Research Target Card */}
           <div className="lg:col-span-5">
             {isMounted && activeArtifact && activeArtifact.dataUri ? (
-              <div className="relative rounded-2xl border border-[#E8E8E3] dark:border-[#262626] bg-[#FFFFFF] dark:bg-[#141414] p-5 sm:p-6 shadow-sm space-y-5 transition-all hover:border-[#D7D7D1] dark:hover:border-[#383838]">
-                {/* Header Label & Target Status */}
+              <div className="group/card relative rounded-2xl border border-[#E8E8E3] dark:border-[#262626] bg-[#FFFFFF] dark:bg-[#151515] p-5 shadow-sm space-y-4 transition-all hover:border-[#D0D0C8] dark:hover:border-[#383838]">
+                {/* Header Label & Metadata */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#7A7A75] uppercase font-semibold">
+                    <span className="text-[11px] font-mono tracking-widest text-[#999993] dark:text-[#7A7A75] uppercase font-semibold">
                       ACTIVE TARGET
                     </span>
-                    <span className="text-xs text-[#D7D7D1] dark:text-[#333333]">·</span>
-                    <span className="font-mono text-xs text-[#6F6F6A] dark:text-[#A0A09B]">
-                      {activeArtifact.width} × {activeArtifact.height} px
-                    </span>
                   </div>
-                  <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#059669]/10 dark:bg-[#34D399]/15 text-[#059669] dark:text-[#34D399] text-xs font-medium">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#059669] dark:bg-[#34D399]" />
-                    <span>Loaded</span>
+                  <div className="font-mono text-xs text-[#888882] dark:text-[#888882] tracking-tight bg-black/[0.03] dark:bg-white/[0.04] px-2.5 py-0.5 rounded-full border border-black/5 dark:border-white/5">
+                    {activeArtifact.width} × {activeArtifact.height} px
                   </div>
                 </div>
 
                 {/* Big Format Image Display Frame */}
                 <div
-                  className="relative group w-full aspect-square max-h-[280px] sm:max-h-[300px] rounded-xl overflow-hidden border border-black/10 dark:border-white/10 bg-[#090909] flex items-center justify-center checkerboard-pattern shadow-inner cursor-pointer"
+                  className="relative group/img w-full aspect-square max-h-[310px] rounded-xl overflow-hidden border border-black/10 dark:border-white/10 bg-[#080808] flex items-center justify-center checkerboard-pattern shadow-inner cursor-pointer"
                   onClick={() => setIsChangeModalOpen(true)}
                   title="Click to change or crop image"
                 >
                   <img
                     src={activeArtifact.dataUri}
                     alt={activeArtifact.name}
-                    className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                    className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover/img:scale-[1.02]"
                   />
+
                   {/* Subtle hover overlay hint */}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center backdrop-blur-[2px]">
-                    <div className="px-3.5 py-1.5 rounded-full bg-white/90 dark:bg-[#181818]/90 text-xs font-medium text-[#181818] dark:text-[#F2F2F0] shadow-lg flex items-center gap-1.5">
-                      <RefreshCw className="h-3 w-3" />
-                      <span>Click to Change Image</span>
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity duration-200 flex items-center justify-center backdrop-blur-[2px]">
+                    <div className="px-4 py-2 rounded-full bg-white/95 dark:bg-[#181818]/95 text-xs font-medium text-[#181818] dark:text-[#F2F2F0] shadow-xl flex items-center gap-2 transform translate-y-1 group-hover/img:translate-y-0 transition-transform duration-200">
+                      <RefreshCw className="h-3.5 w-3.5 text-[#2563EB] dark:text-[#5B8CFF]" />
+                      <span>Change Image</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Target Metadata & Actions */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between min-w-0">
+                {/* Target Information & Action Row */}
+                <div className="space-y-3.5 pt-1">
+                  <div className="flex items-start justify-between min-w-0">
                     <div className="min-w-0 flex-1 pr-3">
                       <div
-                        className="text-base font-medium text-[#181818] dark:text-[#F2F2F0] truncate"
+                        className="text-base font-medium text-[#181818] dark:text-[#F2F2F0] truncate leading-snug"
                         title={activeArtifact.name}
                       >
                         {activeArtifact.name}
@@ -118,8 +114,8 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Interactive Button Row with Color Shifts */}
-                  <div className="grid grid-cols-2 gap-3 pt-1 border-t border-[#F0F0EB] dark:border-[#222222]">
+                  {/* Interactive Button Row */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#F0F0EB] dark:border-[#222222]">
                     <Button
                       variant="outline"
                       size="md"
