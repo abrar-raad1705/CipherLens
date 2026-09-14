@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Check,
   Crop,
@@ -35,6 +35,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
   const [rawFileName, setRawFileName] = useState<string>("image.png");
 
   // Cropper state
+  const [baseDim, setBaseDim] = useState<{ w: number; h: number }>({ w: 240, h: 240 });
   const [zoom, setZoom] = useState<number>(1);
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -44,17 +45,152 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // State ref to eliminate stale closures and lag in rapid event listeners
+  const stateRef = useRef({ zoom, offset, baseDim });
+  stateRef.current = { zoom, offset, baseDim };
+
+  // Prevent background scroll and interaction when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    const originalOverscroll = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "none";
+
+    return () => {
+      document.body.style.overflow = originalBodyOverflow;
+      document.documentElement.style.overflow = originalHtmlOverflow;
+      document.body.style.overscrollBehavior = originalOverscroll;
+    };
+  }, [isOpen]);
+
   const resetModalState = () => {
     setMode("choose");
     setRawImageSrc(null);
     setZoom(1);
     setOffset({ x: 0, y: 0 });
+    setBaseDim({ w: 240, h: 240 });
   };
 
   const handleClose = () => {
     resetModalState();
     onClose();
   };
+
+  // Clamping function to guarantee the aperture (240x240) is ALWAYS 100% filled with image pixels
+  const updateClampedOffset = useCallback(
+    (nextX: number, nextY: number, curZoom = zoom, curDim = baseDim) => {
+      const dispW = curDim.w * curZoom;
+      const dispH = curDim.h * curZoom;
+      // Maximum offset allowed before image edge moves inside the 240x240 aperture
+      const maxOffsetX = Math.max(0, (dispW - 240) / 2);
+      const maxOffsetY = Math.max(0, (dispH - 240) / 2);
+
+      setOffset({
+        x: Math.min(maxOffsetX, Math.max(-maxOffsetX, nextX)),
+        y: Math.min(maxOffsetY, Math.max(-maxOffsetY, nextY)),
+      });
+    },
+    [zoom, baseDim]
+  );
+
+  // Prevent mouse wheel from scrolling the background website and smoothly adjust zoom
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || mode !== "crop") return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const { zoom: curZoom, offset: curOffset, baseDim: curDim } = stateRef.current;
+      const delta = e.deltaY * -0.002;
+      const nextZoom = Math.min(3.5, Math.max(1, Number((curZoom + delta).toFixed(2))));
+      setZoom(nextZoom);
+
+      const dispW = curDim.w * nextZoom;
+      const dispH = curDim.h * nextZoom;
+      const maxOffsetX = Math.max(0, (dispW - 240) / 2);
+      const maxOffsetY = Math.max(0, (dispH - 240) / 2);
+
+      setOffset({
+        x: Math.min(maxOffsetX, Math.max(-maxOffsetX, curOffset.x)),
+        y: Math.min(maxOffsetY, Math.max(-maxOffsetY, curOffset.y)),
+      });
+    };
+
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      container.removeEventListener("wheel", onWheel);
+    };
+  }, [mode]);
+
+  // Handle keyboard events: escape closes modal, arrows pan image, prevent window scroll
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleClose();
+        return;
+      }
+
+      const isScrollKey = [
+        "Space",
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+        "PageUp",
+        "PageDown",
+        "Home",
+        "End",
+      ].includes(e.code) || [" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key);
+
+      if (isScrollKey) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      if (mode === "crop") {
+        const { offset: curOffset, zoom: curZoom, baseDim: curDim } = stateRef.current;
+        const step = e.shiftKey ? 14 : 4;
+        let nextX = curOffset.x;
+        let nextY = curOffset.y;
+
+        if (e.key === "ArrowLeft") {
+          nextX -= step;
+        } else if (e.key === "ArrowRight") {
+          nextX += step;
+        } else if (e.key === "ArrowUp") {
+          nextY -= step;
+        } else if (e.key === "ArrowDown") {
+          nextY += step;
+        } else {
+          return;
+        }
+
+        const dispW = curDim.w * curZoom;
+        const dispH = curDim.h * curZoom;
+        const maxOffsetX = Math.max(0, (dispW - 240) / 2);
+        const maxOffsetY = Math.max(0, (dispH - 240) / 2);
+
+        setOffset({
+          x: Math.min(maxOffsetX, Math.max(-maxOffsetX, nextX)),
+          y: Math.min(maxOffsetY, Math.max(-maxOffsetY, nextY)),
+        });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [isOpen, mode]);
 
   if (!isOpen) return null;
 
@@ -72,6 +208,20 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
     reader.readAsDataURL(file);
   };
 
+  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    const nw = img.naturalWidth || 240;
+    const nh = img.naturalHeight || 240;
+    // Scale image so its smaller dimension is at least 240px, ensuring 100% aperture coverage
+    const scale = 240 / Math.min(nw, nh);
+    const bw = Math.round(nw * scale);
+    const bh = Math.round(nh * scale);
+    const newDim = { w: bw, h: bh };
+    setBaseDim(newDim);
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+  };
+
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handleFile(file);
@@ -84,61 +234,65 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
     if (file) handleFile(file);
   };
 
-  // Pan / drag handlers for cropping
-  const handleMouseDown = (e: React.MouseEvent) => {
+  // Pointer drag handlers for cropping with pointer capture to prevent leaking events
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
     setIsDragging(true);
     setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging) return;
-    setOffset({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y,
-    });
-  };
-
-  const handleMouseUp = () => setIsDragging(false);
-
-  // Wheel zoom
-  const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    const delta = e.deltaY * -0.002;
-    setZoom((prev) => Math.min(3.5, Math.max(1, Number((prev + delta).toFixed(2)))));
+    e.stopPropagation();
+    const nextX = e.clientX - dragStart.x;
+    const nextY = e.clientY - dragStart.y;
+    updateClampedOffset(nextX, nextY);
   };
 
-  // Confirm crop and produce cropped image data URL
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDragging) {
+      setIsDragging(false);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+  };
+
+  // Confirm crop and produce cropped image data URL with 100% fill and no black borders
   const handleConfirmCrop = () => {
-    if (!rawImageSrc || !imageRef.current || !containerRef.current) return;
+    if (!rawImageSrc || !imageRef.current) return;
 
     const img = imageRef.current;
-    const box = containerRef.current.getBoundingClientRect();
-    const apertureSize = 240; // Exact visual aperture size
-
-    // Create 512x512 square canvas
-    const outputCanvas = document.createElement("canvas");
     const targetSize = 512;
+    const outputCanvas = document.createElement("canvas");
     outputCanvas.width = targetSize;
     outputCanvas.height = targetSize;
     const ctx = outputCanvas.getContext("2d");
     if (!ctx) return;
 
-    // Use exact rendered screen positions
-    const imgRect = img.getBoundingClientRect();
-    const containerCenterX = box.left + box.width / 2;
-    const containerCenterY = box.top + box.height / 2;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
-    const apertureLeft = containerCenterX - apertureSize / 2;
-    const apertureTop = containerCenterY - apertureSize / 2;
+    const dispW = baseDim.w * zoom;
+    const dispH = baseDim.h * zoom;
 
-    const scale = targetSize / apertureSize;
+    // Relative to the 240x240 aperture center
+    const relX = offset.x - dispW / 2 + 120;
+    const relY = offset.y - dispH / 2 + 120;
+
+    const scale = targetSize / 240;
 
     ctx.drawImage(
       img,
-      (imgRect.left - apertureLeft) * scale,
-      (imgRect.top - apertureTop) * scale,
-      imgRect.width * scale,
-      imgRect.height * scale
+      relX * scale,
+      relY * scale,
+      dispW * scale,
+      dispH * scale
     );
 
     const croppedDataUri = outputCanvas.toDataURL("image/png");
@@ -155,12 +309,22 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150 select-none"
       onClick={handleClose}
+      onWheel={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onTouchMove={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
     >
       <div
         className="w-full max-w-xl rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#E8E8E3] dark:border-[#292929]">
@@ -328,33 +492,61 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
             {/* Crop Viewport */}
             <div
               ref={containerRef}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              onWheel={handleWheel}
-              className="relative w-full h-[320px] rounded-md bg-[#0F0F0F] overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              className="relative w-full h-[320px] rounded-md bg-[#0F0F0F] overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing select-none touch-none"
             >
               {rawImageSrc && (
                 <img
                   ref={imageRef}
                   src={rawImageSrc}
                   alt="Crop preview"
+                  onLoad={onImageLoad}
                   draggable={false}
                   style={{
+                    width: `${baseDim.w}px`,
+                    height: `${baseDim.h}px`,
                     transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
                     transformOrigin: "center",
                     maxWidth: "none",
+                    maxHeight: "none",
+                    userSelect: "none",
                     transition: isDragging ? "none" : "transform 0.05s ease-out",
                   }}
-                  className="max-h-[280px] pointer-events-none"
+                  className="pointer-events-none"
                 />
               )}
 
               {/* Mask with 240x240 square aperture */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="w-[240px] h-[240px] rounded-md border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]" />
+                <div className="w-[240px] h-[240px] rounded-md border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] relative">
+                  {/* Subtle Rule-of-Thirds Grid */}
+                  <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-20">
+                    <div className="border-r border-b border-white" />
+                    <div className="border-r border-b border-white" />
+                    <div className="border-b border-white" />
+                    <div className="border-r border-b border-white" />
+                    <div className="border-r border-b border-white" />
+                    <div className="border-b border-white" />
+                    <div className="border-r border-b border-white" />
+                    <div className="border-r border-b border-white" />
+                    <div />
+                  </div>
+                  {/* Corner Target Markers */}
+                  <div className="absolute top-1 left-1 w-2.5 h-2.5 border-t-2 border-l-2 border-white" />
+                  <div className="absolute top-1 right-1 w-2.5 h-2.5 border-t-2 border-r-2 border-white" />
+                  <div className="absolute bottom-1 left-1 w-2.5 h-2.5 border-b-2 border-l-2 border-white" />
+                  <div className="absolute bottom-1 right-1 w-2.5 h-2.5 border-b-2 border-r-2 border-white" />
+                </div>
               </div>
+            </div>
+
+            {/* Viewport Info */}
+            <div className="flex items-center justify-between text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] font-mono px-1">
+              <span>Square 1:1 Aperture (512×512 output)</span>
+              <span>Constrained to image boundaries</span>
             </div>
 
             {/* Zoom Slider Control */}
@@ -366,7 +558,11 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                 max={3.5}
                 step={0.05}
                 value={zoom}
-                onChange={(e) => setZoom(Number(e.target.value))}
+                onChange={(e) => {
+                  const nextZoom = Number(e.target.value);
+                  setZoom(nextZoom);
+                  updateClampedOffset(offset.x, offset.y, nextZoom, baseDim);
+                }}
                 className="flex-1 cursor-pointer"
               />
               <ZoomIn className="h-4 w-4 text-[#999993] dark:text-[#6A6A6A]" />
