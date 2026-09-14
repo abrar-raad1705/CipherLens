@@ -6,6 +6,12 @@ import { ArrowRight, Binary, ImageIcon, Layers, RefreshCw, ShieldCheck } from "l
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/hooks/use-image";
 import { ChangeImageModal } from "@/components/upload/ChangeImageModal";
+import {
+  DoodleFrame,
+  DoodleArrow,
+  DoodleUnderline,
+  DoodleSparkle,
+} from "@/components/image/DoodleAnnotations";
 
 export default function Home() {
   const { activeArtifact, isMounted } = useWorkspace();
@@ -60,101 +66,79 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right Column: Clean Closed-Border Image Showcase with Floating Doodle Badges & Looping Sketched Arrows */}
-          <div className="lg:col-span-6 flex justify-center py-6 sm:py-8">
+          {/* Right Column: Research Notebook Annotation Layer with Hand-Drawn Frame */}
+          <div className="lg:col-span-6 flex justify-center py-8 sm:py-10">
             {isMounted && activeArtifact && activeArtifact.dataUri ? (
-              <div className="relative w-full max-w-[370px] select-none">
-                {/* FLOATING DOODLE BADGE 1: Dimensions (Top Right) with Loop Doodle Arrow */}
-                <div className="absolute -top-14 -right-4 sm:-right-8 z-20 flex flex-col items-end pointer-events-none">
-                  <div className="pointer-events-auto px-3.5 py-1 rounded-full text-base sm:text-lg font-doodle font-bold tracking-wide bg-white dark:bg-[#1A1A1A] text-[#181818] dark:text-[#F2F2F0] border border-[#D7D7D1] dark:border-[#383838] shadow-md transition-transform hover:scale-105">
-                    {activeArtifact.width} × {activeArtifact.height} px
-                  </div>
-                  {/* Sketched Doodle Arrow with a graceful loop curving down into the top-right corner of the image */}
-                  <svg
-                    className="w-16 h-14 text-[#6F6F6A] dark:text-[#A0A09B] -mt-1 mr-3 overflow-visible pointer-events-none"
-                    viewBox="0 0 60 50"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    {/* Looping curve: starts at badge tail, loops gracefully, points arrow at top-right corner */}
-                    <path
-                      d="M 45 4 C 40 16, 12 10, 20 25 C 24 33, 10 40, 4 44"
-                    />
-                    <polyline points="10 38 4 44 11 47" />
-                  </svg>
-                </div>
-
-                {/* FLOATING DOODLE BADGE 2: Color Space (Top Left) with Loop Doodle Arrow */}
-                <div className="absolute -top-14 -left-4 sm:-left-8 z-20 flex flex-col items-start pointer-events-none">
-                  <div className="pointer-events-auto px-3.5 py-1 rounded-full text-base sm:text-lg font-doodle font-bold tracking-wide bg-white dark:bg-[#1A1A1A] text-[#181818] dark:text-[#F2F2F0] border border-[#D7D7D1] dark:border-[#383838] shadow-md transition-transform hover:scale-105">
-                    RGB Color
-                  </div>
-                  {/* Sketched Doodle Arrow with a playful loop pointing down into top-left corner */}
-                  <svg
-                    className="w-16 h-14 text-[#6F6F6A] dark:text-[#A0A09B] -mt-1 ml-3 overflow-visible pointer-events-none"
-                    viewBox="0 0 60 50"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    {/* Looping curve: starts at badge tail, loops gracefully, points arrow at top-left corner */}
-                    <path
-                      d="M 15 4 C 20 16, 48 10, 40 25 C 36 33, 50 40, 56 44"
-                    />
-                    <polyline points="50 38 56 44 49 47" />
-                  </svg>
-                </div>
-
-                {/* The Closed Border Image Frame */}
+              <div className="relative w-full max-w-[360px] select-none">
+                {/* DOODLE ANNOTATION 1: Color Mode (Top Left) */}
                 <div
+                  className="absolute -top-12 -left-6 sm:-left-10 z-20 flex flex-col items-start"
+                  style={{ transform: "rotate(-2deg)" }}
+                >
+                  <div className="flex flex-col items-start">
+                    <span className="font-doodle text-lg sm:text-xl font-bold tracking-wide text-[#2563EB] dark:text-[#5B8CFF]">
+                      RGB Color
+                    </span>
+                    <DoodleUnderline className="w-20 -mt-1 text-[#2563EB]/70 dark:text-[#5B8CFF]/70" />
+                  </div>
+                  <DoodleArrow direction="top-left" className="-mt-1 ml-2 pointer-events-none" />
+                </div>
+
+                {/* DOODLE ANNOTATION 2: Dimensions (Top Right) */}
+                <div
+                  className="absolute -top-12 -right-6 sm:-right-10 z-20 flex flex-col items-end"
+                  style={{ transform: "rotate(1.5deg)" }}
+                >
+                  <div className="flex flex-col items-end">
+                    <span className="font-doodle text-lg sm:text-xl font-bold tracking-wide text-[#181818] dark:text-[#F2F2F0]">
+                      {activeArtifact.width} × {activeArtifact.height} px
+                    </span>
+                    <DoodleUnderline className="w-24 -mt-1 text-[#7A7A75] dark:text-[#9A9A95]" />
+                  </div>
+                  <DoodleArrow direction="top-right" className="-mt-1 mr-2 pointer-events-none" />
+                </div>
+
+                {/* Hand-Drawn Frame Encasing Clean Realistic Image */}
+                <DoodleFrame
                   onClick={() => setIsChangeModalOpen(true)}
-                  className="group relative w-full aspect-square rounded-2xl overflow-hidden border-2 border-[#181818] dark:border-[#F2F2F0] bg-[#0c0c0c] flex items-center justify-center checkerboard-pattern shadow-xl cursor-pointer transition-all duration-200 hover:shadow-2xl hover:scale-[1.01]"
-                  title="Click to change target image"
+                  title="Click image to change or crop"
+                  className="w-full aspect-square group cursor-pointer"
                 >
                   <img
                     src={activeArtifact.dataUri}
                     alt={activeArtifact.name}
-                    className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                    className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
                   />
 
-                  {/* Interactive Hover Overlay with Change Prompt */}
-                  <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col items-center justify-center gap-2 backdrop-blur-[2px]">
-                    <div className="px-3.5 py-1.5 rounded-full bg-white dark:bg-[#181818] text-[#181818] dark:text-[#F2F2F0] font-medium text-xs shadow-xl flex items-center gap-1.5 transform translate-y-1 group-hover:translate-y-0 transition-transform">
-                      <RefreshCw className="h-3.5 w-3.5 text-[#2563EB] dark:text-[#5B8CFF]" />
+                  {/* Subtle Research Annotation Hover Prompt */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center backdrop-blur-[1.5px]">
+                    <div className="px-3.5 py-1.5 rounded-md bg-white/95 dark:bg-[#181818]/95 border border-black/10 dark:border-white/10 text-xs font-medium text-[#181818] dark:text-[#F2F2F0] shadow-xl flex items-center gap-1.5">
+                      <RefreshCw className="h-3 w-3 text-[#2563EB] dark:text-[#5B8CFF]" />
                       <span>Click to Change</span>
                     </div>
                   </div>
-                </div>
+                </DoodleFrame>
 
-                {/* FLOATING DOODLE BADGE 3: Name & Origin (Bottom Centered) with Loop Doodle Arrow */}
-                <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none">
-                  {/* Sketched Doodle Arrow with a playful loop pointing UP into bottom center of frame */}
-                  <svg
-                    className="w-12 h-10 text-[#6F6F6A] dark:text-[#A0A09B] -mb-1 overflow-visible pointer-events-none"
-                    viewBox="0 0 40 40"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path
-                      d="M 20 38 C 14 26, 28 22, 22 14 C 20 10, 20 6, 20 2"
-                    />
-                    <polyline points="15 8 20 2 25 8" />
-                  </svg>
-                  <div
-                    className="pointer-events-auto max-w-[280px] truncate px-4 py-1 rounded-full text-base sm:text-lg font-doodle font-bold tracking-wide bg-white dark:bg-[#1A1A1A] text-[#181818] dark:text-[#F2F2F0] border border-[#D7D7D1] dark:border-[#383838] shadow-md transition-transform hover:scale-105"
-                    title={activeArtifact.name}
-                  >
-                    {activeArtifact.name}
+                {/* DOODLE ANNOTATION 3: Image Name & Origin (Bottom Center) */}
+                <div
+                  className="absolute -bottom-16 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center"
+                  style={{ transform: "translateX(-50%) rotate(-1deg)" }}
+                >
+                  <DoodleArrow direction="bottom-up" className="-mb-1 pointer-events-none" />
+                  <div className="flex flex-col items-center max-w-[280px]">
+                    <span
+                      className="font-doodle text-lg sm:text-xl font-bold tracking-wide text-[#181818] dark:text-[#F2F2F0] truncate max-w-full"
+                      title={activeArtifact.name}
+                    >
+                      {activeArtifact.name}
+                    </span>
+                    <DoodleUnderline className="w-28 -mt-1 text-[#7A7A75] dark:text-[#9A9A95]" />
                   </div>
                 </div>
+
+                {/* Sparse Margin Doodle Touches: Tiny Star Details */}
+                <DoodleSparkle className="absolute -top-3 -right-2 hidden sm:block opacity-60 pointer-events-none" />
+                <DoodleSparkle className="absolute bottom-1 -left-3 hidden sm:block opacity-60 pointer-events-none" />
               </div>
             ) : isMounted ? (
               <div
