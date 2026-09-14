@@ -30,5 +30,12 @@ dist/
 build/
 *.egg-info/
 
+# Node / Next.js
+node_modules/
+.next/
+web/node_modules/
+web/.next/
+
 # Folders
 /tmp
+output/

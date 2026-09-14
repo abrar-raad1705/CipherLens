@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --bg-page: #FFFFFF;
+    --bg-secondary: #F7F6F3;
+    --bg-surface: #FFFFFF;
+    --bg-surface-hover: rgba(55, 53, 47, 0.06);
+    --bg-callout: #F1F1EF;
+    --border-subtle: #EDEDEB;
+    --border-medium: #D3D1CB;
+    --text-primary: #37352F;
+    --text-secondary: #787774;
+    --text-muted: #9B9A97;
+    --accent-blue: #2383E2;
+    --accent-amber: #D9730D;
+    color-scheme: light;
+  }
+
+  .dark {
+    --bg-page: #191919;
+    --bg-secondary: #202020;
+    --bg-surface: #252525;
+    --bg-surface-hover: rgba(255, 255, 255, 0.055);
+    --bg-callout: #222222;
+    --border-subtle: #2E2E2E;
+    --border-medium: #3E3E3E;
+    --text-primary: #E6E5E3;
+    --text-secondary: #9B9B9B;
+    --text-muted: #6A6A6A;
+    --accent-blue: #2383E2;
+    --accent-amber: #FFAB5E;
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
+    min-height: 100vh;
+    overflow-x: hidden;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Minimalist Notion Scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #D3D1CB;
+    border-radius: 9999px;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: #37352F;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #9B9A97;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #4F4D47;
+  }
+}
+
+/* Notion Callout Box */
+.notion-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: 0.5rem;
+  background-color: #F7F6F5;
+  border: 1px solid #EDEDEB;
+  color: #37352F;
+}
+
+.dark .notion-callout {
+  background-color: #222222;
+  border-color: #2E2E2E;
+  color: #E6E5E3;
+}
+
+/* Notion Style Minimal Range Slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #E3E2E0;
+  height: 4px;
+  border-radius: 9999px;
+  outline: none;
+  transition: background 0.15s ease;
+}
+
+.dark input[type="range"] {
+  background: #333333;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #37352F;
+  cursor: pointer;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease;
+}
+
+.dark input[type="range"]::-webkit-slider-thumb {
+  background: #E6E5E3;
+  border-color: #191919;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #37352F;
+  cursor: pointer;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease;
+}
+
+.dark input[type="range"]::-moz-range-thumb {
+  background: #E6E5E3;
+  border-color: #191919;
+}
+
+/* Content containment for performance */
+.contained-region {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px auto 600px;
+}

@@ -5,12 +5,18 @@ description = "2D signal processing and image encryption analysis platform"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.141.1",
     "numpy>=2.5.2",
     "opencv-python>=5.0.0.93",
     "pillow>=12.3.0",
+    "python-multipart>=0.0.32",
     "scikit-image>=0.26.0",
     "scipy>=1.18.1",
+    "uvicorn>=0.53.0",
 ]
+
+[project.scripts]
+batsignal-ui = "batsignal.ui.app:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -21,6 +27,7 @@ packages = ["src/batsignal"]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "ruff>=0.16.5",
 ]
@@ -31,3 +38,12 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]  # pycodestyle errors, pyflakes, isort, pyupgrade
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "src"]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]

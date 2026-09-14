@@ -9,6 +9,17 @@ class ArnoldXORKey:
     xor_value: int
 
 
+def normalize_key(key: ArnoldXORKey | tuple | list) -> ArnoldXORKey:
+    if isinstance(key, ArnoldXORKey):
+        return key
+    if isinstance(key, (tuple, list)):
+        if len(key) == 2:
+            return ArnoldXORKey(int(key[0]), int(key[1]))
+        elif len(key) == 4:
+            return ArnoldXORKey(int(key[2]), int(key[3]))
+    raise TypeError(f"Invalid key type for Arnold+XOR: {type(key)}")
+
+
 def validate_key(key: ArnoldXORKey) -> None:
     if key.itr < 0:
         raise ValueError("Iterations must be non-negative")
@@ -64,19 +75,21 @@ def xor_transform(image: np.ndarray, xor_value: int) -> np.ndarray:
     return np.bitwise_xor(image, np.uint8(xor_value))
 
 
-def encrypt(image: np.ndarray, key: ArnoldXORKey) -> np.ndarray:
+def encrypt(image: np.ndarray, key: ArnoldXORKey | tuple | list) -> np.ndarray:
     """
     Encrypt an image using Arnold + XOR.
     """
-    validate_key(key)
-    scrambled = arnold_scramble(image, key.itr)
-    return xor_transform(scrambled, key.xor_value)
+    norm_key = normalize_key(key)
+    validate_key(norm_key)
+    scrambled = arnold_scramble(image, norm_key.itr)
+    return xor_transform(scrambled, norm_key.xor_value)
 
 
-def decrypt(ciphertext: np.ndarray, key: ArnoldXORKey) -> np.ndarray:
+def decrypt(ciphertext: np.ndarray, key: ArnoldXORKey | tuple | list) -> np.ndarray:
     """
     Decrypt a Arnold + XOR ciphertext.
     """
-    validate_key(key)
-    xored = xor_transform(ciphertext, key.xor_value)
-    return arnold_unscramble(xored, key.itr)
+    norm_key = normalize_key(key)
+    validate_key(norm_key)
+    xored = xor_transform(ciphertext, norm_key.xor_value)
+    return arnold_unscramble(xored, norm_key.itr)
