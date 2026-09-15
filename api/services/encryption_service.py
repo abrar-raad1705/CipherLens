@@ -28,6 +28,40 @@ from batsignal.analysis import calculate_mse, calculate_psnr, calculate_ssim
 from batsignal.encryption import arnold_xor, dct, drpe, fourier
 
 
+import collections
+import hashlib
+
+# Ciphertext Array Cache for DRPE, Fourier, and DCT (maps ciphertext visual hash -> exact raw array)
+_CIPHER_CACHE_MAX = 64
+_cipher_array_cache: collections.OrderedDict[str, np.ndarray] = collections.OrderedDict()
+
+
+def _cache_cipher_array(c_vis_uri: str, raw_array: np.ndarray) -> None:
+    uri_hash = hashlib.sha256(c_vis_uri.encode("utf-8")).hexdigest()
+    _cipher_array_cache[uri_hash] = raw_array
+    _cipher_array_cache.move_to_end(uri_hash)
+    if len(_cipher_array_cache) > _CIPHER_CACHE_MAX:
+        _cipher_array_cache.popitem(last=False)
+
+
+def _get_cached_cipher_array(payload: str | bytes) -> np.ndarray | None:
+    if isinstance(payload, bytes):
+        try:
+            payload = payload.decode("utf-8")
+        except Exception:
+            return None
+    uri_hash = hashlib.sha256(payload.strip().encode("utf-8")).hexdigest()
+    if uri_hash in _cipher_array_cache:
+        _cipher_array_cache.move_to_end(uri_hash)
+        return _cipher_array_cache[uri_hash]
+    return None
+
+
+# Backward compatibility aliases
+_cache_wavefront = _cache_cipher_array
+_get_cached_wavefront = _get_cached_cipher_array
+
+
 def run_drpe_encrypt(
     image_payload: str | bytes, seed1: int = 1234, seed2: int = 5678
 ) -> DRPEEncryptResponse:
@@ -53,19 +87,24 @@ def run_drpe_encrypt(
     filtered = fourier_plane * r2
     ciphertext = np.fft.ifft2(filtered, norm="ortho")
 
-    # Visual ciphertext magnitude
+    # Visual ciphertext magnitude for display in UI
     c_vis = cv2.normalize(np.abs(ciphertext), None, 0, 255, cv2.NORM_MINMAX).astype(
         np.uint8
     )
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
+    c_uri = array_to_data_uri(c_vis)
+
+    # Cache full complex optical field associated with this visual ciphertext
+    _cache_wavefront(c_uri, ciphertext)
+
     stages = {
         "original": array_to_data_uri(img),
         "r1_phase": phase_to_data_uri(r1_phase),
         "fourier_spectrum": log_spectrum_to_data_uri(fourier_plane),
         "r2_phase": phase_to_data_uri(r2_phase),
-        "ciphertext": array_to_data_uri(c_vis),
+        "ciphertext": c_uri,
     }
 
     metadata = {
@@ -95,15 +134,21 @@ def run_drpe_decrypt(
     reference_payload: str | bytes | None = None,
 ) -> DRPEDecryptResponse:
     t0 = time.perf_counter()
-    cipher_img = decode_image_payload(ciphertext_payload)
+
+    # Check if we have the coherent complex optical wavefront cached for this session
+    cached_field = _get_cached_wavefront(ciphertext_payload)
+    if cached_field is not None:
+        cipher_input = cached_field
+    else:
+        cipher_input = decode_image_payload(ciphertext_payload)
 
     # Re-generate phase masks for decryption
     key = drpe.DRPEKey(seed1=seed1, seed2=seed2)
     drpe.validate_key(key)
 
     # DRPE Decryption: F^-1 [ F(C) * R2^* ] * R1^*
-    recovered = drpe.decrypt(cipher_img, key)
-    rec_uint8 = np.clip(np.real(recovered), 0, 255).astype(np.uint8)
+    recovered = drpe.decrypt(cipher_input, key)
+    rec_uint8 = np.clip(np.round(np.real(recovered)), 0, 255).astype(np.uint8)
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -144,28 +189,41 @@ def run_fourier(
     image_payload: str | bytes, seed: int = 100, action: str = "encrypt"
 ) -> FourierResponse:
     t0 = time.perf_counter()
-    img = decode_image_payload(image_payload)
     key = fourier.FourierKey(seed=seed)
 
     if action.lower() == "encrypt":
+        img = decode_image_payload(image_payload)
         result = fourier.encrypt(img, key)
         output_vis = cv2.normalize(
             np.real(result), None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
         f_coeffs = np.fft.fft2(result, norm="ortho")
         spec_uri = log_spectrum_to_data_uri(f_coeffs)
+        out_uri = array_to_data_uri(output_vis)
+        # Cache raw complex transform array
+        _cache_cipher_array(out_uri, result)
+        shape_str = f"{img.shape[1]}×{img.shape[0]}"
     else:
-        result = fourier.decrypt(img, key)
-        output_vis = np.clip(np.real(result), 0, 255).astype(np.uint8)
+        # Decrypt from exact cached complex array if available, or fallback to decoded payload
+        cached_cipher = _get_cached_cipher_array(image_payload)
+        if cached_cipher is not None:
+            cipher_input = cached_cipher
+        else:
+            cipher_input = decode_image_payload(image_payload)
+
+        result = fourier.decrypt(cipher_input, key)
+        output_vis = np.clip(np.round(np.real(result)), 0, 255).astype(np.uint8)
         spec_uri = None
+        out_uri = array_to_data_uri(output_vis)
+        shape_str = f"{output_vis.shape[1]}×{output_vis.shape[0]}"
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
     return FourierResponse(
         action=action.lower(),
-        output_image=array_to_data_uri(output_vis),
+        output_image=out_uri,
         spectrum=spec_uri,
-        metadata={"seed": seed, "shape": f"{img.shape[1]}×{img.shape[0]}"},
+        metadata={"seed": seed, "shape": shape_str},
         latency_ms=round(latency_ms, 2),
     )
 
@@ -174,24 +232,37 @@ def run_dct(
     image_payload: str | bytes, seed: int = 42, action: str = "encrypt"
 ) -> DCTResponse:
     t0 = time.perf_counter()
-    img = decode_image_payload(image_payload)
     key = dct.DCT_Key(seed=seed)
 
     if action.lower() == "encrypt":
+        img = decode_image_payload(image_payload)
         result = dct.encrypt(img, key)
         output_vis = cv2.normalize(
             np.real(result), None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
+        out_uri = array_to_data_uri(output_vis)
+        # Cache raw float DCT transform array
+        _cache_cipher_array(out_uri, result)
+        shape_str = f"{img.shape[1]}×{img.shape[0]}"
     else:
-        result = dct.decrypt(img, key)
-        output_vis = np.clip(np.real(result), 0, 255).astype(np.uint8)
+        # Decrypt from exact cached DCT array if available, or fallback to decoded payload
+        cached_cipher = _get_cached_cipher_array(image_payload)
+        if cached_cipher is not None:
+            cipher_input = cached_cipher
+        else:
+            cipher_input = decode_image_payload(image_payload)
+
+        result = dct.decrypt(cipher_input, key)
+        output_vis = np.clip(np.round(np.real(result)), 0, 255).astype(np.uint8)
+        out_uri = array_to_data_uri(output_vis)
+        shape_str = f"{output_vis.shape[1]}×{output_vis.shape[0]}"
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
     return DCTResponse(
         action=action.lower(),
-        output_image=array_to_data_uri(output_vis),
-        metadata={"seed": seed, "shape": f"{img.shape[1]}×{img.shape[0]}"},
+        output_image=out_uri,
+        metadata={"seed": seed, "shape": shape_str},
         latency_ms=round(latency_ms, 2),
     )
 
