@@ -10,6 +10,8 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
 
 interface CanvasViewerProps {
   imageSrc: string;
@@ -111,17 +113,17 @@ export function CanvasViewer({
   };
 
   return (
-    <div
+    <Card
       ref={containerRef}
-      className={`flex flex-col rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] overflow-hidden transition-all ${
+      className={`flex flex-col overflow-hidden transition-all ${
         isFullscreen ? "fixed inset-4 z-50 shadow-2xl" : ""
       } ${className}`}
     >
       {/* Viewer Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#E8E8E3] dark:border-[#292929] text-xs">
+      <CardHeader className="py-2 px-3 border-b">
         <div className="flex items-baseline gap-2 min-w-0">
           {title && (
-            <span className="font-medium text-[#181818] dark:text-[#F2F2F0] truncate">
+            <span className="font-medium text-[#181818] dark:text-[#F2F2F0] truncate text-xs">
               {title}
             </span>
           )}
@@ -148,14 +150,16 @@ export function CanvasViewer({
               else if (colorMap === "heatmap") setColorMap("invert");
               else setColorMap("raw");
             }}
-            className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border border-[#E8E8E3] dark:border-[#292929] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] transition-colors"
+            className="cursor-pointer"
           >
-            {colorMap}
+            <Badge variant="outline" className="text-[10px] font-mono uppercase px-1.5 py-0.5">
+              {colorMap}
+            </Badge>
           </button>
 
           <div className="flex items-center gap-0.5 text-[#6F6F6A] dark:text-[#A0A09B]">
             <Button
-              size="icon"
+              size="icon-xs"
               variant="ghost"
               className="h-6 w-6"
               onClick={() => setZoom((z) => Math.min(4, Number((z + 0.25).toFixed(2))))}
@@ -164,7 +168,7 @@ export function CanvasViewer({
               <ZoomIn className="h-3 w-3" />
             </Button>
             <Button
-              size="icon"
+              size="icon-xs"
               variant="ghost"
               className="h-6 w-6"
               onClick={() => setZoom((z) => Math.max(0.25, Number((z - 0.25).toFixed(2))))}
@@ -173,7 +177,7 @@ export function CanvasViewer({
               <ZoomOut className="h-3 w-3" />
             </Button>
             <Button
-              size="icon"
+              size="icon-xs"
               variant="ghost"
               className="h-6 w-6"
               onClick={() => setZoom(1)}
@@ -182,7 +186,7 @@ export function CanvasViewer({
               <RotateCcw className="h-3 w-3" />
             </Button>
             <Button
-              size="icon"
+              size="icon-xs"
               variant="ghost"
               className="h-6 w-6"
               onClick={handleDownload}
@@ -191,7 +195,7 @@ export function CanvasViewer({
               <Download className="h-3 w-3" />
             </Button>
             <Button
-              size="icon"
+              size="icon-xs"
               variant="ghost"
               className="h-6 w-6"
               onClick={() => setIsFullscreen(!isFullscreen)}
@@ -205,10 +209,10 @@ export function CanvasViewer({
             </Button>
           </div>
         </div>
-      </div>
+      </CardHeader>
 
       {/* Canvas Viewport */}
-      <div className="relative flex-1 min-h-[360px] flex items-center justify-center p-4 bg-[#FAFAF8] dark:bg-[#101010] overflow-auto select-none">
+      <CardContent className="relative flex-1 min-h-[360px] flex items-center justify-center p-4 bg-[#FAFAF8] dark:bg-[#101010] overflow-auto select-none">
         <canvas
           ref={canvasRef}
           onMouseMove={handleMouseMove}
@@ -218,15 +222,17 @@ export function CanvasViewer({
             transformOrigin: "center",
             transition: "transform 0.1s ease-out",
           }}
-          className="max-h-[500px] max-w-full object-contain cursor-crosshair border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717]"
+          className="max-h-[500px] max-w-full object-contain cursor-crosshair border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] rounded-sm"
         />
 
         {zoom !== 1 && (
-          <div className="absolute bottom-3 left-3 px-1.5 py-0.5 rounded font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] border border-[#E8E8E3] dark:border-[#292929] bg-white/90 dark:bg-[#171717]/90">
-            {Math.round(zoom * 100)}%
+          <div className="absolute bottom-3 left-3">
+            <Badge variant="secondary" className="font-mono text-[10px]">
+              {Math.round(zoom * 100)}%
+            </Badge>
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

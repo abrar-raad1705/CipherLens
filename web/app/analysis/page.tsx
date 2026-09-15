@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Play, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/use-image";
 import { useAnalysis } from "@/hooks/use-analysis";
 import { useEncryption } from "@/hooks/use-encryption";
@@ -102,7 +103,7 @@ export default function AnalysisBenchPage() {
       </div>
 
       {/* User Inputs & Controls placed on TOP of the viewfield */}
-      <section className="p-4 rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <Card className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-6 text-sm">
           {/* Plaintext Selector */}
           <div className="flex items-center gap-2">
@@ -162,7 +163,7 @@ export default function AnalysisBenchPage() {
             <span>{loading ? "Computing..." : "Run Analysis"}</span>
           </Button>
         </div>
-      </section>
+      </Card>
 
       {error && (
         <div className="text-xs text-[#DC2626] font-mono py-1">

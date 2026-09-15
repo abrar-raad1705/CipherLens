@@ -2,10 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Binary, ChevronDown, ImageIcon, Layers, RefreshCw, ShieldCheck } from "lucide-react";
+import { ArrowRight, Binary, ChevronDown, ImageIcon, Layers, Maximize2, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/hooks/use-image";
 import { ChangeImageModal } from "@/components/upload/ChangeImageModal";
+import { ImageInspectionModal } from "@/components/image/ImageInspectionModal";
 import { cn } from "@/lib/utils/cn";
 import {
   DoodleFrame,
@@ -16,14 +17,35 @@ import {
 export default function Home() {
   const { activeArtifact, isMounted } = useWorkspace();
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
+  const [isInspectModalOpen, setIsInspectModalOpen] = useState(false);
+  const [hasSelectedImage, setHasSelectedImage] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const [colorMode, setColorMode] = useState<"RGB Color" | "Grayscale">("RGB Color");
+  const [colorMode, setColorMode] = useState<"RGB" | "Grayscale">("RGB");
   const [displayUri, setDisplayUri] = useState<string>("");
 
-  // Dynamically determine whether the active image is RGB Color or Grayscale, and trim any artificial letterbox black borders
+  // Sync whether user has selected an image in this or previous session
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("cipherlens_user_has_selected");
+      if (stored === "true") {
+        setHasSelectedImage(true);
+      }
+    }
+  }, []);
+
+  // When activeArtifact changes away from default or is updated, mark user selected
+  useEffect(() => {
+    if (activeArtifact && activeArtifact.id !== "preset-target-cal512") {
+      setHasSelectedImage(true);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("cipherlens_user_has_selected", "true");
+      }
+    }
+  }, [activeArtifact]);
+
+  // Dynamically determine whether the active image is RGB or Grayscale, and trim any artificial letterbox black borders
   useEffect(() => {
     if (!activeArtifact?.dataUri) {
-      setDisplayUri("");
       return;
     }
 
@@ -56,7 +78,7 @@ export default function Home() {
             break;
           }
         }
-        setColorMode(isGray ? "Grayscale" : "RGB Color");
+        setColorMode(isGray ? "Grayscale" : "RGB");
 
         // 2. Check for artificial solid black borders on edges (from previous crop math)
         let top = 0;
@@ -102,44 +124,72 @@ export default function Home() {
         setDisplayUri(dataUri);
       } catch {
         setDisplayUri(dataUri);
-        setColorMode("RGB Color");
+        setColorMode("RGB");
       }
     };
     img.src = dataUri;
   }, [activeArtifact?.dataUri, activeArtifact?.metadata]);
 
   useEffect(() => {
-    const handleScroll = () => {
-      const scrollY = window.scrollY || document.documentElement.scrollTop;
-      const scrollHeight = document.documentElement.scrollHeight;
-      const clientHeight = window.innerHeight;
+    const checkScroll = () => {
+      const container = document.getElementById("main-scroll-container");
+      const scrollY = container
+        ? container.scrollTop
+        : window.scrollY || document.documentElement.scrollTop;
+      const scrollHeight = container
+        ? container.scrollHeight
+        : document.documentElement.scrollHeight;
+      const clientHeight = container
+        ? container.clientHeight
+        : window.innerHeight;
 
-      // Only show when the page is scrollable and user is at the top of the website
-      const isScrollable = scrollHeight > clientHeight + 40;
-      const isAtTop = scrollY < 40;
+      // Show down arrow whenever the page can be scrolled down and user is near the top
+      const isScrollable = scrollHeight > clientHeight + 30;
+      const isAtTop = scrollY < 60;
 
       setShowScrollButton(isScrollable && isAtTop);
     };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("resize", handleScroll, { passive: true });
-    handleScroll();
+    const container = document.getElementById("main-scroll-container");
+    if (container) {
+      container.addEventListener("scroll", checkScroll, { passive: true });
+    }
+    window.addEventListener("scroll", checkScroll, { passive: true });
+    window.addEventListener("resize", checkScroll, { passive: true });
+
+    // Initial check immediately and after DOM paint
+    checkScroll();
+    const timer1 = setTimeout(checkScroll, 100);
+    const timer2 = setTimeout(checkScroll, 400);
 
     return () => {
-      window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("resize", handleScroll);
+      if (container) {
+        container.removeEventListener("scroll", checkScroll);
+      }
+      window.removeEventListener("scroll", checkScroll);
+      window.removeEventListener("resize", checkScroll);
+      clearTimeout(timer1);
+      clearTimeout(timer2);
     };
-  }, []);
+  }, [displayUri, activeArtifact]);
 
   const scrollToEnd = () => {
     const footer = document.getElementById("page-footer");
     if (footer) {
       footer.scrollIntoView({ behavior: "smooth" });
     } else {
-      window.scrollTo({
-        top: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
-        behavior: "smooth",
-      });
+      const container = document.getElementById("main-scroll-container");
+      if (container) {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
+        });
+      } else {
+        window.scrollTo({
+          top: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+          behavior: "smooth",
+        });
+      }
     }
   };
 
@@ -147,19 +197,26 @@ export default function Home() {
     {
       step: "01",
       name: "CONVOLUTION",
-      desc: "Spatial image filtering, Gaussian blurring, Sobel edge gradients, and Wiener deconvolution",
+      desc: "Spatial 2D image filtering, Gaussian smoothing, median noise filtering, and Sobel edge gradients",
       href: "/processing/convolution",
       icon: Layers,
     },
     {
       step: "02",
+      name: "DECONVOLUTION",
+      desc: "Inverse optical wave restoration and Wiener filter PSF deconvolution",
+      href: "/processing/deconvolution",
+      icon: Sparkles,
+    },
+    {
+      step: "03",
       name: "ENCRYPTION",
       desc: "Double Random Phase Encoding (DRPE), Fourier transform scrambling, DCT, and Arnold chaos",
       href: "/encryption/drpe",
       icon: ShieldCheck,
     },
     {
-      step: "03",
+      step: "04",
       name: "ANALYSIS",
       desc: "Information entropy, differential attack resistance (NPCR/UACI), and adjacent pixel correlation",
       href: "/analysis",
@@ -183,12 +240,15 @@ export default function Home() {
             </p>
 
             <div className="pt-2 flex items-center gap-4">
-              <Link href="/workspace">
-                <Button variant="primary" size="lg" className="px-5 py-2.5 text-base font-medium">
-                  <span>Start with an image</span>
-                  <ArrowRight className="h-4 w-4 ml-1" />
-                </Button>
-              </Link>
+              <Button
+                variant="primary"
+                size="lg"
+                className="px-5 py-2.5 text-base font-medium"
+                onClick={() => setIsChangeModalOpen(true)}
+              >
+                <span>{hasSelectedImage ? "Change image" : "Start with an image"}</span>
+                <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
             </div>
           </div>
 
@@ -201,10 +261,10 @@ export default function Home() {
                   className="absolute -top-12 -left-6 sm:-left-10 z-20 flex flex-col items-start"
                   style={{ transform: "rotate(-2deg)" }}
                 >
-                  <div className="flex flex-col items-start">
+                  <div className="relative inline-flex flex-col items-center">
                     <span
                       className={cn(
-                        "font-doodle text-lg sm:text-xl font-bold tracking-wide",
+                        "font-doodle text-lg sm:text-xl font-bold tracking-wide leading-none",
                         colorMode === "Grayscale"
                           ? "text-[#181818] dark:text-[#F2F2F0]"
                           : "text-[#2563EB] dark:text-[#5B8CFF]"
@@ -214,14 +274,14 @@ export default function Home() {
                     </span>
                     <DoodleUnderline
                       className={cn(
-                        "-mt-1",
+                        "mt-0.5",
                         colorMode === "Grayscale"
-                          ? "w-22 text-[#7A7A75] dark:text-[#9A9A95]"
-                          : "w-20 text-[#2563EB]/70 dark:text-[#5B8CFF]/70"
+                          ? "w-[calc(100%+8px)] text-[#7A7A75] dark:text-[#9A9A95]"
+                          : "w-[calc(100%+8px)] text-[#2563EB]/70 dark:text-[#5B8CFF]/70"
                       )}
                     />
                   </div>
-                  <DoodleArrow direction="top-left" className="-mt-1 ml-2 pointer-events-none" />
+                  <DoodleArrow direction="top-left" className="-mt-1 ml-1 pointer-events-none" />
                 </div>
 
                 {/* DOODLE ANNOTATION 2: Dimensions (Top Right) */}
@@ -238,23 +298,22 @@ export default function Home() {
                   <DoodleArrow direction="top-right" className="-mt-1 mr-2 pointer-events-none" />
                 </div>
 
-                {/* Hand-Drawn Frame Encasing Clean Realistic Image */}
+                {/* Hand-Drawn Frame Encasing Clean Realistic Image - Clicking opens large Inspection Modal */}
                 <DoodleFrame
-                  onClick={() => setIsChangeModalOpen(true)}
-                  title="Click image to change or crop"
+                  onClick={() => setIsInspectModalOpen(true)}
                   className="w-full aspect-square group cursor-pointer"
                 >
                   <img
                     src={displayUri || activeArtifact.dataUri}
-                    alt={activeArtifact.name}
+                    alt=""
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                   />
 
-                  {/* Subtle Research Annotation Hover Prompt */}
+                  {/* Inspection Hover Overlay */}
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center backdrop-blur-[1.5px]">
                     <div className="px-3.5 py-1.5 rounded-md bg-white/95 dark:bg-[#181818]/95 border border-black/10 dark:border-white/10 text-xs font-medium text-[#181818] dark:text-[#F2F2F0] shadow-xl flex items-center gap-1.5">
-                      <RefreshCw className="h-3 w-3 text-[#2563EB] dark:text-[#5B8CFF]" />
-                      <span>Click to Change</span>
+                      <Maximize2 className="h-3.5 w-3.5 text-[#2563EB] dark:text-[#5B8CFF]" />
+                      <span>Click to Inspect &amp; Zoom</span>
                     </div>
                   </div>
                 </DoodleFrame>
@@ -365,6 +424,18 @@ export default function Home() {
         isOpen={isChangeModalOpen}
         onClose={() => setIsChangeModalOpen(false)}
       />
+
+      {/* Large Image Inspection Popup Window (Zoom, RAW, Heatmap, Invert) */}
+      {activeArtifact && (
+        <ImageInspectionModal
+          isOpen={isInspectModalOpen}
+          onClose={() => setIsInspectModalOpen(false)}
+          imageSrc={displayUri || activeArtifact.dataUri}
+          name={activeArtifact.name}
+          width={activeArtifact.width}
+          height={activeArtifact.height}
+        />
+      )}
     </>
   );
 }

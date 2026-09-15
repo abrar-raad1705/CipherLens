@@ -17,7 +17,10 @@ interface WorkspaceContextType {
   presets: SamplePreset[];
   isBackendConnected: boolean;
   isMounted: boolean;
-  addArtifact: (artifact: Omit<ImageArtifact, "id" | "timestamp">) => ImageArtifact;
+  addArtifact: (
+    artifact: Omit<ImageArtifact, "id" | "timestamp">,
+    setActive?: boolean
+  ) => ImageArtifact;
   setActiveArtifactId: (id: string) => void;
   loadPresetById: (id: string) => void;
   removeArtifact: (id: string) => void;
@@ -188,7 +191,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addArtifact = (
-    newArt: Omit<ImageArtifact, "id" | "timestamp">
+    newArt: Omit<ImageArtifact, "id" | "timestamp">,
+    setActive: boolean = true
   ): ImageArtifact => {
     const created: ImageArtifact = {
       ...newArt,
@@ -197,7 +201,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     };
     updateStore((prev) => ({
       artifacts: [created, ...prev.artifacts],
-      activeId: created.id,
+      activeId: setActive ? created.id : prev.activeId,
     }));
     return created;
   };

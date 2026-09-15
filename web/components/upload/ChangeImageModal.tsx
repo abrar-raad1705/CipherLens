@@ -31,6 +31,8 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
   const {
     artifacts,
     activeArtifact,
+    presets,
+    loadPresetById,
     addArtifact,
     setActiveArtifactId,
   } = useWorkspace();
@@ -354,6 +356,9 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
       height: outH,
       sourceBench: "upload",
     });
+    if (typeof window !== "undefined") {
+      localStorage.setItem("cipherlens_user_has_selected", "true");
+    }
 
     onClose();
   };
@@ -362,18 +367,55 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
   const curPixelW = naturalDim.w > 0 && imgDim.w > 0 ? Math.round((cropBox.w / imgDim.w) * naturalDim.w) : 512;
   const curPixelH = naturalDim.h > 0 && imgDim.h > 0 ? Math.round((cropBox.h / imgDim.h) * naturalDim.h) : 512;
 
+  // Scroll to zoom the crop selection box
+  const handleWheelZoom = (e: React.WheelEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Determine zoom factor: scrolling up zooms in (selection shrinks to show closer area), scrolling down zooms out
+    const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
+    const minSize = 32;
+
+    if (aspectRatio === "1:1") {
+      const curSide = cropBox.w;
+      const newSide = Math.round(curSide * zoomFactor);
+      const clampedSide = Math.max(minSize, Math.min(imgDim.w, imgDim.h, newSide));
+      const deltaSide = clampedSide - curSide;
+
+      // Zoom towards center of the current crop box
+      const newX = Math.max(0, Math.min(imgDim.w - clampedSide, Math.round(cropBox.x - deltaSide / 2)));
+      const newY = Math.max(0, Math.min(imgDim.h - clampedSide, Math.round(cropBox.y - deltaSide / 2)));
+
+      setCropBox({
+        x: newX,
+        y: newY,
+        w: clampedSide,
+        h: clampedSide,
+      });
+    } else {
+      const newW = Math.round(cropBox.w * zoomFactor);
+      const newH = Math.round(cropBox.h * zoomFactor);
+      const clampedW = Math.max(minSize, Math.min(imgDim.w, newW));
+      const clampedH = Math.max(minSize, Math.min(imgDim.h, newH));
+      const deltaW = clampedW - cropBox.w;
+      const deltaH = clampedH - cropBox.h;
+
+      const newX = Math.max(0, Math.min(imgDim.w - clampedW, Math.round(cropBox.x - deltaW / 2)));
+      const newY = Math.max(0, Math.min(imgDim.h - clampedH, Math.round(cropBox.y - deltaH / 2)));
+
+      setCropBox({
+        x: newX,
+        y: newY,
+        w: clampedW,
+        h: clampedH,
+      });
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150 select-none"
       onClick={handleClose}
-      onWheel={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-      onTouchMove={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
     >
       <div
         className="w-full max-w-2xl rounded-xl border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
@@ -468,6 +510,9 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                         key={art.id}
                         onClick={() => {
                           setActiveArtifactId(art.id);
+                          if (typeof window !== "undefined") {
+                            localStorage.setItem("cipherlens_user_has_selected", "true");
+                          }
                           onClose();
                         }}
                         className={cn(
@@ -541,6 +586,43 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                 </div>
               )}
             </div>
+
+            {/* Calibration Standards / Presets */}
+            {presets.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-[#E8E8E3] dark:border-[#292929]">
+                <div className="text-xs font-semibold tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
+                  Calibration Benchmarks
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {presets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        loadPresetById(preset.id);
+                        if (typeof window !== "undefined") {
+                          localStorage.setItem("cipherlens_user_has_selected", "true");
+                        }
+                        onClose();
+                      }}
+                      className="flex items-center gap-2.5 p-2 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#151515] hover:border-[#2563EB] dark:hover:border-[#5B8CFF] hover:bg-white dark:hover:bg-[#1C1C1C] transition-colors text-left cursor-pointer"
+                    >
+                      <div className="w-8 h-8 rounded shrink-0 bg-black/10 dark:bg-white/10 flex items-center justify-center font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B]">
+                        {preset.width}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] truncate">
+                          {preset.name}
+                        </div>
+                        <div className="text-[10px] font-mono text-[#8E8E88] dark:text-[#7A7A75]">
+                          {preset.width} × {preset.height} px
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           /* Resizable Crop Mode */
@@ -548,7 +630,8 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
             {/* Viewport Box */}
             <div
               ref={containerRef}
-              className="relative w-full h-[360px] rounded-lg bg-[#0D0D0D] overflow-hidden flex items-center justify-center select-none touch-none"
+              className="relative w-full h-[360px] rounded-lg bg-[#0D0D0D] overflow-hidden flex items-center justify-center select-none touch-none cursor-crosshair"
+              onWheel={handleWheelZoom}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}

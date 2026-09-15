@@ -1,46 +1,31 @@
 "use client";
 
 import React, { useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Check, Play, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
-import { CustomKernelInput } from "@/components/processing/CustomKernelInput";
 import { useWorkspace } from "@/hooks/use-image";
 import { useProcessing } from "@/hooks/use-processing";
 import { formatMs } from "@/lib/utils/format";
 
-type FilterMode = "gaussian" | "median" | "sobel" | "custom";
-
-function ConvolutionBenchContent() {
+function DeconvolutionBenchContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { activeArtifact, presets, loadPresetById, addArtifact } = useWorkspace();
   const {
     loading,
     error,
     result,
-    executeGaussian,
-    executeMedian,
-    executeSobel,
-    executeConvolution,
+    executeDeconvolution,
   } = useProcessing();
-
-  const urlMode = searchParams.get("mode") as FilterMode | null;
-  const validModes: FilterMode[] = ["gaussian", "median", "sobel", "custom"];
-  const [modeOverride, setModeOverride] = useState<FilterMode | null>(null);
-  const mode: FilterMode =
-    modeOverride ?? (urlMode && validModes.includes(urlMode) ? urlMode : "gaussian");
-  const setMode = (m: FilterMode) => setModeOverride(m);
 
   const [kernelSize, setKernelSize] = useState<number>(5);
   const [sigma, setSigma] = useState<number>(1.5);
-  const [customKernelStr, setCustomKernelStr] = useState<string>(
-    "[[0, -1, 0], [-1, 5, -1], [0, -1, 0]]"
-  );
+  const [deconvK, setDeconvK] = useState<number>(0.01);
+  const [psfType, setPsfType] = useState<"GAUSSIAN">("GAUSSIAN");
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleApply = async () => {
@@ -48,16 +33,7 @@ function ConvolutionBenchContent() {
     setSavedSuccess(false);
 
     try {
-      if (mode === "gaussian") {
-        await executeGaussian(activeArtifact.dataUri, kernelSize, sigma);
-      } else if (mode === "median") {
-        await executeMedian(activeArtifact.dataUri, kernelSize);
-      } else if (mode === "sobel") {
-        await executeSobel(activeArtifact.dataUri);
-      } else if (mode === "custom") {
-        const parsed = JSON.parse(customKernelStr);
-        await executeConvolution(activeArtifact.dataUri, parsed, false);
-      }
+      await executeDeconvolution(activeArtifact.dataUri, psfType, kernelSize, sigma, deconvK);
     } catch (err) {
       console.error(err);
     }
@@ -72,7 +48,7 @@ function ConvolutionBenchContent() {
       height: activeArtifact.height,
       sourceBench: "processing",
       metadata: result.metadata,
-    }, false); // Do not overwrite active workspace image unless user explicitly selects it
+    }, false); // Do not switch active image automatically
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
 
@@ -80,13 +56,6 @@ function ConvolutionBenchContent() {
       router.push("/encryption/drpe");
     }
   };
-
-  const methods: { id: FilterMode; label: string }[] = [
-    { id: "gaussian", label: "Gaussian" },
-    { id: "median", label: "Median" },
-    { id: "sobel", label: "Sobel" },
-    { id: "custom", label: "Custom 2D" },
-  ];
 
   return (
     <div className="space-y-6 max-w-7xl py-2">
@@ -97,7 +66,7 @@ function ConvolutionBenchContent() {
             PROCESSING
           </div>
           <h1 className="text-2xl font-normal text-[#181818] dark:text-[#F2F2F0] mt-0.5">
-            2D Convolution &amp; Spatial Filtering
+            Wiener Deconvolution &amp; Restoration
           </h1>
         </div>
 
@@ -113,7 +82,7 @@ function ConvolutionBenchContent() {
               ) : (
                 <Save className="h-3.5 w-3.5 text-[#6F6F6A]" />
               )}
-              <span>{savedSuccess ? "Saved" : "Save Artifact"}</span>
+              <span>{savedSuccess ? "Saved to Workspace" : "Save Artifact"}</span>
             </Button>
             <Button
               variant="primary"
@@ -161,69 +130,63 @@ function ConvolutionBenchContent() {
 
         {/* Right Column: User Inputs & Controls Panel (4 cols on desktop) */}
         <Card className="lg:col-span-4 p-5 space-y-6">
-          {/* Method Selector */}
+          {/* PSF Type */}
           <div className="space-y-2.5">
             <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-              FILTER METHOD
+              POINT SPREAD FUNCTION (PSF)
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {methods.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => setMode(m.id)}
-                  className={`px-3 py-2 text-xs rounded transition-colors cursor-pointer border text-left ${
-                    mode === m.id
-                      ? "border-[#2563EB] text-[#2563EB] dark:border-[#5B8CFF] dark:text-[#5B8CFF] font-medium bg-[#2563EB]/5"
-                      : "border-[#E8E8E3] dark:border-[#292929] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] bg-transparent"
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
+            <div className="grid grid-cols-1 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPsfType("GAUSSIAN")}
+                className="px-3 py-2 text-xs rounded transition-colors cursor-pointer border text-left border-[#2563EB] text-[#2563EB] dark:border-[#5B8CFF] dark:text-[#5B8CFF] font-medium bg-[#2563EB]/5"
+              >
+                Gaussian PSF Inversion
+              </button>
             </div>
           </div>
 
-          {/* Mode-Specific Parameter Sliders */}
+          {/* Parameters */}
           <div className="space-y-4 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
                 PARAMETERS
               </span>
-              <Badge variant="signal">{mode}</Badge>
+              <Badge variant="signal">Wiener Filter</Badge>
             </div>
 
-            {(mode === "gaussian" || mode === "median") && (
-              <Slider
-                label="Kernel Size"
-                hint="Odd matrix size"
-                valueDisplay={`${kernelSize} × ${kernelSize}`}
-                min={3}
-                max={15}
-                step={2}
-                value={kernelSize}
-                onChange={(e) => setKernelSize(Number(e.target.value))}
-              />
-            )}
+            <Slider
+              label="Kernel Size"
+              hint="Odd PSF matrix dimension"
+              valueDisplay={`${kernelSize} × ${kernelSize}`}
+              min={3}
+              max={15}
+              step={2}
+              value={kernelSize}
+              onChange={(e) => setKernelSize(Number(e.target.value))}
+            />
 
-            {mode === "gaussian" && (
-              <Slider
-                label="Gaussian Spread (σ)"
-                hint="Standard deviation"
-                valueDisplay={sigma.toFixed(1)}
-                min={0.5}
-                max={5.0}
-                step={0.1}
-                value={sigma}
-                onChange={(e) => setSigma(Number(e.target.value))}
-              />
-            )}
+            <Slider
+              label="PSF Spread (σ)"
+              hint="Estimated Gaussian blur spread"
+              valueDisplay={sigma.toFixed(1)}
+              min={0.5}
+              max={5.0}
+              step={0.1}
+              value={sigma}
+              onChange={(e) => setSigma(Number(e.target.value))}
+            />
 
-            {mode === "custom" && (
-              <CustomKernelInput
-                kernelStr={customKernelStr}
-                onChange={setCustomKernelStr}
-              />
-            )}
+            <Slider
+              label="Wiener Regularization (K)"
+              hint="Noise-to-signal power ratio"
+              valueDisplay={deconvK.toFixed(3)}
+              min={0.001}
+              max={0.1}
+              step={0.005}
+              value={deconvK}
+              onChange={(e) => setDeconvK(Number(e.target.value))}
+            />
           </div>
 
           {error && (
@@ -241,7 +204,7 @@ function ConvolutionBenchContent() {
               className="w-full h-9"
             >
               <Play className="h-3.5 w-3.5 fill-current mr-1" />
-              <span>{loading ? "Computing via FastAPI..." : "Apply Filter"}</span>
+              <span>{loading ? "Inverting PSF..." : "Apply Deconvolution"}</span>
             </Button>
 
             {result && (
@@ -263,10 +226,10 @@ function ConvolutionBenchContent() {
   );
 }
 
-export default function ConvolutionBenchPage() {
+export default function DeconvolutionBenchPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-[#6F6F6A]">Loading convolution bench...</div>}>
-      <ConvolutionBenchContent />
+    <Suspense fallback={<div className="p-6 text-sm text-[#6F6F6A]">Loading deconvolution bench...</div>}>
+      <DeconvolutionBenchContent />
     </Suspense>
   );
 }

@@ -34,7 +34,6 @@ const NAV_GROUPS: NavGroup[] = [
     section: "LABORATORY",
     items: [
       { label: "Overview", href: "/", icon: Compass },
-      { label: "Workspace", href: "/workspace", icon: FolderKanban },
     ],
   },
   {
@@ -44,15 +43,11 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Convolution",
         href: "/processing/convolution",
         icon: Sliders,
-        paramKey: "mode",
-        paramVal: "gaussian",
       },
       {
         label: "Deconvolution",
-        href: "/processing/convolution?mode=deconvolution",
+        href: "/processing/deconvolution",
         icon: Sparkles,
-        paramKey: "mode",
-        paramVal: "deconvolution",
       },
     ],
   },
@@ -61,31 +56,23 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         label: "4f DRPE Optics",
-        href: "/encryption/drpe?algo=drpe",
+        href: "/encryption/drpe",
         icon: ShieldCheck,
-        paramKey: "algo",
-        paramVal: "drpe",
       },
       {
         label: "Fourier Phase",
-        href: "/encryption/drpe?algo=fourier",
+        href: "/encryption/fourier",
         icon: Waves,
-        paramKey: "algo",
-        paramVal: "fourier",
       },
       {
         label: "DCT Permutation",
-        href: "/encryption/drpe?algo=dct",
+        href: "/encryption/dct",
         icon: Binary,
-        paramKey: "algo",
-        paramVal: "dct",
       },
       {
         label: "Arnold Cat Map",
-        href: "/encryption/drpe?algo=arnold",
+        href: "/encryption/arnold",
         icon: Shuffle,
-        paramKey: "algo",
-        paramVal: "arnold",
       },
     ],
   },
@@ -122,8 +109,6 @@ function SidebarNav() {
                 const currentParam = searchParams.get(item.paramKey);
                 if (currentParam) {
                   isActive = currentParam === item.paramVal;
-                } else if (item.paramVal === "gaussian" || item.paramVal === "drpe") {
-                  isActive = true;
                 } else {
                   isActive = false;
                 }
@@ -167,7 +152,7 @@ function SidebarNav() {
 
 export function Sidebar() {
   return (
-    <aside className="hidden md:flex flex-col w-[230px] shrink-0 border-r border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] p-4 select-none sticky top-13 h-[calc(100vh-3.25rem)] overflow-y-auto">
+    <aside className="hidden md:flex flex-col w-[230px] shrink-0 border-r border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] p-4 select-none h-full overflow-y-auto overflow-x-hidden">
       <Suspense fallback={<div className="text-xs text-[#999993] p-2">Loading nav...</div>}>
         <SidebarNav />
       </Suspense>

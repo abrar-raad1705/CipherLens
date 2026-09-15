@@ -24,6 +24,7 @@ import { useWorkspace } from "@/hooks/use-image";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils/cn";
 import { ChangeImageModal } from "@/components/upload/ChangeImageModal";
+import { ImageInspectionModal } from "@/components/image/ImageInspectionModal";
 
 export function Header() {
   const pathname = usePathname();
@@ -31,17 +32,17 @@ export function Header() {
   const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
+  const [isInspectModalOpen, setIsInspectModalOpen] = useState(false);
   const [isThumbnailHovered, setIsThumbnailHovered] = useState(false);
 
   const navLinks = [
     { label: "Overview", href: "/", icon: Compass },
-    { label: "Workspace", href: "/workspace", icon: FolderKanban },
     { label: "Convolution", href: "/processing/convolution", icon: Sliders },
-    { label: "Deconvolution", href: "/processing/convolution?mode=deconvolution", icon: Sparkles },
-    { label: "4f DRPE Optics", href: "/encryption/drpe?algo=drpe", icon: ShieldCheck },
-    { label: "Fourier Phase", href: "/encryption/drpe?algo=fourier", icon: Waves },
-    { label: "DCT Permutation", href: "/encryption/drpe?algo=dct", icon: Binary },
-    { label: "Arnold Cat Map", href: "/encryption/drpe?algo=arnold", icon: Shuffle },
+    { label: "Deconvolution", href: "/processing/deconvolution", icon: Sparkles },
+    { label: "4f DRPE Optics", href: "/encryption/drpe", icon: ShieldCheck },
+    { label: "Fourier Phase", href: "/encryption/fourier", icon: Waves },
+    { label: "DCT Permutation", href: "/encryption/dct", icon: Binary },
+    { label: "Arnold Cat Map", href: "/encryption/arnold", icon: Shuffle },
     { label: "Quantitative Analysis", href: "/analysis", icon: BarChart3 },
   ];
 
@@ -82,8 +83,8 @@ export function Header() {
                     className="relative group cursor-pointer"
                     onMouseEnter={() => setIsThumbnailHovered(true)}
                     onMouseLeave={() => setIsThumbnailHovered(false)}
-                    onClick={() => setIsChangeModalOpen(true)}
-                    title="Hover to inspect · Click to change"
+                    onClick={() => setIsInspectModalOpen(true)}
+                    title="Click to inspect image · RAW / Heatmap / Zoom"
                   >
                     <div className="h-5.5 w-5.5 rounded-full overflow-hidden shrink-0 border border-black/10 dark:border-white/10 bg-[#EFEFEA] dark:bg-[#202020] hover:ring-2 hover:ring-[#2563EB]/40 transition-all">
                       <img
@@ -99,7 +100,8 @@ export function Header() {
                     className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
                     onMouseEnter={() => setIsThumbnailHovered(true)}
                     onMouseLeave={() => setIsThumbnailHovered(false)}
-                    onClick={() => setIsChangeModalOpen(true)}
+                    onClick={() => setIsInspectModalOpen(true)}
+                    title="Click to inspect image"
                   >
                     <span
                       className="font-medium text-[#181818] dark:text-[#F2F2F0] max-w-[100px] sm:max-w-[140px] truncate"
@@ -160,59 +162,62 @@ export function Header() {
             <button
               onClick={toggleTheme}
               className="p-1.5 text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
-              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
               aria-label="Toggle theme"
             >
-              {theme === "dark" ? (
-                <Sun className="h-4 w-4 text-[#FFAB5E]" />
-              ) : (
-                <Moon className="h-4 w-4 text-[#4B5563]" />
-              )}
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
           </div>
-      </div>
-
-      {/* Mobile Drawer */}
-      {mobileMenuOpen && (
-        <div className="md:hidden border-t border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] p-4 space-y-1">
-          {navLinks.map((item) => {
-            const Icon = item.icon;
-            const isActive =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname?.startsWith(item.href.split("?")[0]);
-
-            return (
-              <Link
-                key={item.label}
-                href={item.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={cn(
-                  "flex items-center justify-between py-2 px-2.5 text-sm rounded transition-colors",
-                  isActive
-                    ? "text-[#181818] dark:text-[#F2F2F0] font-medium bg-black/[0.04] dark:bg-white/[0.04]"
-                    : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
-                )}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </div>
-                {isActive && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#2563EB] dark:bg-[#5B8CFF]" />
-                )}
-              </Link>
-            );
-          })}
         </div>
-      )}
-    </header>
 
-    {/* Change Image Modal with Artifact Gallery, Upload & Crop/Zoom */}
-    <ChangeImageModal
-      isOpen={isChangeModalOpen}
-      onClose={() => setIsChangeModalOpen(false)}
-    />
-  </>
+        {/* Mobile Nav Drawer */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] px-4 py-3 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+            {navLinks.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={cn(
+                    "flex items-center justify-between py-2 px-2.5 text-sm rounded transition-colors",
+                    isActive
+                      ? "text-[#181818] dark:text-[#F2F2F0] font-medium bg-black/[0.04] dark:bg-white/[0.04]"
+                      : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </div>
+                  {isActive && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#2563EB] dark:bg-[#5B8CFF]" />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </header>
+
+      {/* Change Image Modal with Artifact Gallery, Upload & Crop/Zoom */}
+      <ChangeImageModal
+        isOpen={isChangeModalOpen}
+        onClose={() => setIsChangeModalOpen(false)}
+      />
+
+      {/* Full-Feature Image Inspection Modal */}
+      {activeArtifact && (
+        <ImageInspectionModal
+          isOpen={isInspectModalOpen}
+          onClose={() => setIsInspectModalOpen(false)}
+          imageSrc={activeArtifact.dataUri}
+          name={activeArtifact.name}
+          width={activeArtifact.width}
+          height={activeArtifact.height}
+        />
+      )}
+    </>
   );
 }
