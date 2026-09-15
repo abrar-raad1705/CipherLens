@@ -58,9 +58,9 @@ def run_full_pipeline(input_image_path: str = "cat512.png", output_dir: str = "o
     }
 
     report_lines = [
-        "=" * 80,
-        f"{'Algorithm':<15} | {'Entropy':<8} | {'H-Corr':<8} | {'NPCR (%)':<9} | {'MSE':<8} | {'PSNR (dB)':<10} | {'SSIM':<6}",
-        "-" * 80,
+        "=" * 82,
+        f"{'Algorithm':<15} | {'Entropy':<8} | {'H-Corr':<8} | {'NPCR (%)':<10} | {'MSE':<8} | {'PSNR (dB)':<10} | {'SSIM':<6}",
+        "-" * 82,
     ]
 
     for name, config in algorithms.items():
@@ -72,7 +72,7 @@ def run_full_pipeline(input_image_path: str = "cat512.png", output_dir: str = "o
         ciphertext2 = module.encrypt(blurred_alt, key)
 
         # Ciphertext visual output (normalized if complex/float)
-        c_vis = cv2.normalize(np.real(ciphertext1), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        c_vis = cv2.normalize(np.abs(ciphertext1), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
         cv2.imwrite(os.path.join(output_dir, f"02_{name}_ciphertext.png"), c_vis)
 
         # 4. Decrypt
@@ -84,12 +84,20 @@ def run_full_pipeline(input_image_path: str = "cat512.png", output_dir: str = "o
         restored = apply_deconvolution(decrypted_img)
         cv2.imwrite(os.path.join(output_dir, f"04_{name}_final_restored.png"), restored)
 
-        # 6. Analysis Metrics (per Section 5 contracts)
-        # Ciphertext metrics
-        entropy = calculate_entropy(ciphertext1)
-        corr = calculate_correlation(ciphertext1)
-        npcr = calculate_npcr(ciphertext1, ciphertext2)
-        uaci = calculate_uaci(ciphertext1, ciphertext2)
+        # 6. Normalize and quantize ciphertexts to 8-bit uint8 for statistical security metrics
+        if ciphertext1.dtype == np.uint8:
+            c1_eval = ciphertext1
+            c2_eval = ciphertext2
+        else:
+            c1_eval = cv2.normalize(np.abs(ciphertext1), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+            c2_eval = cv2.normalize(np.abs(ciphertext2), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+        # 7. Analysis Metrics (per Section 5 contracts)
+        # Ciphertext metrics (evaluated on quantized uint8 data)
+        entropy = calculate_entropy(c1_eval)
+        corr = calculate_correlation(c1_eval)
+        npcr = calculate_npcr(c1_eval, c2_eval)
+        uaci = calculate_uaci(c1_eval, c2_eval)
 
         # Decryption / Quality metrics (comparing convolved input vs decrypted)
         mse = calculate_mse(blurred, decrypted_img)
@@ -97,10 +105,10 @@ def run_full_pipeline(input_image_path: str = "cat512.png", output_dir: str = "o
         ssim = calculate_ssim(blurred, decrypted_img)
 
         report_lines.append(
-            f"{name:<15} | {entropy:<8.4f} | {corr['horizontal']:<8.4f} | {npcr:<9.2f} | {mse:<8.2f} | {psnr:<10.2f} | {ssim:<6.4f}"
+            f"{name:<15} | {entropy:<8.4f} | {corr['horizontal']:<8.4f} | {npcr:<10.4f} | {mse:<8.2f} | {psnr:<10.2f} | {ssim:<6.4f}"
         )
 
-    report_lines.append("=" * 80)
+    report_lines.append("=" * 82)
     report_text = "\n".join(report_lines)
 
     # Print to console and save to a text report
