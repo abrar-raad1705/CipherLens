@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { CanvasViewer } from "@/components/image/CanvasViewer";
 import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
 import { OpticalBenchDiagram } from "@/components/encryption/OpticalBenchDiagram";
+import { Correlation3DViewer } from "@/components/analysis/Correlation3DViewer";
 import { useWorkspace } from "@/hooks/use-image";
 import { useEncryption } from "@/hooks/use-encryption";
 
@@ -185,6 +186,15 @@ function DRPEBenchContent() {
                   />
                 </div>
               )}
+
+              {/* 3D Spatial Correlation & Phase Sphere Inspection */}
+              <div className="pt-4 border-t border-[#E8E8E3] dark:border-[#292929]">
+                <Correlation3DViewer
+                  imageSrc={activeArtifact?.dataUri}
+                  ciphertextSrc={drpeEncryptResult.ciphertext}
+                  title="3D Spatial Correlation Disintegration & Phase Sphere"
+                />
+              </div>
             </div>
           ) : (
             <div className="h-[400px] flex flex-col items-center justify-center rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-sm gap-3 p-6 text-center">

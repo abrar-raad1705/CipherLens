@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Binary, ChevronDown, ImageIcon, Layers, Maximize2, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, BarChart3, Binary, ChevronDown, ImageIcon, Layers, Maximize2, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/hooks/use-image";
 import { ChangeImageModal } from "@/components/upload/ChangeImageModal";
@@ -196,31 +196,24 @@ export default function Home() {
   const experiments = [
     {
       step: "01",
-      name: "CONVOLUTION",
+      name: "IMAGE PROCESSING",
       desc: "Spatial 2D image filtering, Gaussian smoothing, median noise filtering, and Sobel edge gradients",
       href: "/processing/convolution",
       icon: Layers,
     },
     {
       step: "02",
-      name: "DECONVOLUTION",
-      desc: "Inverse optical wave restoration and Wiener filter PSF deconvolution",
-      href: "/processing/deconvolution",
-      icon: Sparkles,
-    },
-    {
-      step: "03",
       name: "ENCRYPTION",
       desc: "Double Random Phase Encoding (DRPE), Fourier transform scrambling, DCT, and Arnold chaos",
       href: "/encryption/drpe",
       icon: ShieldCheck,
     },
     {
-      step: "04",
+      step: "03",
       name: "ANALYSIS",
-      desc: "Information entropy, differential attack resistance (NPCR/UACI), and adjacent pixel correlation",
+      desc: "Quantitative entropy, pixel correlation, NPCR, UACI differential analysis, MSE, PSNR, and SSIM metrics",
       href: "/analysis",
-      icon: Binary,
+      icon: BarChart3,
     },
   ];
 

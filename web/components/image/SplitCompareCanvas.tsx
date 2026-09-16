@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/compare-slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Spatial3DTopographyCanvas } from "./Spatial3DTopographyCanvas";
 
 interface SplitCompareCanvasProps {
   beforeSrc: string;
@@ -20,7 +21,7 @@ interface SplitCompareCanvasProps {
   className?: string;
 }
 
-type ViewMode = "split" | "side-by-side" | "difference";
+type ViewMode = "split" | "side-by-side" | "difference" | "3d-topography";
 
 export function SplitCompareCanvas({
   beforeSrc,
@@ -123,22 +124,27 @@ export function SplitCompareCanvas({
             <TabsTrigger value="difference" className="text-xs pb-1">
               Difference
             </TabsTrigger>
+            <TabsTrigger value="3d-topography" className="text-xs pb-1">
+              3D Topography
+            </TabsTrigger>
           </TabsList>
         </Tabs>
 
         {/* Tools */}
         <div className="flex items-center gap-2">
-          <button
-            onMouseDown={() => setIsHoldingOriginal(true)}
-            onMouseUp={() => setIsHoldingOriginal(false)}
-            onTouchStart={() => setIsHoldingOriginal(true)}
-            onTouchEnd={() => setIsHoldingOriginal(false)}
-            className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#E8E8E3] dark:border-[#292929] text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] select-none transition-colors cursor-pointer"
-            title="Press and hold to inspect original"
-          >
-            <Eye className="h-3 w-3" />
-            <span>Hold for Original</span>
-          </button>
+          {viewMode !== "3d-topography" && (
+            <button
+              onMouseDown={() => setIsHoldingOriginal(true)}
+              onMouseUp={() => setIsHoldingOriginal(false)}
+              onTouchStart={() => setIsHoldingOriginal(true)}
+              onTouchEnd={() => setIsHoldingOriginal(false)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#E8E8E3] dark:border-[#292929] text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] select-none transition-colors cursor-pointer"
+              title="Press and hold to inspect original"
+            >
+              <Eye className="h-3 w-3" />
+              <span>Hold for Original</span>
+            </button>
+          )}
 
           <Button
             size="sm"
@@ -154,126 +160,137 @@ export function SplitCompareCanvas({
       </CardHeader>
 
       {/* Main Comparison Viewport */}
-      <CardContent className="p-6 bg-[#FAFAF8] dark:bg-[#101010] flex items-center justify-center min-h-[380px] select-none">
-        {/* MODE 1: SHADCN COMPARISON SLIDER */}
-        {viewMode === "split" && (
-          <div className="relative w-full max-w-[540px] h-[360px] sm:h-[440px] flex items-center justify-center overflow-hidden border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717]">
-            {isHoldingOriginal ? (
-              <div className="relative w-full h-full flex items-center justify-center p-2">
-                {hasBefore ? (
-                  <img
-                    src={beforeSrc}
-                    alt={beforeLabel}
-                    className="max-h-full max-w-full object-contain pointer-events-none"
-                  />
-                ) : (
-                  <div className="font-mono text-xs text-[#999993] dark:text-[#6A6A6A]">
-                    No image available
-                  </div>
-                )}
-                <div className="absolute top-2 left-2 font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] bg-white/90 dark:bg-[#171717]/90 px-2 py-0.5 rounded border border-[#E8E8E3] dark:border-[#292929]">
-                  {beforeLabel} (Peeking)
-                </div>
-              </div>
-            ) : hasBefore || hasAfter ? (
-              <CompareSlider
-                defaultValue={50}
-                className="w-full h-full flex items-center justify-center"
-              >
-                {/* Left side (0 to slider %): Original image */}
-                <CompareSliderAfter label={beforeLabel}>
+      {viewMode === "3d-topography" ? (
+        <div className="p-3 bg-[#FAFAF8] dark:bg-[#101010]">
+          <Spatial3DTopographyCanvas
+            beforeSrc={beforeSrc}
+            afterSrc={afterSrc}
+            beforeLabel={beforeLabel}
+            afterLabel={afterLabel}
+          />
+        </div>
+      ) : (
+        <CardContent className="p-6 bg-[#FAFAF8] dark:bg-[#101010] flex items-center justify-center min-h-[380px] select-none">
+          {/* MODE 1: SHADCN COMPARISON SLIDER */}
+          {viewMode === "split" && (
+            <div className="relative w-full max-w-[540px] h-[360px] sm:h-[440px] flex items-center justify-center overflow-hidden border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717]">
+              {isHoldingOriginal ? (
+                <div className="relative w-full h-full flex items-center justify-center p-2">
                   {hasBefore ? (
                     <img
                       src={beforeSrc}
                       alt={beforeLabel}
-                      className="h-full w-full object-contain pointer-events-none p-2"
+                      className="max-h-full max-w-full object-contain pointer-events-none"
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center font-mono text-xs text-[#999993]">
-                      No original image
+                    <div className="font-mono text-xs text-[#999993] dark:text-[#6A6A6A]">
+                      No image available
                     </div>
                   )}
-                </CompareSliderAfter>
+                  <div className="absolute top-2 left-2 font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] bg-white/90 dark:bg-[#171717]/90 px-2 py-0.5 rounded border border-[#E8E8E3] dark:border-[#292929]">
+                    {beforeLabel} (Peeking)
+                  </div>
+                </div>
+              ) : hasBefore || hasAfter ? (
+                <CompareSlider
+                  defaultValue={50}
+                  className="w-full h-full flex items-center justify-center"
+                >
+                  {/* Left side (0 to slider %): Original image */}
+                  <CompareSliderAfter label={beforeLabel}>
+                    {hasBefore ? (
+                      <img
+                        src={beforeSrc}
+                        alt={beforeLabel}
+                        className="h-full w-full object-contain pointer-events-none p-2"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center font-mono text-xs text-[#999993]">
+                        No original image
+                      </div>
+                    )}
+                  </CompareSliderAfter>
 
-                {/* Right side (slider % to 100%): Result / Modified image */}
-                <CompareSliderBefore label={afterLabel}>
+                  {/* Right side (slider % to 100%): Result / Modified image */}
+                  <CompareSliderBefore label={afterLabel}>
+                    {hasAfter ? (
+                      <img
+                        src={afterSrc}
+                        alt={afterLabel}
+                        className="h-full w-full object-contain pointer-events-none p-2"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center font-mono text-xs text-[#999993]">
+                        No result image
+                      </div>
+                    )}
+                  </CompareSliderBefore>
+
+                  <CompareSliderHandle />
+                </CompareSlider>
+              ) : (
+                <div className="font-mono text-xs text-[#999993] dark:text-[#6A6A6A]">
+                  No images to compare
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* MODE 2: SIDE-BY-SIDE */}
+          {viewMode === "side-by-side" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-4xl">
+              <div className="flex flex-col items-center">
+                <div className="w-full flex items-center justify-between pb-1.5 font-mono text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
+                  <span>ORIGINAL</span>
+                  <span>{beforeLabel}</span>
+                </div>
+                <div className="w-full h-[320px] flex items-center justify-center border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717] p-2">
+                  {hasBefore ? (
+                    <img
+                      src={beforeSrc}
+                      alt={beforeLabel}
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  ) : (
+                    <span className="font-mono text-xs text-[#999993]">No image</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center">
+                <div className="w-full flex items-center justify-between pb-1.5 font-mono text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
+                  <span>RESULT</span>
+                  <span>{afterLabel}</span>
+                </div>
+                <div className="w-full h-[320px] flex items-center justify-center border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717] p-2">
                   {hasAfter ? (
                     <img
                       src={afterSrc}
                       alt={afterLabel}
-                      className="h-full w-full object-contain pointer-events-none p-2"
+                      className="max-h-full max-w-full object-contain"
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center font-mono text-xs text-[#999993]">
-                      No result image
-                    </div>
+                    <span className="font-mono text-xs text-[#999993]">No image</span>
                   )}
-                </CompareSliderBefore>
-
-                <CompareSliderHandle />
-              </CompareSlider>
-            ) : (
-              <div className="font-mono text-xs text-[#999993] dark:text-[#6A6A6A]">
-                No images to compare
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* MODE 2: SIDE-BY-SIDE */}
-        {viewMode === "side-by-side" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-4xl">
-            <div className="flex flex-col items-center">
-              <div className="w-full flex items-center justify-between pb-1.5 font-mono text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
-                <span>ORIGINAL</span>
-                <span>{beforeLabel}</span>
-              </div>
-              <div className="w-full h-[320px] flex items-center justify-center border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717] p-2">
-                {hasBefore ? (
-                  <img
-                    src={beforeSrc}
-                    alt={beforeLabel}
-                    className="max-h-full max-w-full object-contain"
-                  />
-                ) : (
-                  <span className="font-mono text-xs text-[#999993]">No image</span>
-                )}
+                </div>
               </div>
             </div>
+          )}
 
-            <div className="flex flex-col items-center">
-              <div className="w-full flex items-center justify-between pb-1.5 font-mono text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
-                <span>RESULT</span>
-                <span>{afterLabel}</span>
-              </div>
-              <div className="w-full h-[320px] flex items-center justify-center border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717] p-2">
-                {hasAfter ? (
-                  <img
-                    src={afterSrc}
-                    alt={afterLabel}
-                    className="max-h-full max-w-full object-contain"
-                  />
-                ) : (
-                  <span className="font-mono text-xs text-[#999993]">No image</span>
-                )}
+          {/* MODE 3: DIFFERENCE HEATMAP */}
+          {viewMode === "difference" && (
+            <div className="flex flex-col items-center gap-3">
+              <canvas
+                ref={diffCanvasRef}
+                className="max-h-[420px] max-w-full object-contain border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717]"
+              />
+              <div className="font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B]">
+                Difference heatmap: Dark = Unchanged · Bright = Modified
               </div>
             </div>
-          </div>
-        )}
-
-        {/* MODE 3: DIFFERENCE HEATMAP */}
-        {viewMode === "difference" && (
-          <div className="flex flex-col items-center gap-3">
-            <canvas
-              ref={diffCanvasRef}
-              className="max-h-[420px] max-w-full object-contain border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717]"
-            />
-            <div className="font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B]">
-              Difference heatmap: Dark = Unchanged · Bright = Modified
-            </div>
-          </div>
-        )}
-      </CardContent>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 }

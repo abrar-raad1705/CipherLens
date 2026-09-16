@@ -40,14 +40,9 @@ const NAV_GROUPS: NavGroup[] = [
     section: "PROCESSING",
     items: [
       {
-        label: "Convolution",
+        label: "Image Processing",
         href: "/processing/convolution",
         icon: Sliders,
-      },
-      {
-        label: "Deconvolution",
-        href: "/processing/deconvolution",
-        icon: Sparkles,
       },
     ],
   },

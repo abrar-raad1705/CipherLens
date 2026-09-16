@@ -37,8 +37,7 @@ export function Header() {
 
   const navLinks = [
     { label: "Overview", href: "/", icon: Compass },
-    { label: "Convolution", href: "/processing/convolution", icon: Sliders },
-    { label: "Deconvolution", href: "/processing/deconvolution", icon: Sparkles },
+    { label: "Image Processing", href: "/processing/convolution", icon: Sliders },
     { label: "4f DRPE Optics", href: "/encryption/drpe", icon: ShieldCheck },
     { label: "Fourier Phase", href: "/encryption/fourier", icon: Waves },
     { label: "DCT Permutation", href: "/encryption/dct", icon: Binary },

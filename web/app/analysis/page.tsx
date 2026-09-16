@@ -10,6 +10,7 @@ import { useEncryption } from "@/hooks/use-encryption";
 import { CryptanalysisSummary } from "@/components/analysis/CryptanalysisSummary";
 import { HistogramChart } from "@/components/analysis/HistogramChart";
 import { CorrelationScatterChart } from "@/components/analysis/CorrelationScatterChart";
+import { Correlation3DViewer } from "@/components/analysis/Correlation3DViewer";
 import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
 
 export default function AnalysisBenchPage() {
@@ -249,6 +250,15 @@ export default function AnalysisBenchPage() {
                   }
                   imageLabel="Ciphertext"
                   coefficient={fullAnalysis.correlation.cipher[scatterDir]}
+                />
+              </div>
+
+              {/* 3D Correlation & Phase Sphere Visualizer */}
+              <div className="pt-3">
+                <Correlation3DViewer
+                  imageSrc={plainArt?.dataUri}
+                  ciphertextSrc={cipherArt?.dataUri}
+                  title="3D Spatial Correlation Disintegration & Magnitude Sphere"
                 />
               </div>
             </div>
