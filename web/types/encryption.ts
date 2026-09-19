@@ -4,6 +4,7 @@ export interface DRPEStages {
   fourier_spectrum: string;
   r2_phase: string;
   ciphertext: string;
+  [key: string]: string;
 }
 
 export interface DRPEEncryptResponse {
@@ -35,6 +36,7 @@ export interface TransformResponse {
   action: string;
   output_image: string;
   spectrum?: string;
+  stages?: Record<string, string>;
   metadata: Record<string, unknown>;
   latency_ms: number;
 }

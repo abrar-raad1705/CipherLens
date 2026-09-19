@@ -1,9 +1,11 @@
+import React from "react";
 import type { Metadata } from "next";
 import { DM_Serif_Display, Caveat, Geist } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Footer } from "@/components/layout/Footer";
+import { NavigationProgress } from "@/components/layout/NavigationProgress";
 import { WorkspaceProvider } from "@/hooks/use-image";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
@@ -61,6 +63,9 @@ export default function RootLayout({
       <body className={`${dmSerifDisplay.variable} h-screen flex flex-col bg-[#FAFAF8] text-[#181818] dark:bg-[#101010] dark:text-[#F2F2F0] antialiased selection:bg-[#2563EB]/15 dark:selection:bg-[#5B8CFF]/20 selection:text-inherit text-sm overflow-hidden`}>
         <ThemeProvider>
           <WorkspaceProvider>
+            <React.Suspense fallback={null}>
+              <NavigationProgress />
+            </React.Suspense>
             <Header />
             <div className="flex flex-1 w-full min-h-0 overflow-hidden">
               <Sidebar />

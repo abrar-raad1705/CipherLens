@@ -215,7 +215,7 @@ function ConvolutionBenchContent() {
     setTimeout(() => setSavedSuccess(false), 2000);
 
     if (andNavigateToEncryption) {
-      router.push("/encryption/drpe");
+      router.push("/encryption");
     }
   };
 

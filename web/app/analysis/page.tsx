@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, Suspense, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { Play, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,7 +14,8 @@ import { CorrelationScatterChart } from "@/components/analysis/CorrelationScatte
 import { Correlation3DViewer } from "@/components/analysis/Correlation3DViewer";
 import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
 
-export default function AnalysisBenchPage() {
+function AnalysisBenchContent() {
+  const searchParams = useSearchParams();
   const { artifacts, activeArtifact, addArtifact } = useWorkspace();
   const { loading, error, fullAnalysis, executeFullAnalysis } = useAnalysis();
   const { executeDRPEEncrypt } = useEncryption();
@@ -22,6 +24,15 @@ export default function AnalysisBenchPage() {
   const [selectedCipherId, setSelectedCipherId] = useState<string>("");
   const [scatterDir, setScatterDir] = useState<"horizontal" | "vertical" | "diagonal">("horizontal");
   const [autoRunning, setAutoRunning] = useState(false);
+  const autoExecutedRef = useRef(false);
+
+  // Sync from query parameters if present
+  useEffect(() => {
+    const pParam = searchParams.get("plainId");
+    const cParam = searchParams.get("cipherId");
+    if (pParam) setSelectedPlainId(pParam);
+    if (cParam) setSelectedCipherId(cParam);
+  }, [searchParams]);
 
   // Derive sensible default targets if user hasn't explicitly selected one
   const cipherCand = artifacts.find(
@@ -35,23 +46,49 @@ export default function AnalysisBenchPage() {
   );
 
   const plainId =
-    selectedPlainId || plainCand?.id || (artifacts.length > 0 ? artifacts[artifacts.length - 1].id : "");
+    selectedPlainId ||
+    searchParams.get("plainId") ||
+    plainCand?.id ||
+    (artifacts.length > 0 ? artifacts[artifacts.length - 1].id : "");
+
   const cipherId =
-    selectedCipherId || cipherCand?.id || (artifacts.length > 0 ? artifacts[0].id : "");
+    selectedCipherId ||
+    searchParams.get("cipherId") ||
+    cipherCand?.id ||
+    (artifacts.length > 0 ? artifacts[0].id : "");
 
   const plainArt = artifacts.find((a) => a.id === plainId) || activeArtifact;
   const cipherArt = artifacts.find((a) => a.id === cipherId) || activeArtifact;
 
+  // Auto-run analysis when navigated with auto=true
+  useEffect(() => {
+    const isAuto = searchParams.get("auto") === "true";
+    if (isAuto && plainArt?.dataUri && cipherArt?.dataUri && !autoExecutedRef.current && !loading) {
+      autoExecutedRef.current = true;
+      const algoParam = searchParams.get("algo") || "DRPE";
+      executeFullAnalysis(
+        plainArt.dataUri,
+        cipherArt.dataUri,
+        undefined,
+        0,
+        0,
+        algoParam.toUpperCase(),
+        { seed1: 1234, seed2: 5678 }
+      );
+    }
+  }, [searchParams, plainArt?.dataUri, cipherArt?.dataUri, executeFullAnalysis, loading]);
+
   const handleRunAnalysis = async () => {
     if (!plainArt || !cipherArt) return;
     try {
+      const algoParam = searchParams.get("algo") || "DRPE";
       await executeFullAnalysis(
         plainArt.dataUri,
         cipherArt.dataUri,
         undefined,
         0,
         0,
-        "DRPE",
+        algoParam.toUpperCase(),
         { seed1: 1234, seed2: 5678 }
       );
     } catch (e) {
@@ -283,3 +320,12 @@ export default function AnalysisBenchPage() {
     </div>
   );
 }
+
+export default function AnalysisBenchPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-[#6F6F6A]">Loading cryptanalysis bench...</div>}>
+      <AnalysisBenchContent />
+    </Suspense>
+  );
+}
+

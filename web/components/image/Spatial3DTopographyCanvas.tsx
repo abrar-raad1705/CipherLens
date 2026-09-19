@@ -3,10 +3,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { Box, Layers, Maximize2, RefreshCw, Sun, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Box, Check, ChevronDown, CircleDot, Layers, RotateCcw } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/hooks/use-theme";
 
 interface Spatial3DTopographyCanvasProps {
@@ -15,6 +13,7 @@ interface Spatial3DTopographyCanvasProps {
   beforeLabel?: string;
   afterLabel?: string;
   className?: string;
+  isFullscreen?: boolean;
 }
 
 type DisplayTarget = "result" | "original" | "split-compare";
@@ -27,6 +26,7 @@ export function Spatial3DTopographyCanvas({
   beforeLabel = "Original",
   afterLabel = "Result",
   className = "",
+  isFullscreen = false,
 }: Spatial3DTopographyCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -38,9 +38,55 @@ export function Spatial3DTopographyCanvas({
   );
   const [renderStyle, setRenderStyle] = useState<RenderStyle>("surface");
   const [colormap, setColormap] = useState<ColormapPreset>("emerald");
+  const [isColormapOpen, setIsColormapOpen] = useState(false);
+  const colormapDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const colormapOptions: {
+    value: ColormapPreset;
+    label: string;
+    gradient: string;
+  }[] = [
+    {
+      value: "emerald",
+      label: "Signal Emerald",
+      gradient: "from-[#064e3b] via-[#10b981] to-[#6ee7b7]",
+    },
+    {
+      value: "plasma",
+      label: "Plasma Heat",
+      gradient: "from-[#0d0887] via-[#cc4778] to-[#f0f921]",
+    },
+    {
+      value: "viridis",
+      label: "Viridis Spectrum",
+      gradient: "from-[#440154] via-[#21918c] to-[#fde725]",
+    },
+    {
+      value: "grayscale",
+      label: "Monochrome",
+      gradient: "from-[#171717] via-[#737373] to-[#f5f5f5]",
+    },
+  ];
+
+  // Close colormap dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        colormapDropdownRef.current &&
+        !colormapDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsColormapOpen(false);
+      }
+    };
+    if (isColormapOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [isColormapOpen]);
   const [elevationScale, setElevationScale] = useState<number>(40);
   const [gridResolution] = useState<number>(128); // 128x128 grid density
-  const [autoRotate, setAutoRotate] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
   // References for Three.js instance objects
@@ -123,7 +169,9 @@ export function Spatial3DTopographyCanvas({
     style: RenderStyle,
     xOffset: number = 0
   ): THREE.Mesh | THREE.Points => {
-    const geometry = new THREE.PlaneGeometry(100, 100, res - 1, res - 1);
+    // 20% enlarged from 100 to 120 for commanding hero presence
+    const planeSize = 120;
+    const geometry = new THREE.PlaneGeometry(planeSize, planeSize, res - 1, res - 1);
     geometry.rotateX(-Math.PI / 2); // Orient plane horizontally on XZ plane
 
     const posAttr = geometry.attributes.position;
@@ -145,7 +193,7 @@ export function Spatial3DTopographyCanvas({
 
     if (style === "points") {
       const pMat = new THREE.PointsMaterial({
-        size: 1.5,
+        size: 1.6,
         vertexColors: true,
         sizeAttenuation: true,
       });
@@ -158,8 +206,8 @@ export function Spatial3DTopographyCanvas({
       vertexColors: true,
       wireframe: style === "wireframe",
       side: THREE.DoubleSide,
-      roughness: 0.4,
-      metalness: 0.1,
+      roughness: 0.38,
+      metalness: 0.08,
     };
 
     const material = new THREE.MeshStandardMaterial(matProps);
@@ -174,16 +222,16 @@ export function Spatial3DTopographyCanvas({
     if (!mountNode) return;
 
     const width = mountNode.clientWidth || 700;
-    const height = mountNode.clientHeight || 460;
+    const height = mountNode.clientHeight || 500;
 
     // Scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(isDark ? 0x121212 : 0xfcfcfb);
+    scene.background = new THREE.Color(isDark ? 0x141414 : 0xfafaf8);
     sceneRef.current = scene;
 
-    // Camera
-    const camera = new THREE.PerspectiveCamera(45, width / height, 1, 1000);
-    camera.position.set(0, 90, 140);
+    // Camera: Lower angle & controlled perspective (FOV 40°) for clear scientific surface inspection
+    const camera = new THREE.PerspectiveCamera(40, width / height, 1, 1000);
+    camera.position.set(0, 56, 120);
     cameraRef.current = camera;
 
     // Renderer
@@ -195,34 +243,40 @@ export function Spatial3DTopographyCanvas({
 
     mountNode.appendChild(renderer.domElement);
 
-    // OrbitControls
+    // OrbitControls: Vertically centered on terrain
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent camera going under grid
-    controls.target.set(0, 15, 0);
+    controls.maxPolarAngle = Math.PI / 2 - 0.04; // Prevent camera sinking under grid
+    controls.minDistance = 25;
+    controls.maxDistance = 350;
+    controls.target.set(0, 10, 0);
     controlsRef.current = controls;
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 0.7 : 0.9);
+    // Lighting: Precision scientific directional + subtle fill
+    const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 0.75 : 0.9);
     scene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.2);
-    dirLight1.position.set(80, 120, 80);
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.25);
+    dirLight1.position.set(70, 110, 70);
     scene.add(dirLight1);
 
-    const dirLight2 = new THREE.DirectionalLight(0x2563eb, 0.6);
-    dirLight2.position.set(-80, -40, -80);
+    const dirLight2 = new THREE.DirectionalLight(0x2563eb, 0.45);
+    dirLight2.position.set(-70, -30, -70);
     scene.add(dirLight2);
 
-    // Ground Helper Grid
+    // Ground Helper Grid: Clean, visible scientific coordinate reference lines
     const gridHelper = new THREE.GridHelper(
-      220,
-      22,
-      isDark ? 0x333333 : 0xdddddd,
-      isDark ? 0x222222 : 0xeeeeee
+      260,
+      26,
+      isDark ? 0x5a5a5a : 0x787870,
+      isDark ? 0x383838 : 0xc0c0b8
     );
     gridHelper.position.y = -0.5;
+    if (gridHelper.material instanceof THREE.LineBasicMaterial) {
+      gridHelper.material.transparent = true;
+      gridHelper.material.opacity = isDark ? 0.75 : 0.75;
+    }
     scene.add(gridHelper);
 
     // Render Animation Loop
@@ -232,12 +286,6 @@ export function Spatial3DTopographyCanvas({
       animFrameIdRef.current = requestAnimationFrame(animate);
 
       if (controlsRef.current) {
-        if (autoRotate) {
-          controlsRef.current.autoRotate = true;
-          controlsRef.current.autoRotateSpeed = 1.5;
-        } else {
-          controlsRef.current.autoRotate = false;
-        }
         controlsRef.current.update();
       }
 
@@ -247,21 +295,23 @@ export function Spatial3DTopographyCanvas({
     };
     animate();
 
-    // Window Resize Handler
-    const handleResize = () => {
+    // ResizeObserver on mountNode to adapt smoothly to container resizing
+    const resizeObserver = new ResizeObserver(() => {
       if (!mountNode || !rendererRef.current || !cameraRef.current) return;
       const newW = mountNode.clientWidth;
       const newH = mountNode.clientHeight;
-      cameraRef.current.aspect = newW / newH;
-      cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(newW, newH);
-    };
-    window.addEventListener("resize", handleResize);
+      if (newW > 0 && newH > 0) {
+        cameraRef.current.aspect = newW / newH;
+        cameraRef.current.updateProjectionMatrix();
+        rendererRef.current.setSize(newW, newH);
+      }
+    });
+    resizeObserver.observe(mountNode);
 
     return () => {
       isActive = false;
       if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
-      window.removeEventListener("resize", handleResize);
+      resizeObserver.disconnect();
       if (mountNode && renderer.domElement) {
         mountNode.removeChild(renderer.domElement);
       }
@@ -269,7 +319,11 @@ export function Spatial3DTopographyCanvas({
     };
   }, [isDark]);
 
-  // Load Image Data & Rebuild 3D Meshes
+  // Keep references to current sampled intensities for fast height scaling without re-sampling/rebuilding
+  const intensitiesBeforeRef = useRef<Float32Array | null>(null);
+  const intensitiesAfterRef = useRef<Float32Array | null>(null);
+
+  // Load Image Data & Build 3D Meshes (Only when source, target, colormap, style, or resolution changes)
   useEffect(() => {
     let isCancelled = false;
     setLoading(true);
@@ -304,13 +358,16 @@ export function Spatial3DTopographyCanvas({
         ]);
         if (isCancelled) return;
 
+        intensitiesBeforeRef.current = intBefore;
+        intensitiesAfterRef.current = intAfter;
+
         const meshB = createTopographyMesh(
           intBefore,
           gridResolution,
           elevationScale,
           colormap,
           renderStyle,
-          -60
+          -70
         );
         const meshA = createTopographyMesh(
           intAfter,
@@ -318,17 +375,25 @@ export function Spatial3DTopographyCanvas({
           elevationScale,
           colormap,
           renderStyle,
-          60
+          70
         );
 
         meshBeforeRef.current = meshB;
         meshAfterRef.current = meshA;
         scene.add(meshB);
         scene.add(meshA);
-        if (controlsRef.current) controlsRef.current.target.set(0, 15, 0);
+
+        if (controlsRef.current && cameraRef.current) {
+          controlsRef.current.target.set(0, 10, 0);
+          cameraRef.current.position.set(0, 68, 160);
+          controlsRef.current.update();
+        }
       } else if (activeSrc) {
         const intensities = await sampleImageIntensity(activeSrc, gridResolution);
         if (isCancelled) return;
+
+        intensitiesBeforeRef.current = null;
+        intensitiesAfterRef.current = intensities;
 
         const mesh = createTopographyMesh(
           intensities,
@@ -341,7 +406,12 @@ export function Spatial3DTopographyCanvas({
 
         meshAfterRef.current = mesh;
         scene.add(mesh);
-        if (controlsRef.current) controlsRef.current.target.set(0, 15, 0);
+
+        if (controlsRef.current && cameraRef.current) {
+          controlsRef.current.target.set(0, 10, 0);
+          cameraRef.current.position.set(0, 56, 120);
+          controlsRef.current.update();
+        }
       }
 
       setLoading(false);
@@ -358,171 +428,247 @@ export function Spatial3DTopographyCanvas({
     displayTarget,
     renderStyle,
     colormap,
-    elevationScale,
     gridResolution,
   ]);
 
+  // Fast In-Place Elevation Scale Update (Zero stutter / lag when dragging height slider)
+  useEffect(() => {
+    const updateMeshHeight = (
+      mesh: THREE.Mesh | THREE.Points | null,
+      intensities: Float32Array | null
+    ) => {
+      if (!mesh || !intensities) return;
+      const posAttr = mesh.geometry.attributes.position;
+      if (!posAttr) return;
+
+      for (let i = 0; i < posAttr.count; i++) {
+        const normZ = intensities[i] || 0;
+        posAttr.setY(i, normZ * elevationScale);
+      }
+      posAttr.needsUpdate = true;
+      mesh.geometry.computeVertexNormals();
+    };
+
+    if (displayTarget === "split-compare") {
+      updateMeshHeight(meshBeforeRef.current, intensitiesBeforeRef.current);
+      updateMeshHeight(meshAfterRef.current, intensitiesAfterRef.current);
+    } else if (displayTarget === "original") {
+      updateMeshHeight(meshBeforeRef.current, intensitiesBeforeRef.current);
+    } else {
+      updateMeshHeight(meshAfterRef.current, intensitiesAfterRef.current);
+    }
+  }, [elevationScale, displayTarget]);
+
   const handleResetCamera = () => {
     if (!cameraRef.current || !controlsRef.current) return;
-    cameraRef.current.position.set(0, 90, 140);
-    controlsRef.current.target.set(0, 15, 0);
+    if (displayTarget === "split-compare") {
+      cameraRef.current.position.set(0, 68, 160);
+      controlsRef.current.target.set(0, 10, 0);
+    } else {
+      cameraRef.current.position.set(0, 56, 120);
+      controlsRef.current.target.set(0, 10, 0);
+    }
     controlsRef.current.update();
   };
 
   return (
     <div
       ref={containerRef}
-      className={`relative flex flex-col w-full rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#121212] overflow-hidden ${className}`}
+      className={`relative flex flex-col w-full flex-1 overflow-hidden ${className}`}
     >
-      {/* HUD Header Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#171717]">
-        {/* Left Side: Display Target Selector */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-[#E8E8E3]/50 dark:bg-[#222222] p-0.5 rounded border border-[#E8E8E3] dark:border-[#292929]">
-            {afterSrc && (
-              <button
-                onClick={() => setDisplayTarget("result")}
-                className={`px-2.5 py-1 text-xs font-mono rounded transition-all cursor-pointer ${
-                  displayTarget === "result"
-                    ? "bg-white dark:bg-[#171717] text-[#2563EB] dark:text-[#5B8CFF] font-medium shadow-xs"
-                    : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
-                }`}
-              >
-                {afterLabel} 3D
-              </button>
-            )}
-            {beforeSrc && (
-              <button
-                onClick={() => setDisplayTarget("original")}
-                className={`px-2.5 py-1 text-xs font-mono rounded transition-all cursor-pointer ${
-                  displayTarget === "original"
-                    ? "bg-white dark:bg-[#171717] text-[#2563EB] dark:text-[#5B8CFF] font-medium shadow-xs"
-                    : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
-                }`}
-              >
-                {beforeLabel} 3D
-              </button>
-            )}
-            {beforeSrc && afterSrc && (
-              <button
-                onClick={() => setDisplayTarget("split-compare")}
-                className={`px-2.5 py-1 text-xs font-mono rounded transition-all cursor-pointer ${
-                  displayTarget === "split-compare"
-                    ? "bg-white dark:bg-[#171717] text-[#2563EB] dark:text-[#5B8CFF] font-medium shadow-xs"
-                    : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
-                }`}
-              >
-                Side-by-Side 3D
-              </button>
-            )}
-          </div>
-
-          {loading && (
-            <Badge variant="outline" className="animate-pulse text-[11px] font-mono">
-              Rendering WebGL...
-            </Badge>
+      {/* 2nd Row: Precision Topography Controls */}
+      <div className="relative z-30 flex flex-wrap items-center justify-between gap-3 px-3.5 py-1.5 border-b border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8]/95 dark:bg-[#141414]/95 backdrop-blur-sm shrink-0">
+        {/* Left Side: Target Segmented Control */}
+        <div className="inline-flex items-center p-0.5 rounded-md bg-[#F0F0EC] dark:bg-[#181818] border border-[#E2E2DC] dark:border-[#262626]">
+          {afterSrc && (
+            <button
+              type="button"
+              onClick={() => setDisplayTarget("result")}
+              className={`px-2.5 py-1 text-[11px] font-mono tracking-tight rounded-[4px] transition-all cursor-pointer ${
+                displayTarget === "result"
+                  ? "bg-white dark:bg-[#262626] text-[#111111] dark:text-[#EDEDED] font-medium shadow-2xs"
+                  : "text-[#73736E] dark:text-[#8E8E88] hover:text-[#181818] dark:hover:text-[#EDEDED]"
+              }`}
+            >
+              {afterLabel} 3D
+            </button>
+          )}
+          {beforeSrc && (
+            <button
+              type="button"
+              onClick={() => setDisplayTarget("original")}
+              className={`px-2.5 py-1 text-[11px] font-mono tracking-tight rounded-[4px] transition-all cursor-pointer ${
+                displayTarget === "original"
+                  ? "bg-white dark:bg-[#262626] text-[#111111] dark:text-[#EDEDED] font-medium shadow-2xs"
+                  : "text-[#73736E] dark:text-[#8E8E88] hover:text-[#181818] dark:hover:text-[#EDEDED]"
+              }`}
+            >
+              {beforeLabel} 3D
+            </button>
+          )}
+          {beforeSrc && afterSrc && (
+            <button
+              type="button"
+              onClick={() => setDisplayTarget("split-compare")}
+              className={`px-2.5 py-1 text-[11px] font-mono tracking-tight rounded-[4px] transition-all cursor-pointer ${
+                displayTarget === "split-compare"
+                  ? "bg-white dark:bg-[#262626] text-[#111111] dark:text-[#EDEDED] font-medium shadow-2xs"
+                  : "text-[#73736E] dark:text-[#8E8E88] hover:text-[#181818] dark:hover:text-[#EDEDED]"
+              }`}
+            >
+              Side-by-Side 3D
+            </button>
           )}
         </div>
 
-        {/* Right Side: Style & View Controls */}
+        {/* Right Side: Grouped Visualization Controls */}
         <div className="flex items-center gap-2">
           {/* Render Style Toggle */}
-          <div className="flex items-center gap-1 bg-[#E8E8E3]/50 dark:bg-[#222222] p-0.5 rounded border border-[#E8E8E3] dark:border-[#292929]">
+          <div className="inline-flex items-center p-0.5 rounded-md bg-[#F0F0EC] dark:bg-[#181818] border border-[#E2E2DC] dark:border-[#262626]">
             <button
+              type="button"
               onClick={() => setRenderStyle("surface")}
-              className={`p-1 rounded text-xs transition-colors cursor-pointer ${
+              className={`p-1 rounded-[4px] text-xs transition-all cursor-pointer ${
                 renderStyle === "surface"
-                  ? "bg-white dark:bg-[#171717] text-[#181818] dark:text-[#F2F2F0]"
-                  : "text-[#6F6F6A] dark:text-[#A0A09B]"
+                  ? "bg-white dark:bg-[#262626] text-[#111111] dark:text-[#EDEDED] shadow-2xs"
+                  : "text-[#73736E] dark:text-[#8E8E88] hover:text-[#111111] dark:hover:text-[#EDEDED]"
               }`}
               title="Solid Surface Mesh"
             >
               <Layers className="h-3.5 w-3.5" />
             </button>
             <button
+              type="button"
               onClick={() => setRenderStyle("wireframe")}
-              className={`p-1 rounded text-xs transition-colors cursor-pointer ${
+              className={`p-1 rounded-[4px] text-xs transition-all cursor-pointer ${
                 renderStyle === "wireframe"
-                  ? "bg-white dark:bg-[#171717] text-[#181818] dark:text-[#F2F2F0]"
-                  : "text-[#6F6F6A] dark:text-[#A0A09B]"
+                  ? "bg-white dark:bg-[#262626] text-[#111111] dark:text-[#EDEDED] shadow-2xs"
+                  : "text-[#73736E] dark:text-[#8E8E88] hover:text-[#111111] dark:hover:text-[#EDEDED]"
               }`}
               title="Wireframe Mesh"
             >
               <Box className="h-3.5 w-3.5" />
             </button>
             <button
+              type="button"
               onClick={() => setRenderStyle("points")}
-              className={`p-1 rounded text-xs transition-colors cursor-pointer ${
+              className={`p-1 rounded-[4px] text-xs transition-all cursor-pointer ${
                 renderStyle === "points"
-                  ? "bg-white dark:bg-[#171717] text-[#181818] dark:text-[#F2F2F0]"
-                  : "text-[#6F6F6A] dark:text-[#A0A09B]"
+                  ? "bg-white dark:bg-[#262626] text-[#111111] dark:text-[#EDEDED] shadow-2xs"
+                  : "text-[#73736E] dark:text-[#8E8E88] hover:text-[#111111] dark:hover:text-[#EDEDED]"
               }`}
-              title="3D Point Cloud"
+              title="Point Cloud"
             >
-              <Sun className="h-3.5 w-3.5" />
+              <CircleDot className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {/* Colormap Selector */}
-          <select
-            value={colormap}
-            onChange={(e) => setColormap(e.target.value as ColormapPreset)}
-            className="h-7 px-2 text-xs font-mono rounded border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-[#181818] dark:text-[#F2F2F0] cursor-pointer"
-          >
-            <option value="emerald">Signal Emerald</option>
-            <option value="plasma">Plasma Heat</option>
-            <option value="viridis">Viridis Spectrum</option>
-            <option value="grayscale">Monochrome</option>
-          </select>
+          <div className="h-4 w-px bg-[#E2E2DC] dark:bg-[#262626]" />
 
-          {/* Auto Rotate Button */}
-          <Button
-            size="sm"
-            variant={autoRotate ? "primary" : "outline"}
-            className="h-7 px-2 text-xs"
-            onClick={() => setAutoRotate(!autoRotate)}
-            title="Toggle Auto Rotation"
-          >
-            <Zap className="h-3 w-3 mr-1" />
-            <span>{autoRotate ? "Orbiting" : "Orbit"}</span>
-          </Button>
+          {/* Colormap Selector Dropdown with Color Swatch Preview */}
+          <div ref={colormapDropdownRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setIsColormapOpen((prev) => !prev)}
+              className="h-7 text-xs font-mono bg-white dark:bg-[#181818] border border-[#E2E2DC] dark:border-[#262626] text-[#181818] dark:text-[#F2F2F0] rounded-md px-2 flex items-center justify-between gap-2 min-w-[152px] shadow-2xs hover:bg-[#F5F5F2] dark:hover:bg-[#222222] transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className={`w-3 h-3 rounded-[3px] shrink-0 border border-black/15 dark:border-white/20 bg-gradient-to-r ${
+                    colormapOptions.find((opt) => opt.value === colormap)?.gradient || ""
+                  }`}
+                />
+                <span className="truncate text-[11px] whitespace-nowrap">
+                  {colormapOptions.find((opt) => opt.value === colormap)?.label || "Colormap"}
+                </span>
+              </div>
+              <ChevronDown
+                className={`h-3 w-3 text-[#73736E] dark:text-[#8E8E88] transition-transform duration-150 shrink-0 ${
+                  isColormapOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
 
-          {/* Reset Camera */}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 w-7 p-0"
+            {isColormapOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 z-[100] w-max min-w-[172px] rounded-md border border-[#E2E2DC] dark:border-[#262626] bg-white dark:bg-[#181818] p-1 shadow-lg font-mono text-xs animate-in fade-in-0 zoom-in-95 duration-100"
+              >
+                {colormapOptions.map((opt) => {
+                  const isSelected = opt.value === colormap;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        setColormap(opt.value);
+                        setIsColormapOpen(false);
+                      }}
+                      className={`relative flex w-full cursor-pointer items-center justify-between gap-3 rounded-[4px] py-1.5 px-2 text-xs outline-none transition-colors whitespace-nowrap ${
+                        isSelected
+                          ? "bg-[#EBEBE6] dark:bg-[#262626] text-[#111111] dark:text-[#EDEDED] font-medium"
+                          : "text-[#73736E] dark:text-[#8E8E88] hover:bg-[#F5F5F2] dark:hover:bg-[#222222] hover:text-[#111111] dark:hover:text-[#EDEDED]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`w-3.5 h-3.5 rounded-[3px] shrink-0 border border-black/15 dark:border-white/20 bg-gradient-to-r ${opt.gradient}`}
+                        />
+                        <span className="text-[11px] whitespace-nowrap">{opt.label}</span>
+                      </div>
+                      {isSelected && (
+                        <Check className="h-3 w-3 text-[#111111] dark:text-[#EDEDED] shrink-0 ml-2" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Reset Camera View */}
+          <button
+            type="button"
             onClick={handleResetCamera}
+            className="h-7 w-7 rounded-md border border-[#E2E2DC] dark:border-[#262626] bg-white dark:bg-[#181818] text-[#73736E] dark:text-[#8E8E88] hover:text-[#111111] dark:hover:text-[#EDEDED] hover:bg-[#F5F5F2] dark:hover:bg-[#222222] flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
             title="Reset Camera View"
           >
-            <RefreshCw className="h-3.5 w-3.5 text-[#6F6F6A] dark:text-[#A0A09B]" />
-          </Button>
+            <RotateCcw className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
 
       {/* Main 3D WebGL Canvas Surface */}
-      <div className="relative w-full h-[420px] sm:h-[480px]">
-        <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+      <div className={`relative w-full overflow-hidden ${isFullscreen ? "flex-1 min-h-0" : "h-[500px] sm:h-[560px]"}`}>
+        <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing select-none" />
 
-        {/* Floating Instruction & Telemetry Overlay */}
-        <div className="absolute bottom-3 left-3 pointer-events-none flex flex-col gap-1 font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] bg-white/80 dark:bg-[#121212]/80 p-2 rounded border border-[#E8E8E3] dark:border-[#292929] backdrop-blur-xs">
-          <div>Drag mouse to rotate 360° · Scroll to zoom</div>
-          <div>Surface Height: z = Intensity(x,y) ({elevationScale}x)</div>
+        {/* Minimalist Shimmer Overlay - Sweeps across viewing window when loading / switching options */}
+        {loading && (
+          <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden">
+            <div className="absolute -inset-[100%] bg-gradient-to-r from-transparent via-white/25 dark:via-white/15 to-transparent skew-x-12 animate-shimmer-sweep" />
+          </div>
+        )}
+
+        {/* Bottom-Left Scientific Interaction HUD - Horizontally Centered, No Dot */}
+        <div className="absolute bottom-3 left-3 pointer-events-none select-none flex items-center justify-center text-center px-3 py-1.5 rounded-md bg-[#101010]/75 dark:bg-[#0A0A0A]/80 border border-white/10 text-white/70 backdrop-blur-md shadow-xs font-mono text-[10px] tracking-tight">
+          <span>Rotate: Drag · Zoom: Scroll</span>
         </div>
 
-        {/* Floating Elevation Scale Slider */}
-        <div className="absolute bottom-3 right-3 w-48 bg-white/90 dark:bg-[#171717]/90 p-2.5 rounded border border-[#E8E8E3] dark:border-[#292929] shadow-sm backdrop-blur-xs space-y-1">
-          <div className="flex justify-between items-center text-[10px] font-mono text-[#6F6F6A] dark:text-[#A0A09B]">
-            <span>Height Scale</span>
-            <span className="font-medium text-[#181818] dark:text-[#F2F2F0]">{elevationScale}px</span>
+        {/* Bottom-Right Compact Floating Height Scale HUD - Website Blue Accent */}
+        <div className="absolute bottom-3 right-3 select-none flex items-center gap-2.5 px-3 py-1.5 rounded-md bg-[#101010]/75 dark:bg-[#0A0A0A]/80 border border-white/10 text-white/80 backdrop-blur-md shadow-xs font-mono text-[11px]">
+          <span className="text-white/50 text-[10px] uppercase tracking-wider font-medium">Height</span>
+          <div className="w-24 sm:w-28 flex items-center">
+            <Slider
+              min={5}
+              max={90}
+              step={1}
+              value={elevationScale}
+              onChange={(e) => setElevationScale(Number(e.target.value))}
+              className="py-0.5 [&_[data-slot=slider-range]]:bg-[#2563EB] dark:[&_[data-slot=slider-range]]:bg-[#5B8CFF] [&_[data-slot=slider-thumb]]:border-[#2563EB] dark:[&_[data-slot=slider-thumb]]:border-[#5B8CFF]"
+            />
           </div>
-          <Slider
-            min={5}
-            max={90}
-            step={1}
-            value={elevationScale}
-            onChange={(e) => setElevationScale(Number(e.target.value))}
-          />
+          <span className="text-white font-medium text-[11px] w-7 text-right tabular-nums">
+            {elevationScale}×
+          </span>
         </div>
       </div>
     </div>

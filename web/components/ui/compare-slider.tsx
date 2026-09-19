@@ -499,7 +499,7 @@ function CompareSliderLabel(props: CompareSliderLabelProps) {
     props: mergeProps<"div">(
       {
         className: cn(
-          "absolute z-20 rounded-md border border-border bg-background/80 px-3 py-1.5 text-sm font-medium backdrop-blur-sm",
+          "absolute z-20 rounded-md border border-black/20 dark:border-white/25 bg-neutral-900/95 text-white px-2.5 py-1 text-xs font-mono font-medium shadow-md backdrop-blur-md select-none",
           isVertical
             ? side === "before"
               ? "top-2 left-2"

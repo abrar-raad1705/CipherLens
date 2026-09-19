@@ -9,6 +9,7 @@ import {
   Compass,
   FolderKanban,
   ImageIcon,
+  Lock,
   Menu,
   Moon,
   RefreshCw,
@@ -17,6 +18,7 @@ import {
   Sliders,
   Sparkles,
   Sun,
+  Unlock,
   Waves,
   X,
 } from "lucide-react";
@@ -38,11 +40,10 @@ export function Header() {
   const navLinks = [
     { label: "Overview", href: "/", icon: Compass },
     { label: "Image Processing", href: "/processing/convolution", icon: Sliders },
-    { label: "4f DRPE Optics", href: "/encryption/drpe", icon: ShieldCheck },
-    { label: "Fourier Phase", href: "/encryption/fourier", icon: Waves },
-    { label: "DCT Permutation", href: "/encryption/dct", icon: Binary },
-    { label: "Arnold Cat Map", href: "/encryption/arnold", icon: Shuffle },
+    { label: "Encryption", href: "/encryption", icon: Lock },
+    { label: "Decryption", href: "/decryption", icon: Unlock },
     { label: "Quantitative Analysis", href: "/analysis", icon: BarChart3 },
+    { label: "Playground", href: "/playground", icon: Sparkles },
   ];
 
   return (
@@ -156,6 +157,8 @@ export function Header() {
                 <span>Select Target Image</span>
               </button>
             ) : null}
+
+
 
             {/* Theme Switcher Button */}
             <button

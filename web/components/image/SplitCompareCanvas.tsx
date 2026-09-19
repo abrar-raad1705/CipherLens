@@ -161,14 +161,12 @@ export function SplitCompareCanvas({
 
       {/* Main Comparison Viewport */}
       {viewMode === "3d-topography" ? (
-        <div className="p-3 bg-[#FAFAF8] dark:bg-[#101010]">
-          <Spatial3DTopographyCanvas
-            beforeSrc={beforeSrc}
-            afterSrc={afterSrc}
-            beforeLabel={beforeLabel}
-            afterLabel={afterLabel}
-          />
-        </div>
+        <Spatial3DTopographyCanvas
+          beforeSrc={beforeSrc}
+          afterSrc={afterSrc}
+          beforeLabel={beforeLabel}
+          afterLabel={afterLabel}
+        />
       ) : (
         <CardContent className="p-6 bg-[#FAFAF8] dark:bg-[#101010] flex items-center justify-center min-h-[380px] select-none">
           {/* MODE 1: SHADCN COMPARISON SLIDER */}
@@ -187,7 +185,7 @@ export function SplitCompareCanvas({
                       No image available
                     </div>
                   )}
-                  <div className="absolute top-2 left-2 font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] bg-white/90 dark:bg-[#171717]/90 px-2 py-0.5 rounded border border-[#E8E8E3] dark:border-[#292929]">
+                  <div className="absolute top-2 left-2 font-mono text-xs font-medium text-white bg-neutral-900/95 px-2.5 py-1 rounded-md border border-white/20 shadow-md backdrop-blur-md">
                     {beforeLabel} (Peeking)
                   </div>
                 </div>

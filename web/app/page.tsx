@@ -203,9 +203,9 @@ export default function Home() {
     },
     {
       step: "02",
-      name: "ENCRYPTION",
-      desc: "Double Random Phase Encoding (DRPE), Fourier transform scrambling, DCT, and Arnold chaos",
-      href: "/encryption/drpe",
+      name: "ENCRYPTION & DECRYPTION",
+      desc: "Double Random Phase Encoding (DRPE), Fourier phase scrambling, DCT permutation, and Arnold chaos",
+      href: "/encryption",
       icon: ShieldCheck,
     },
     {

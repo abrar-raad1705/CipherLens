@@ -8,10 +8,12 @@ import {
   Binary,
   Compass,
   FolderKanban,
+  Lock,
   ShieldCheck,
   Shuffle,
   Sliders,
   Sparkles,
+  Unlock,
   Waves,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -50,24 +52,14 @@ const NAV_GROUPS: NavGroup[] = [
     section: "ENCRYPTION",
     items: [
       {
-        label: "4f DRPE Optics",
-        href: "/encryption/drpe",
-        icon: ShieldCheck,
+        label: "Encryption",
+        href: "/encryption",
+        icon: Lock,
       },
       {
-        label: "Fourier Phase",
-        href: "/encryption/fourier",
-        icon: Waves,
-      },
-      {
-        label: "DCT Permutation",
-        href: "/encryption/dct",
-        icon: Binary,
-      },
-      {
-        label: "Arnold Cat Map",
-        href: "/encryption/arnold",
-        icon: Shuffle,
+        label: "Decryption",
+        href: "/decryption",
+        icon: Unlock,
       },
     ],
   },
@@ -75,6 +67,12 @@ const NAV_GROUPS: NavGroup[] = [
     section: "ANALYSIS",
     items: [
       { label: "Quantitative Metrics", href: "/analysis", icon: BarChart3 },
+    ],
+  },
+  {
+    section: "EXPERIMENTAL",
+    items: [
+      { label: "Playground", href: "/playground", icon: Sparkles },
     ],
   },
 ];
