@@ -4,24 +4,18 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BarChart3,
-  Binary,
-  Compass,
-  FolderKanban,
-  ImageIcon,
-  Lock,
-  Menu,
-  Moon,
-  RefreshCw,
-  ShieldCheck,
-  Shuffle,
-  Sliders,
-  Sparkles,
-  Sun,
-  Unlock,
-  Waves,
-  X,
-} from "lucide-react";
+  AdjustmentsHorizontalIcon as Sliders,
+  ArrowPathIcon as RefreshCw,
+  Bars3Icon as Menu,
+  ChartBarIcon as BarChart3,
+  GlobeAltIcon as Compass,
+  LockClosedIcon as Lock,
+  LockOpenIcon as Unlock,
+  MoonIcon as Moon,
+  SparklesIcon as Sparkles,
+  SunIcon as Sun,
+  XMarkIcon as X,
+} from "@heroicons/react/24/outline";
 import { useWorkspace } from "@/hooks/use-image";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils/cn";
@@ -148,14 +142,6 @@ export function Header() {
                   </div>
                 )}
               </div>
-            ) : pathname !== "/" && isMounted ? (
-              <button
-                onClick={() => setIsChangeModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] border border-dashed border-[#D7D7D1] dark:border-[#333333] hover:border-[#999993] dark:hover:border-[#555555] rounded-full bg-white dark:bg-[#161616] transition-colors cursor-pointer"
-              >
-                <ImageIcon className="h-3.5 w-3.5 text-[#888880]" />
-                <span>Select Target Image</span>
-              </button>
             ) : null}
 
 

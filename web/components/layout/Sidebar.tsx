@@ -4,18 +4,13 @@ import React, { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
-  BarChart3,
-  Binary,
-  Compass,
-  FolderKanban,
-  Lock,
-  ShieldCheck,
-  Shuffle,
-  Sliders,
-  Sparkles,
-  Unlock,
-  Waves,
-} from "lucide-react";
+  AdjustmentsHorizontalIcon as Sliders,
+  ChartBarIcon as BarChart3,
+  GlobeAltIcon as Compass,
+  LockClosedIcon as Lock,
+  LockOpenIcon as Unlock,
+  SparklesIcon as Sparkles,
+} from "@heroicons/react/24/outline";
 import { cn } from "@/lib/utils/cn";
 
 interface NavItem {

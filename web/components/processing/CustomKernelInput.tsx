@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RotateCcw, Sparkles } from "lucide-react";
+import { ArrowPathIcon as RotateCcw, SparklesIcon as Sparkles } from "@heroicons/react/24/outline";
 
 interface PresetKernel {
   name: string;

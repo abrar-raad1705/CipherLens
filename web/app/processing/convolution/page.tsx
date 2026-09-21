@@ -2,7 +2,15 @@
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, Check, Play, RotateCcw, Save, Sliders as SlidersIcon, Sun } from "lucide-react";
+import {
+  ArrowRightIcon as ArrowRight,
+  CheckIcon as Check,
+  PlayIcon as Play,
+  ArrowPathIcon as RotateCcw,
+  BookmarkIcon as Save,
+  AdjustmentsHorizontalIcon as SlidersIcon,
+  SunIcon as Sun,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

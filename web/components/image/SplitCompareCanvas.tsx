@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { Download, Eye } from "lucide-react";
+import { ArrowDownTrayIcon as Download, EyeIcon as Eye } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import {
   CompareSlider,

@@ -1,21 +1,35 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
-  Check,
-  Crop,
-  Image as ImageIcon,
-  RotateCcw,
-  Upload,
-  X,
-} from "lucide-react";
+  CheckIcon as Check,
+  ScissorsIcon as Crop,
+  PhotoIcon as ImageIcon,
+  ArrowPathIcon as RotateCcw,
+  ArrowUpTrayIcon as Upload,
+  XMarkIcon as X,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/hooks/use-image";
 import { cn } from "@/lib/utils/cn";
 
-interface ChangeImageModalProps {
+export interface SelectedImagePayload {
+  name: string;
+  dataUri: string;
+  width: number;
+  height: number;
+  sizeBytes?: number;
+}
+
+export interface ChangeImageModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSelectImage?: (image: SelectedImagePayload) => void;
+  initialMode?: "choose" | "crop";
+  initialImageSrc?: string | null;
+  initialFileName?: string;
+  title?: string;
 }
 
 type DragHandle = "move" | "nw" | "ne" | "sw" | "se" | null;
@@ -27,7 +41,15 @@ interface DragState {
   startBox: { x: number; y: number; w: number; h: number };
 }
 
-export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
+export function ChangeImageModal({
+  isOpen,
+  onClose,
+  onSelectImage,
+  initialMode,
+  initialImageSrc,
+  initialFileName,
+  title,
+}: ChangeImageModalProps) {
   const {
     artifacts,
     activeArtifact,
@@ -54,6 +76,11 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "free">("1:1");
   const [dragOver, setDragOver] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const imageRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -67,14 +94,23 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
     const originalHtmlOverflow = document.documentElement.style.overflow;
     const originalOverscroll = document.body.style.overscrollBehavior;
 
+    const scrollContainer = document.getElementById("main-scroll-container");
+    const originalContainerOverflow = scrollContainer ? scrollContainer.style.overflow : "";
+
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
     document.body.style.overscrollBehavior = "none";
+    if (scrollContainer) {
+      scrollContainer.style.overflow = "hidden";
+    }
 
     return () => {
       document.body.style.overflow = originalBodyOverflow;
       document.documentElement.style.overflow = originalHtmlOverflow;
       document.body.style.overscrollBehavior = originalOverscroll;
+      if (scrollContainer) {
+        scrollContainer.style.overflow = originalContainerOverflow;
+      }
     };
   }, [isOpen]);
 
@@ -84,6 +120,22 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
     dragStateRef.current = null;
     setIsDragging(false);
   };
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialImageSrc) {
+        setRawImageSrc(initialImageSrc);
+        setRawFileName(initialFileName || "image.png");
+        setMode("crop");
+      } else if (initialMode) {
+        setMode(initialMode);
+      } else {
+        setMode("choose");
+      }
+    } else {
+      resetModalState();
+    }
+  }, [isOpen, initialImageSrc, initialFileName, initialMode]);
 
   const handleClose = () => {
     resetModalState();
@@ -349,6 +401,18 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
     ctx.drawImage(img, sourceX, sourceY, sourceW, sourceH, 0, 0, outW, outH);
 
     const croppedDataUri = outputCanvas.toDataURL("image/png");
+
+    if (onSelectImage) {
+      onSelectImage({
+        name: rawFileName.replace(/\.[^/.]+$/, "") + " [Cropped]",
+        dataUri: croppedDataUri,
+        width: outW,
+        height: outH,
+      });
+      handleClose();
+      return;
+    }
+
     addArtifact({
       name: rawFileName.replace(/\.[^/.]+$/, "") + " [Cropped]",
       dataUri: croppedDataUri,
@@ -412,9 +476,13 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
     }
   };
 
-  return (
+  if (!isOpen || !isMounted || typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150 select-none"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-150 select-none"
       onClick={handleClose}
     >
       <div
@@ -432,7 +500,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
               <ImageIcon className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF]" />
             )}
             <span className="font-medium text-sm text-[#181818] dark:text-[#F2F2F0]">
-              {mode === "crop" ? "Crop & Adjust Target Selection" : "Select or Upload Image Target"}
+              {mode === "crop" ? "Crop & Adjust Target Selection" : title || "Select or Upload Image Target"}
             </span>
           </div>
 
@@ -509,6 +577,16 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                       <div
                         key={art.id}
                         onClick={() => {
+                          if (onSelectImage) {
+                            onSelectImage({
+                              name: art.name,
+                              dataUri: art.dataUri,
+                              width: art.width,
+                              height: art.height,
+                            });
+                            handleClose();
+                            return;
+                          }
                           setActiveArtifactId(art.id);
                           if (typeof window !== "undefined") {
                             localStorage.setItem("cipherlens_user_has_selected", "true");
@@ -599,6 +677,16 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                       key={preset.id}
                       type="button"
                       onClick={() => {
+                        if (onSelectImage) {
+                          onSelectImage({
+                            name: preset.name,
+                            dataUri: preset.image,
+                            width: preset.width,
+                            height: preset.height,
+                          });
+                          handleClose();
+                          return;
+                        }
                         loadPresetById(preset.id);
                         if (typeof window !== "undefined") {
                           localStorage.setItem("cipherlens_user_has_selected", "true");
@@ -766,6 +854,18 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="h-7 text-xs px-2 font-medium text-[#6F6F6A] dark:text-[#A0A09B]"
+                  onClick={() => {
+                    setAspectRatio("free");
+                    setCropBox({ x: 0, y: 0, w: imgDim.w, h: imgDim.h });
+                  }}
+                  title="Select entire image"
+                >
+                  Full image
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="h-7 text-xs px-2 font-medium"
                   onClick={() => {
                     const side = Math.min(imgDim.w, imgDim.h);
@@ -787,9 +887,9 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
               <Button
                 variant="outline"
                 size="md"
-                onClick={() => setMode("choose")}
+                onClick={initialImageSrc ? handleClose : () => setMode("choose")}
               >
-                Back to gallery
+                {initialImageSrc ? "Cancel" : "Back to gallery"}
               </Button>
               <Button
                 variant="primary"
@@ -803,6 +903,7 @@ export function ChangeImageModal({ isOpen, onClose }: ChangeImageModalProps) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

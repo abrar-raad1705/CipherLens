@@ -3,7 +3,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { Globe, RefreshCw, RotateCw, Zap } from "lucide-react";
+import {
+  GlobeAltIcon as Globe,
+  ArrowPathIcon as RefreshCw,
+  ArrowPathIcon as RotateCw,
+  BoltIcon as Zap,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { Play, Sparkles } from "lucide-react";
+import { PlayIcon as Play, SparklesIcon as Sparkles } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/use-image";

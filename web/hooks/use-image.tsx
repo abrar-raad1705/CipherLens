@@ -8,7 +8,6 @@ import React, {
   useSyncExternalStore,
 } from "react";
 import { ImageArtifact, SamplePreset } from "@/types/image";
-import { generateCalibrationTarget } from "@/lib/utils/procedural";
 import { getSamplePresets } from "@/lib/api/processing";
 
 interface WorkspaceContextType {
@@ -36,18 +35,8 @@ interface StoreSnapshot {
 
 // Server snapshot used during SSR and initial hydration
 const SERVER_SNAPSHOT: StoreSnapshot = {
-  artifacts: [
-    {
-      id: "preset-target-cal512",
-      name: "Optical Calibration Grid (512×512)",
-      dataUri: "",
-      width: 512,
-      height: 512,
-      sourceBench: "preset",
-      timestamp: 0,
-    },
-  ],
-  activeId: "preset-target-cal512",
+  artifacts: [],
+  activeId: null,
 };
 
 // Client singleton store
@@ -62,42 +51,18 @@ function notify() {
 
 function getClientSnapshot(): StoreSnapshot {
   if (clientSnapshot === null) {
-    let restoredArtifacts: ImageArtifact[] = [];
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("cipherlens_artifacts") || localStorage.getItem("bat_signal_artifacts");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            restoredArtifacts = parsed.filter(
-              (a) => a.dataUri && a.dataUri.length > 300
-            );
-          }
-        } catch (e) {
-          console.error("Failed to restore artifacts:", e);
-        }
+      try {
+        localStorage.removeItem("cipherlens_artifacts");
+        localStorage.removeItem("bat_signal_artifacts");
+      } catch (e) {
+        // ignore
       }
     }
 
-    if (restoredArtifacts.length === 0) {
-      const proceduralUri =
-        typeof document !== "undefined" ? generateCalibrationTarget(512) : "";
-      restoredArtifacts = [
-        {
-          id: "preset-target-cal512",
-          name: "Optical Calibration Grid (512×512)",
-          dataUri: proceduralUri,
-          width: 512,
-          height: 512,
-          sourceBench: "preset",
-          timestamp: 0,
-        },
-      ];
-    }
-
     clientSnapshot = {
-      artifacts: restoredArtifacts,
-      activeId: restoredArtifacts.length > 0 ? restoredArtifacts[0].id : null,
+      artifacts: [],
+      activeId: null,
     };
   }
   return clientSnapshot;
@@ -118,19 +83,6 @@ function updateStore(updater: (prev: StoreSnapshot) => StoreSnapshot) {
   const current = getClientSnapshot();
   const next = updater(current);
   clientSnapshot = next;
-
-  // Persist to local storage
-  if (typeof window !== "undefined" && next.artifacts.length > 0) {
-    try {
-      localStorage.setItem(
-        "cipherlens_artifacts",
-        JSON.stringify(next.artifacts.slice(0, 10))
-      );
-    } catch (e) {
-      console.warn("Storage quota exceeded or error storing artifacts:", e);
-    }
-  }
-
   notify();
 }
 
@@ -156,32 +108,6 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setIsBackendConnected(true);
         if (res.samples && res.samples.length > 0) {
           setPresets(res.samples);
-          // Promote Cat Benchmark if only placeholder/cal512 was loaded
-          updateStore((prev) => {
-            const hasCat = prev.artifacts.some(
-              (a) => a.id === "cat512" || a.name.includes("Cat")
-            );
-            if (!hasCat && res.samples[0]) {
-              const catSample = res.samples[0];
-              const catArtifact: ImageArtifact = {
-                id: catSample.id,
-                name: catSample.name,
-                dataUri: catSample.image,
-                width: catSample.width,
-                height: catSample.height,
-                sourceBench: "preset",
-                timestamp: Date.now(),
-              };
-              return {
-                artifacts: [
-                  catArtifact,
-                  ...prev.artifacts.filter((a) => a.id !== "preset-target-cal512"),
-                ],
-                activeId: catArtifact.id,
-              };
-            }
-            return prev;
-          });
         }
       })
       .catch((e) => {
@@ -249,24 +175,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearArtifacts = () => {
-    const defaultUri =
-      typeof document !== "undefined" ? generateCalibrationTarget(512) : "";
-    const resetArt: ImageArtifact = {
-      id: "preset-target-cal512",
-      name: "Optical Calibration Grid (512×512)",
-      dataUri: defaultUri,
-      width: 512,
-      height: 512,
-      sourceBench: "preset",
-      timestamp: Date.now(),
-    };
     if (typeof window !== "undefined") {
       localStorage.removeItem("cipherlens_artifacts");
       localStorage.removeItem("bat_signal_artifacts");
+      localStorage.removeItem("cipherlens_user_has_selected");
     }
     updateStore(() => ({
-      artifacts: [resetArt],
-      activeId: resetArt.id,
+      artifacts: [],
+      activeId: null,
     }));
   };
 

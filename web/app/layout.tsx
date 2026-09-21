@@ -4,7 +4,6 @@ import { DM_Serif_Display, Caveat, Geist } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { Footer } from "@/components/layout/Footer";
 import { NavigationProgress } from "@/components/layout/NavigationProgress";
 import { WorkspaceProvider } from "@/hooks/use-image";
 import { ThemeProvider } from "@/hooks/use-theme";
@@ -73,7 +72,6 @@ export default function RootLayout({
                 <main className="flex-1 min-w-0 px-4 sm:px-8 py-6 max-w-7xl w-full">
                   {children}
                 </main>
-                <Footer />
               </div>
             </div>
           </WorkspaceProvider>

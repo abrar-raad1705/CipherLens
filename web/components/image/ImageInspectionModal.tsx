@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
-  Download,
-  RotateCcw,
-  X,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+  ArrowDownTrayIcon as Download,
+  ArrowPathIcon as RotateCcw,
+  XMarkIcon as X,
+  MagnifyingGlassPlusIcon as ZoomIn,
+  MagnifyingGlassMinusIcon as ZoomOut,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -42,6 +43,12 @@ export function ImageInspectionModal({
     gray: number;
   } | null>(null);
 
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Reset zoom & colorMap when opened with new image
   useEffect(() => {
     if (isOpen) {
@@ -61,10 +68,18 @@ export function ImageInspectionModal({
     if (isOpen) {
       window.addEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "hidden";
+      const scrollContainer = document.getElementById("main-scroll-container");
+      if (scrollContainer) {
+        scrollContainer.style.overflow = "hidden";
+      }
     }
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
+      const scrollContainer = document.getElementById("main-scroll-container");
+      if (scrollContainer) {
+        scrollContainer.style.overflow = "";
+      }
     };
   }, [isOpen, onClose]);
 
@@ -158,11 +173,11 @@ export function ImageInspectionModal({
     link.click();
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !isMounted || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
@@ -335,6 +350,7 @@ export function ImageInspectionModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

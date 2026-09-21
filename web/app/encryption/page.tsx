@@ -1,39 +1,42 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
-import Link from "next/link";
+import React, { useState, useEffect, useRef, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  ArrowRight,
-  BarChart3,
-  Binary,
-  CheckCircle2,
-  Cpu,
-  Eye,
-  Info,
-  Layers,
-  Lock,
-  RefreshCw,
-  ShieldCheck,
-  Shuffle,
-  Sparkles,
-  Unlock,
-  Waves,
-} from "lucide-react";
+  ChartBarIcon as BarChart3,
+  CommandLineIcon as Binary,
+  ArrowDownTrayIcon as Download,
+  DocumentTextIcon as FileText,
+  LockClosedIcon as Lock,
+  PhotoIcon,
+  ArrowPathIcon as RotateCcw,
+  ShieldCheckIcon as ShieldCheck,
+  ArrowsRightLeftIcon as Shuffle,
+  LockOpenIcon as Unlock,
+  ArrowUpTrayIcon as Upload,
+  SignalIcon as Waves,
+  XMarkIcon as X,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { CanvasViewer } from "@/components/image/CanvasViewer";
-import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
 import { UnifiedWorkbenchCanvas } from "@/components/image/UnifiedWorkbenchCanvas";
 import { OpticalBenchDiagram } from "@/components/encryption/OpticalBenchDiagram";
+import { DriveDropzone, UploadedImageInfo } from "@/components/upload/DriveDropzone";
 import { useWorkspace } from "@/hooks/use-image";
 import { useEncryption } from "@/hooks/use-encryption";
 import {
   EncryptionAlgorithm,
+  EncryptionSessionKeys,
   saveEncryptionSession,
 } from "@/lib/encryption-session";
+import {
+  downloadImage,
+  downloadKeyFile,
+  generateKeyFileContent,
+} from "@/lib/key-file";
 import { runCorrelation, runEntropy } from "@/lib/api/analysis";
 import { DRPEStages } from "@/types/encryption";
 
@@ -93,7 +96,7 @@ const ALGORITHMS: AlgorithmMeta[] = [
 function EncryptionWorkbenchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { activeArtifact, presets, loadPresetById, addArtifact } = useWorkspace();
+  const { activeArtifact, addArtifact } = useWorkspace();
   const {
     loading,
     error,
@@ -103,6 +106,24 @@ function EncryptionWorkbenchContent() {
     executeArnoldXOR,
   } = useEncryption();
 
+  // Operation-Specific Upload State (Starts as null so user sees the upload intro on enter)
+  const [uploadedImage, setUploadedImage] = useState<UploadedImageInfo | null>(null);
+
+  // Sync with top-right tablet when user explicitly changes image via the tablet
+  const prevActiveIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeArtifact) return;
+    if (prevActiveIdRef.current !== null && prevActiveIdRef.current !== activeArtifact.id) {
+      setUploadedImage({
+        name: activeArtifact.name,
+        dataUri: activeArtifact.dataUri,
+        width: activeArtifact.width,
+        height: activeArtifact.height,
+      });
+    }
+    prevActiveIdRef.current = activeArtifact.id;
+  }, [activeArtifact]);
+
   // Algorithm selection (syncs with ?algo= url param if present)
   const initialAlgo = (searchParams.get("algo") as EncryptionAlgorithm) || "drpe";
   const [selectedAlgo, setSelectedAlgo] = useState<EncryptionAlgorithm>(
@@ -110,20 +131,15 @@ function EncryptionWorkbenchContent() {
   );
 
   // Algorithm Settings State
-  // Unified Algorithm Pipeline Stages State
   const [pipelineStages, setPipelineStages] = useState<Record<string, string> | null>(null);
   const [activePipelineStage, setActivePipelineStage] = useState<string>("ciphertext");
 
   // 1. DRPE
   const [drpeSeed1, setDrpeSeed1] = useState<number>(1234);
   const [drpeSeed2, setDrpeSeed2] = useState<number>(5678);
-  const [activeDrpeStage, setActiveDrpeStage] = useState<string>("ciphertext");
-  const [drpeStages, setDrpeStages] = useState<DRPEStages | null>(null);
 
   // 2. Fourier
   const [fourierSeed, setFourierSeed] = useState<number>(100);
-  const [fourierSpectrum, setFourierSpectrum] = useState<string | null>(null);
-  const [fourierViewMode, setFourierViewMode] = useState<"ciphertext" | "spectrum">("ciphertext");
 
   // 3. DCT
   const [dctSeed, setDctSeed] = useState<number>(42);
@@ -153,6 +169,26 @@ function EncryptionWorkbenchContent() {
   // Immediate synchronous encryption in-flight state (prevents double clicks instantly)
   const [isEncrypting, setIsEncrypting] = useState<boolean>(false);
 
+  // Download popup modal state
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState<boolean>(false);
+  const [isMounted, setIsMounted] = useState<boolean>(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Keyboard shortcut: Escape to close download modal
+  useEffect(() => {
+    if (!isDownloadModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsDownloadModalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isDownloadModalOpen]);
+
   // Sync algorithm if URL param changes
   useEffect(() => {
     const algoParam = searchParams.get("algo") as EncryptionAlgorithm;
@@ -161,26 +197,23 @@ function EncryptionWorkbenchContent() {
     }
   }, [searchParams]);
 
-  // Reset encrypted results when active image or algorithm changes
+  // Reset encrypted results when uploaded image or algorithm changes
   useEffect(() => {
     setCiphertextUri(null);
     setPipelineStages(null);
     setActivePipelineStage("ciphertext");
-    setDrpeStages(null);
-    setFourierSpectrum(null);
     setComparisonStats({
       realEntropy: null,
       cipherEntropy: null,
       realCorr: null,
       cipherCorr: null,
     });
-  }, [activeArtifact?.dataUri, selectedAlgo]);
+  }, [uploadedImage?.dataUri, selectedAlgo]);
 
   // Execute Encryption handler
   const handleExecuteEncrypt = async () => {
-    if (!activeArtifact || isEncrypting || loading) return;
+    if (!uploadedImage || isEncrypting || loading) return;
 
-    // Immediately trigger synchronous locked state & viewport cipher animation
     setIsEncrypting(true);
 
     try {
@@ -188,27 +221,25 @@ function EncryptionWorkbenchContent() {
       let latency = 0;
 
       if (selectedAlgo === "drpe") {
-        const res = await executeDRPEEncrypt(activeArtifact.dataUri, drpeSeed1, drpeSeed2);
+        const res = await executeDRPEEncrypt(uploadedImage.dataUri, drpeSeed1, drpeSeed2);
         outputUri = res.ciphertext;
         latency = res.latency_ms;
-        setDrpeStages(res.stages);
         setPipelineStages(res.stages);
         setActivePipelineStage("ciphertext");
 
         saveEncryptionSession({
           algorithm: "drpe",
-          realImageUri: activeArtifact.dataUri,
-          realImageName: activeArtifact.name,
+          realImageUri: uploadedImage.dataUri,
+          realImageName: uploadedImage.name,
           cipherImageUri: res.ciphertext,
           keys: { seed1: drpeSeed1, seed2: drpeSeed2 },
           metadata: res.metadata,
           timestamp: Date.now(),
         });
       } else if (selectedAlgo === "fourier") {
-        const res = await executeFourier(activeArtifact.dataUri, fourierSeed, "encrypt");
+        const res = await executeFourier(uploadedImage.dataUri, fourierSeed, "encrypt");
         outputUri = res.output_image;
         latency = res.latency_ms;
-        setFourierSpectrum(res.spectrum || null);
         if (res.stages) {
           setPipelineStages(res.stages);
         }
@@ -216,15 +247,15 @@ function EncryptionWorkbenchContent() {
 
         saveEncryptionSession({
           algorithm: "fourier",
-          realImageUri: activeArtifact.dataUri,
-          realImageName: activeArtifact.name,
+          realImageUri: uploadedImage.dataUri,
+          realImageName: uploadedImage.name,
           cipherImageUri: res.output_image,
           keys: { fourierSeed },
           metadata: res.metadata,
           timestamp: Date.now(),
         });
       } else if (selectedAlgo === "dct") {
-        const res = await executeDCT(activeArtifact.dataUri, dctSeed, "encrypt");
+        const res = await executeDCT(uploadedImage.dataUri, dctSeed, "encrypt");
         outputUri = res.output_image;
         latency = res.latency_ms;
         if (res.stages) {
@@ -234,15 +265,15 @@ function EncryptionWorkbenchContent() {
 
         saveEncryptionSession({
           algorithm: "dct",
-          realImageUri: activeArtifact.dataUri,
-          realImageName: activeArtifact.name,
+          realImageUri: uploadedImage.dataUri,
+          realImageName: uploadedImage.name,
           cipherImageUri: res.output_image,
           keys: { dctSeed },
           metadata: res.metadata,
           timestamp: Date.now(),
         });
       } else if (selectedAlgo === "arnold") {
-        const res = await executeArnoldXOR(activeArtifact.dataUri, arnoldItr, arnoldXor, "encrypt");
+        const res = await executeArnoldXOR(uploadedImage.dataUri, arnoldItr, arnoldXor, "encrypt");
         outputUri = res.output_image;
         latency = res.latency_ms;
         setArnoldCropped(Boolean(res.metadata?.square_cropped));
@@ -253,8 +284,8 @@ function EncryptionWorkbenchContent() {
 
         saveEncryptionSession({
           algorithm: "arnold",
-          realImageUri: activeArtifact.dataUri,
-          realImageName: activeArtifact.name,
+          realImageUri: uploadedImage.dataUri,
+          realImageName: uploadedImage.name,
           cipherImageUri: res.output_image,
           keys: { iterations: arnoldItr, xorValue: arnoldXor },
           metadata: res.metadata,
@@ -266,11 +297,11 @@ function EncryptionWorkbenchContent() {
       setLastLatency(latency);
 
       // Fetch comparative metrics asynchronously for educational verification
-      if (outputUri && activeArtifact.dataUri) {
+      if (outputUri && uploadedImage.dataUri) {
         Promise.all([
-          runEntropy(activeArtifact.dataUri).catch(() => ({ entropy: 5.2 })),
+          runEntropy(uploadedImage.dataUri).catch(() => ({ entropy: 5.2 })),
           runEntropy(outputUri).catch(() => ({ entropy: 7.98 })),
-          runCorrelation(activeArtifact.dataUri, 500).catch(() => ({
+          runCorrelation(uploadedImage.dataUri, 500).catch(() => ({
             coefficients: { horizontal: 0.95 },
           })),
           runCorrelation(outputUri, 500).catch(() => ({
@@ -292,12 +323,17 @@ function EncryptionWorkbenchContent() {
     }
   };
 
-  // Navigate to Decryption with ciphertext, auto-selected algorithm, and keys
-  const handleProceedToDecryption = () => {
-    if (!ciphertextUri || !activeArtifact) return;
+  // Download Handlers
+  const handleDownloadCiphertext = () => {
+    if (!ciphertextUri || !uploadedImage) return;
+    const baseName = uploadedImage.name.replace(/\.[^/.]+$/, "");
+    downloadImage(ciphertextUri, `${baseName}_${selectedAlgo}_ciphertext.png`);
+  };
 
-    // Ensure session is saved with latest keys
-    const currentKeys =
+  const handleDownloadKeyFile = () => {
+    if (!uploadedImage) return;
+    const baseName = uploadedImage.name.replace(/\.[^/.]+$/, "");
+    const keys: EncryptionSessionKeys =
       selectedAlgo === "drpe"
         ? { seed1: drpeSeed1, seed2: drpeSeed2 }
         : selectedAlgo === "fourier"
@@ -306,24 +342,25 @@ function EncryptionWorkbenchContent() {
         ? { dctSeed }
         : { iterations: arnoldItr, xorValue: arnoldXor };
 
-    saveEncryptionSession({
+    const content = generateKeyFileContent({
       algorithm: selectedAlgo,
-      realImageUri: activeArtifact.dataUri,
-      realImageName: activeArtifact.name,
-      cipherImageUri: ciphertextUri,
-      keys: currentKeys,
-      metadata: { latency_ms: lastLatency },
-      timestamp: Date.now(),
+      keys,
+      sourceImageName: uploadedImage.name,
+      imageDimensions: { width: uploadedImage.width, height: uploadedImage.height },
     });
 
+    downloadKeyFile(content, `${baseName}_${selectedAlgo}_key.txt`);
+  };
+
+  // Navigate to Decryption
+  const handleProceedToDecryption = () => {
     router.push(`/decryption?algo=${selectedAlgo}`);
   };
 
   // Promote ciphertext to Workspace artifacts for further analysis
   const handlePromoteToAnalysis = () => {
-    if (!ciphertextUri || !activeArtifact) return;
+    if (!ciphertextUri || !uploadedImage) return;
 
-    // Ensure session is saved
     const currentKeys: Record<string, number> = {};
     if (selectedAlgo === "drpe") {
       currentKeys.seed1 = drpeSeed1;
@@ -339,487 +376,493 @@ function EncryptionWorkbenchContent() {
 
     saveEncryptionSession({
       algorithm: selectedAlgo,
-      realImageUri: activeArtifact.dataUri,
-      realImageName: activeArtifact.name,
+      realImageUri: uploadedImage.dataUri,
+      realImageName: uploadedImage.name,
       cipherImageUri: ciphertextUri,
       keys: currentKeys,
       metadata: { latency_ms: lastLatency },
       timestamp: Date.now(),
     });
 
+    const plainArtifact = addArtifact({
+      name: uploadedImage.name,
+      dataUri: uploadedImage.dataUri,
+      width: uploadedImage.width,
+      height: uploadedImage.height,
+      sourceBench: "upload",
+    });
+
     const cipherArtifact = addArtifact(
       {
-        name: `${activeArtifact.name} [${selectedAlgo.toUpperCase()} Cipher]`,
+        name: `${uploadedImage.name} [${selectedAlgo.toUpperCase()} Cipher]`,
         dataUri: ciphertextUri,
-        width: activeArtifact.width,
-        height: activeArtifact.height,
+        width: uploadedImage.width,
+        height: uploadedImage.height,
         sourceBench: "encryption",
       },
       false
     );
 
     router.push(
-      `/analysis?plainId=${encodeURIComponent(activeArtifact.id)}&cipherId=${encodeURIComponent(cipherArtifact.id)}&auto=true&algo=${encodeURIComponent(selectedAlgo)}`
+      `/analysis?plainId=${encodeURIComponent(plainArtifact.id)}&cipherId=${encodeURIComponent(cipherArtifact.id)}&auto=true&algo=${encodeURIComponent(selectedAlgo)}`
     );
   };
 
   const activeMeta = ALGORITHMS.find((a) => a.id === selectedAlgo) || ALGORITHMS[0];
-  const ActiveIcon = activeMeta.icon;
 
   return (
     <div className="space-y-3.5 max-w-7xl py-1">
-      {/* Header - Compact Scientific Workstation Header */}
-      <div className="border-b border-[#E8E8E3] dark:border-[#242424] pb-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* Header */}
+      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
         <div>
-          <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+          <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
             CRYPTOGRAPHIC LABORATORY
           </div>
-          <h1 className="text-xl sm:text-2xl font-normal text-[#181818] dark:text-[#F2F2F0] mt-0.5 leading-tight">
+          <h1 className="text-2xl font-normal text-[#181818] dark:text-[#F2F2F0] mt-0.5">
             Image Encryption Bench
           </h1>
-          <p className="text-xs text-[#6F6F6A] dark:text-[#A0A09B] mt-0.5">
-            Simulate coherent optical wave modulation, spectral Fourier/DCT permutations, and chaotic torus automorphisms.
-          </p>
         </div>
       </div>
 
-      {/* Algorithm Selector Row: Compressed, Instrument-Grade Cryptographic Cards */}
-      <div className="space-y-1.5">
-        <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
-          SELECT ENCRYPTION ALGORITHM
-        </div>
+      {/* Empty State: Focused Upload Card */}
+      {!uploadedImage ? (
+        <DriveDropzone
+          title="Drop your image here"
+          description="Maximum 25 MB"
+          actionLabel="Browse files"
+          onImageUploaded={(img) => {
+            setUploadedImage(img);
+            addArtifact({
+              name: img.name,
+              dataUri: img.dataUri,
+              width: img.width,
+              height: img.height,
+              sourceBench: "upload",
+            });
+          }}
+        />
+      ) : (
+        /* Image Active: Reveal Encryption Workflow Controls directly */
+        <div className="space-y-3.5 animate-in fade-in duration-300">
+          {/* Algorithm Selector Row */}
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
+              SELECT ENCRYPTION ALGORITHM
+            </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
-          {ALGORITHMS.map((algo) => {
-            const isSelected = selectedAlgo === algo.id;
-            const Icon = algo.icon;
-
-            return (
-              <button
-                key={algo.id}
-                type="button"
-                onClick={() => {
-                  setSelectedAlgo(algo.id);
-                  const params = new URLSearchParams(window.location.search);
-                  params.set("algo", algo.id);
-                  router.replace(`/encryption?${params.toString()}`);
-                }}
-                className={`group text-left py-2 px-3 rounded-md border transition-all cursor-pointer select-none ${
-                  isSelected
-                    ? "border-[#2563EB] dark:border-[#5B8CFF] bg-[#2563EB]/[0.04] dark:bg-[#5B8CFF]/[0.05] ring-1 ring-[#2563EB] dark:ring-[#5B8CFF] shadow-2xs"
-                    : "border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#141414] hover:border-[#D0D0CA] dark:hover:border-[#383838]"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`w-7.5 h-7.5 rounded-md flex items-center justify-center shrink-0 transition-all ${
-                      isSelected
-                        ? algo.iconBg
-                        : "bg-black/[0.03] dark:bg-white/[0.04] text-[#6F6F6A] dark:text-[#A0A09B] group-hover:" + algo.iconColor
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </div>
-
-                  <div className="min-w-0 flex-1 space-y-0.5">
-                    <div className="text-sm font-medium text-[#181818] dark:text-[#F2F2F0] leading-snug truncate">
-                      {algo.name}
-                    </div>
-                    <div className="font-mono text-[10px] tracking-wider uppercase text-[#999993] dark:text-[#6A6A6A] truncate">
-                      {algo.tag}
-                    </div>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Main Analysis Workspace */}
-      <div className="flex flex-col lg:flex-row items-start gap-4 w-full">
-        {/* Left: Primary Analysis & Visualization Workspace (Dominant Flex Area) */}
-        <div className="flex-1 min-w-0 w-full space-y-3.5">
-          {/* Visualization Area */}
-          {ciphertextUri ? (
-            <div className="space-y-3.5">
-              {/* Universal Cryptographic Pipeline Stage Diagram for EVERY algorithm */}
-              <Card className="p-2.5 border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#151515] shadow-xs">
-                <div className="flex items-center justify-between px-1.5 pb-1.5 border-b border-[#E8E8E3] dark:border-[#242424] mb-2">
-                  <span className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] font-medium uppercase">
-                    {activeMeta.name} Execution Pipeline
-                  </span>
-                </div>
-                <OpticalBenchDiagram
-                  algorithm={selectedAlgo}
-                  activeStage={activePipelineStage}
-                  hasExecuted={Boolean(ciphertextUri)}
-                  isExecuting={loading}
-                  sourcePreviewSrc={activeArtifact?.dataUri}
-                  outputPreviewSrc={ciphertextUri || undefined}
-                  stagePreviews={pipelineStages}
-                  onSelectStage={(k) => {
-                    setActivePipelineStage(k);
-                  }}
-                />
-              </Card>
-              {/* Unified Cryptographic Workbench: Single Outcome & Multi-Mode Comparison Viewport */}
-              {(() => {
-                const isFinalCiphertext = activePipelineStage === "ciphertext";
-                const isOriginalInput = activePipelineStage === "original";
-                const currentStageUri = pipelineStages?.[activePipelineStage] || ciphertextUri;
-
-                let stageTitle = `${activeMeta.name.toUpperCase()} CIPHERTEXT`;
-                let stageSubtitle = `Encrypted Outcome · Status: Complete · Latency: ${lastLatency ?? 0} ms`;
-
-                if (isOriginalInput) {
-                  stageTitle = "PLAINTEXT (ORIGINAL INPUT)";
-                  stageSubtitle = "Ground Truth Source Image Before Encryption";
-                } else if (!isFinalCiphertext && pipelineStages?.[activePipelineStage]) {
-                  const stageLabels: Record<string, { title: string; subtitle: string }> = {
-                    r1_phase: {
-                      title: "DRPE: SPATIAL PHASE MASK (R₁)",
-                      subtitle: "Phase angle [-π, π] modulated wavefront",
-                    },
-                    fourier_spectrum: {
-                      title: "DRPE: FOURIER OPTICAL SPECTRUM (LENS L1)",
-                      subtitle: "Coherent 2D frequency distribution in optical plane",
-                    },
-                    r2_phase: {
-                      title: "DRPE: FOURIER PHASE MASK (R₂)",
-                      subtitle: "Frequency domain random phase distribution",
-                    },
-                    fft_spectrum: {
-                      title: "FOURIER: UNPERMUTED SPECTRUM |F(u, v)|",
-                      subtitle: "2D Fast Fourier Transform log-magnitude energy",
-                    },
-                    permuted_spectrum: {
-                      title: "FOURIER: PERMUTED SPECTRUM π[F(u, v)]",
-                      subtitle: "Key-scrambled frequency coefficient distribution",
-                    },
-                    dct_basis: {
-                      title: "DCT: UNPERMUTED BASIS SPECTRUM",
-                      subtitle: "Energy-compacted 2D Cosine transform coefficients",
-                    },
-                    scrambled_dct: {
-                      title: "DCT: PERMUTED COEFFICIENTS π[C(u, v)]",
-                      subtitle: "Dispersed DCT spectral basis matrix",
-                    },
-                    arnold_scramble: {
-                      title: "ARNOLD: TORAL SHEARED STATE",
-                      subtitle: "Chaotic Cat Map area-preserving coordinate scrambling",
-                    },
-                    xor_diffusion: {
-                      title: "ARNOLD: BITWISE XOR DIFFUSION",
-                      subtitle: "Gray-level bitwise mask encryption",
-                    },
-                  };
-
-                  const info = stageLabels[activePipelineStage];
-                  if (info) {
-                    stageTitle = info.title;
-                    stageSubtitle = info.subtitle;
-                  } else {
-                    stageTitle = `STAGE: ${activePipelineStage.toUpperCase().replace("_", " ")}`;
-                    stageSubtitle = "Intermediate Pipeline State";
-                  }
-                }
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+              {ALGORITHMS.map((algo) => {
+                const isSelected = selectedAlgo === algo.id;
+                const Icon = algo.icon;
 
                 return (
-                  <UnifiedWorkbenchCanvas
-                    currentSrc={currentStageUri}
-                    originalSrc={activeArtifact?.dataUri}
-                    title={stageTitle}
-                    subtitle={stageSubtitle}
-                    originalLabel="Original"
-                    currentLabel={
-                      isOriginalInput
-                        ? "Original"
-                        : isFinalCiphertext
-                        ? "Encrypted"
-                        : activePipelineStage.toUpperCase().replace("_", " ")
-                    }
-                    defaultMode="encrypted"
-                    isLoading={isEncrypting || loading}
-                  />
+                  <button
+                    key={algo.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAlgo(algo.id);
+                      const params = new URLSearchParams(window.location.search);
+                      params.set("algo", algo.id);
+                      router.replace(`/encryption?${params.toString()}`);
+                    }}
+                    className={`group text-left py-2 px-3 rounded-md border transition-all cursor-pointer select-none ${
+                      isSelected
+                        ? "border-[#2563EB] dark:border-[#5B8CFF] bg-[#2563EB]/[0.04] dark:bg-[#5B8CFF]/[0.05] ring-1 ring-[#2563EB] dark:ring-[#5B8CFF] shadow-2xs"
+                        : "border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#141414] hover:border-[#D0D0CA] dark:hover:border-[#383838]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-7.5 h-7.5 rounded-md flex items-center justify-center shrink-0 transition-all ${
+                          isSelected
+                            ? algo.iconBg
+                            : "bg-black/[0.03] dark:bg-white/[0.04] text-[#6F6F6A] dark:text-[#A0A09B] group-hover:" + algo.iconColor
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </div>
+
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="text-sm font-medium text-[#181818] dark:text-[#F2F2F0] leading-snug truncate">
+                          {algo.name}
+                        </div>
+                        <div className="font-mono text-[10px] tracking-wider uppercase text-[#999993] dark:text-[#6A6A6A] truncate">
+                          {algo.tag}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
                 );
-              })()}
-
-              {/* (Removed Next Step Banner per user request) */}
+              })}
             </div>
-          ) : (
-            /* Empty State: Ready for Encryption */
-            <div>
-              <CanvasViewer
-                imageSrc={activeArtifact?.dataUri || ""}
-                title="INPUT PLAINTEXT (REAL IMAGE)"
-                subtitle={
-                  activeArtifact
-                    ? `${activeArtifact.name} · ${activeArtifact.width}×${activeArtifact.height}`
-                    : "No artifact selected"
-                }
-                isLoading={isEncrypting || loading}
-                loadingText={`Simulating ${activeMeta.name} Cipher...`}
-              />
+          </div>
+
+          {/* Main Analysis Workspace */}
+          <div className="flex flex-col lg:flex-row items-start gap-4 w-full">
+            {/* Left: Primary Analysis & Visualization Workspace (Dominant Flex Area) */}
+            <div className="flex-1 min-w-0 w-full space-y-3.5">
+              {/* Visualization Area */}
+              {ciphertextUri ? (
+                <div className="space-y-3.5">
+                  {/* Universal Cryptographic Pipeline Stage Diagram for EVERY algorithm */}
+                  <Card className="p-2.5 border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#151515] shadow-xs">
+                    <div className="flex items-center justify-between px-1.5 pb-1.5 border-b border-[#E8E8E3] dark:border-[#242424] mb-2">
+                      <span className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] font-medium uppercase">
+                        {activeMeta.name} Execution Pipeline
+                      </span>
+                    </div>
+                    <OpticalBenchDiagram
+                      algorithm={selectedAlgo}
+                      activeStage={activePipelineStage}
+                      hasExecuted={Boolean(ciphertextUri)}
+                      isExecuting={loading}
+                      sourcePreviewSrc={uploadedImage?.dataUri}
+                      outputPreviewSrc={ciphertextUri || undefined}
+                      stagePreviews={pipelineStages}
+                      onSelectStage={(k) => {
+                        setActivePipelineStage(k);
+                      }}
+                    />
+                  </Card>
+
+                  {/* Unified Cryptographic Workbench: Single Outcome & Multi-Mode Comparison Viewport */}
+                  {(() => {
+                    const isFinalCiphertext = activePipelineStage === "ciphertext";
+                    const isOriginalInput = activePipelineStage === "original";
+                    const currentStageUri = pipelineStages?.[activePipelineStage] || ciphertextUri;
+
+                    let stageTitle = `${activeMeta.name.toUpperCase()} CIPHERTEXT`;
+                    let stageSubtitle = `Encrypted Outcome · Status: Complete · Latency: ${lastLatency ?? 0} ms`;
+
+                    if (isOriginalInput) {
+                      stageTitle = "PLAINTEXT (ORIGINAL INPUT)";
+                      stageSubtitle = "Ground Truth Source Image Before Encryption";
+                    } else if (!isFinalCiphertext && pipelineStages?.[activePipelineStage]) {
+                      const stageLabels: Record<string, { title: string; subtitle: string }> = {
+                        r1_phase: {
+                          title: "DRPE: SPATIAL PHASE MASK (R₁)",
+                          subtitle: "Phase angle [-π, π] modulated wavefront",
+                        },
+                        fourier_spectrum: {
+                          title: "DRPE: FOURIER OPTICAL SPECTRUM (LENS L1)",
+                          subtitle: "Coherent 2D frequency distribution in optical plane",
+                        },
+                        r2_phase: {
+                          title: "DRPE: FOURIER PHASE MASK (R₂)",
+                          subtitle: "Frequency domain random phase distribution",
+                        },
+                        fft_spectrum: {
+                          title: "FOURIER: UNPERMUTED SPECTRUM |F(u, v)|",
+                          subtitle: "2D Fast Fourier Transform log-magnitude energy",
+                        },
+                        permuted_spectrum: {
+                          title: "FOURIER: PERMUTED SPECTRUM π[F(u, v)]",
+                          subtitle: "Key-scrambled frequency coefficient distribution",
+                        },
+                        dct_basis: {
+                          title: "DCT: UNPERMUTED BASIS SPECTRUM",
+                          subtitle: "Energy-compacted 2D Cosine transform coefficients",
+                        },
+                        scrambled_dct: {
+                          title: "DCT: PERMUTED COEFFICIENTS π[C(u, v)]",
+                          subtitle: "Dispersed DCT spectral basis matrix",
+                        },
+                        arnold_scramble: {
+                          title: "ARNOLD: TORAL SHEARED STATE",
+                          subtitle: "Chaotic Cat Map area-preserving coordinate scrambling",
+                        },
+                        xor_diffusion: {
+                          title: "ARNOLD: BITWISE XOR DIFFUSION",
+                          subtitle: "Gray-level bitwise mask encryption",
+                        },
+                      };
+
+                      const info = stageLabels[activePipelineStage];
+                      if (info) {
+                        stageTitle = info.title;
+                        stageSubtitle = info.subtitle;
+                      } else {
+                        stageTitle = `STAGE: ${activePipelineStage.toUpperCase().replace("_", " ")}`;
+                        stageSubtitle = "Intermediate Pipeline State";
+                      }
+                    }
+
+                    return (
+                      <UnifiedWorkbenchCanvas
+                        currentSrc={currentStageUri}
+                        originalSrc={uploadedImage?.dataUri}
+                        title={stageTitle}
+                        subtitle={stageSubtitle}
+                        originalLabel="Original"
+                        currentLabel={
+                          isOriginalInput
+                            ? "Original"
+                            : isFinalCiphertext
+                            ? "Encrypted"
+                            : activePipelineStage.toUpperCase().replace("_", " ")
+                        }
+                        defaultMode="encrypted"
+                        isLoading={isEncrypting || loading}
+                      />
+                    );
+                  })()}
+                </div>
+              ) : (
+                /* Ready for Encryption View */
+                <div>
+                  <CanvasViewer
+                    imageSrc={uploadedImage?.dataUri || ""}
+                    title="INPUT PLAINTEXT (REAL IMAGE)"
+                    subtitle={`${uploadedImage.name} · ${uploadedImage.width}×${uploadedImage.height}`}
+                    isLoading={isEncrypting || loading}
+                    loadingText={`Simulating ${activeMeta.name} Cipher...`}
+                  />
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Right Column: Compact Settings & Telemetry Metrics Sidebar (Consistent Fixed Width, Vertically Aligned) */}
-        <div className="w-full lg:w-[310px] xl:w-[320px] shrink-0 space-y-3.5">
-          <Card className="p-3.5 space-y-3 border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#161616] shadow-xs">
-            {/* Dynamic Settings per Algorithm */}
-            <div key={selectedAlgo} className="space-y-3 animate-option-switch">
-              {/* 1. DRPE Settings */}
-              {selectedAlgo === "drpe" && (
-                <div className="space-y-3">
-                  <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                    PHASE KEY SEEDS (ENCRYPTION)
-                  </div>
-                  <Slider
-                    label="Spatial Phase Mask (R₁)"
-                    valueDisplay={drpeSeed1}
-                    min={100}
-                    max={9999}
-                    step={1}
-                    value={drpeSeed1}
-                    onChange={(e) => setDrpeSeed1(Number(e.target.value))}
-                  />
-                  <Slider
-                    label="Fourier Phase Mask (R₂)"
-                    valueDisplay={drpeSeed2}
-                    min={100}
-                    max={9999}
-                    step={1}
-                    value={drpeSeed2}
-                    onChange={(e) => setDrpeSeed2(Number(e.target.value))}
-                  />
-                </div>
-              )}
+            {/* Right Column: Settings & Telemetry Sidebar */}
+            <div className="w-full lg:w-[310px] xl:w-[320px] shrink-0 space-y-3.5">
+              <Card className="p-3.5 space-y-3 border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#161616] shadow-xs">
+                {/* Dynamic Settings per Algorithm */}
+                <div key={selectedAlgo} className="space-y-3 animate-option-switch">
+                  {/* 1. DRPE Settings */}
+                  {selectedAlgo === "drpe" && (
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                        PHASE KEY SEEDS (ENCRYPTION)
+                      </div>
+                      <Slider
+                        label="Spatial Phase Mask (R₁)"
+                        valueDisplay={drpeSeed1}
+                        min={100}
+                        max={9999}
+                        step={1}
+                        value={drpeSeed1}
+                        onChange={(e) => setDrpeSeed1(Number(e.target.value))}
+                      />
+                      <Slider
+                        label="Fourier Phase Mask (R₂)"
+                        valueDisplay={drpeSeed2}
+                        min={100}
+                        max={9999}
+                        step={1}
+                        value={drpeSeed2}
+                        onChange={(e) => setDrpeSeed2(Number(e.target.value))}
+                      />
+                    </div>
+                  )}
 
-              {/* 2. Fourier Settings */}
-              {selectedAlgo === "fourier" && (
-                <div className="space-y-3">
-                  <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                    SPECTRAL PERMUTATION KEY
-                  </div>
-                  <Slider
-                    label="Phase Seed"
-                    valueDisplay={fourierSeed}
-                    min={1}
-                    max={9999}
-                    step={1}
-                    value={fourierSeed}
-                    onChange={(e) => setFourierSeed(Number(e.target.value))}
-                  />
-                </div>
-              )}
+                  {/* 2. Fourier Settings */}
+                  {selectedAlgo === "fourier" && (
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                        SPECTRAL PERMUTATION KEY
+                      </div>
+                      <Slider
+                        label="Phase Seed"
+                        valueDisplay={fourierSeed}
+                        min={1}
+                        max={9999}
+                        step={1}
+                        value={fourierSeed}
+                        onChange={(e) => setFourierSeed(Number(e.target.value))}
+                      />
+                    </div>
+                  )}
 
-              {/* 3. DCT Settings */}
-              {selectedAlgo === "dct" && (
-                <div className="space-y-3">
-                  <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                    DCT BASIS PERMUTATION SEED
-                  </div>
-                  <Slider
-                    label="Permutation Seed"
-                    valueDisplay={dctSeed}
-                    min={1}
-                    max={9999}
-                    step={1}
-                    value={dctSeed}
-                    onChange={(e) => setDctSeed(Number(e.target.value))}
-                  />
-                </div>
-              )}
+                  {/* 3. DCT Settings */}
+                  {selectedAlgo === "dct" && (
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                        DCT BASIS PERMUTATION SEED
+                      </div>
+                      <Slider
+                        label="Permutation Seed"
+                        valueDisplay={dctSeed}
+                        min={1}
+                        max={9999}
+                        step={1}
+                        value={dctSeed}
+                        onChange={(e) => setDctSeed(Number(e.target.value))}
+                      />
+                    </div>
+                  )}
 
-              {/* 4. Arnold Cat Map Settings */}
-              {selectedAlgo === "arnold" && (
-                <div className="space-y-3">
-                  <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                    CHAOTIC TORAL PARAMETERS
-                  </div>
-                  <Slider
-                    label="Cat Map Iterations"
-                    valueDisplay={arnoldItr}
-                    min={1}
-                    max={50}
-                    step={1}
-                    value={arnoldItr}
-                    onChange={(e) => setArnoldItr(Number(e.target.value))}
-                  />
-                  <Slider
-                    label="XOR Diffusion Mask"
-                    valueDisplay={`0x${arnoldXor.toString(16).toUpperCase()} (${arnoldXor})`}
-                    min={0}
-                    max={255}
-                    step={1}
-                    value={arnoldXor}
-                    onChange={(e) => setArnoldXor(Number(e.target.value))}
-                  />
-                  {arnoldCropped && (
-                    <div className="text-[10px] font-mono text-[#D97706] dark:text-[#FBBF24] p-1.5 rounded bg-[#FFFBEB] dark:bg-[#78350F]/20 border border-[#FDE68A] dark:border-[#B45309]/30">
-                      Image was center-cropped to 1:1 square for torus coordinate mapping.
+                  {/* 4. Arnold Cat Map Settings */}
+                  {selectedAlgo === "arnold" && (
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                        CHAOTIC TORAL PARAMETERS
+                      </div>
+                      <Slider
+                        label="Cat Map Iterations"
+                        valueDisplay={arnoldItr}
+                        min={1}
+                        max={50}
+                        step={1}
+                        value={arnoldItr}
+                        onChange={(e) => setArnoldItr(Number(e.target.value))}
+                      />
+                      <Slider
+                        label="XOR Diffusion Mask"
+                        valueDisplay={`0x${arnoldXor.toString(16).toUpperCase()} (${arnoldXor})`}
+                        min={0}
+                        max={255}
+                        step={1}
+                        value={arnoldXor}
+                        onChange={(e) => setArnoldXor(Number(e.target.value))}
+                      />
+                      {arnoldCropped && (
+                        <div className="text-[10px] font-mono text-[#D97706] dark:text-[#FBBF24] p-1.5 rounded bg-[#FFFBEB] dark:bg-[#78350F]/20 border border-[#FDE68A] dark:border-[#B45309]/30">
+                          Image was center-cropped to 1:1 square for torus coordinate mapping.
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* Execute Encryption Action Button */}
-            <Button
-              variant="primary"
-              onClick={handleExecuteEncrypt}
-              disabled={isEncrypting || loading || !activeArtifact}
-              className="w-full h-8.5 mt-1 text-xs"
-            >
-              <Lock className="h-3.5 w-3.5 mr-1" />
-              <span>Execute {activeMeta.name} Encryption</span>
-            </Button>
+                {/* Action Buttons */}
+                {!ciphertextUri ? (
+                  /* Initial State: Encrypt Button */
+                  <Button
+                    type="button"
+                    onClick={handleExecuteEncrypt}
+                    disabled={isEncrypting || loading || !uploadedImage}
+                    className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB] dark:border-[#3B82F6] ring-1 ring-[#2563EB]/40 dark:ring-[#3B82F6]/50 shadow-[0_0_10px_rgba(37,99,235,0.25)] hover:shadow-[0_0_14px_rgba(37,99,235,0.4)] flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <Lock className="h-3.5 w-3.5 text-white shrink-0" />
+                    <span>{isEncrypting ? "Encrypting..." : "Encrypt"}</span>
+                  </Button>
+                ) : (
+                  /* Post-encryption State: Download button in place of Encrypt, with Analyze & Decryption side-by-side */
+                  <div className="space-y-2 animate-in fade-in duration-200">
+                    {/* Full-width Download Button (replaces Encrypt) */}
+                    <Button
+                      type="button"
+                      onClick={() => setIsDownloadModalOpen(true)}
+                      className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB] dark:border-[#3B82F6] ring-1 ring-[#2563EB]/40 dark:ring-[#3B82F6]/50 shadow-[0_0_10px_rgba(37,99,235,0.25)] hover:shadow-[0_0_14px_rgba(37,99,235,0.4)] flex items-center justify-center gap-1.5"
+                      title="Download Encrypted Image or Key File"
+                    >
+                      <Download className="h-3.5 w-3.5 text-white shrink-0" />
+                      <span>Download</span>
+                    </Button>
 
-            {/* Post-encryption Action Buttons */}
-            {ciphertextUri && (
-              <div className="flex items-center gap-2 pt-0.5">
-                <Button
-                  variant="secondary"
-                  onClick={handlePromoteToAnalysis}
-                  className="flex-1 h-8 text-xs"
-                >
-                  <BarChart3 className="h-3.5 w-3.5 mr-1 text-[#6F6F6A] dark:text-[#A0A09B]" />
-                  <span>Analyze</span>
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={handleProceedToDecryption}
-                  className="flex-1 h-8 text-xs"
-                >
-                  <Unlock className="h-3.5 w-3.5 mr-1" />
-                  <span>Go to Decryption</span>
-                </Button>
-              </div>
-            )}
+                    {/* Side-by-side Analyze and Decryption Buttons */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={handlePromoteToAnalysis}
+                        className="w-full h-8.5 text-xs font-medium cursor-pointer shadow-2xs hover:shadow-xs transition-all active:scale-[0.99]"
+                        title="Analyze diffusion, entropy, and correlation"
+                      >
+                        <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
+                        <span>Analyze</span>
+                      </Button>
 
-            {error && (
-              <div className="text-xs text-[#DC2626] font-mono py-1">
-                Error: {error}
-              </div>
-            )}
-          </Card>
-
-          {/* Right Column: Comparative Cryptographic Telemetry Measurement Panel */}
-          {ciphertextUri && (
-            <Card className="p-3.5 space-y-2.5 border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#161616] shadow-xs">
-              {/* Header & Execution Time Metadata */}
-              <div className="flex items-center justify-between pb-1.5 border-b border-[#E8E8E3] dark:border-[#242424]">
-                <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                  CRYPTOGRAPHIC DIFFUSION METRICS
-                </div>
-                {lastLatency !== null && (
-                  <div className="text-[11px] font-mono text-[#6F6F6A] dark:text-[#A0A09B]">
-                    {lastLatency} ms
+                      <Button
+                        variant="outline"
+                        onClick={handleProceedToDecryption}
+                        className="w-full h-8.5 text-xs font-medium cursor-pointer shadow-2xs hover:shadow-xs transition-all active:scale-[0.99]"
+                        title="Proceed to Decryption Bench"
+                      >
+                        <Unlock className="h-3.5 w-3.5 mr-1.5" />
+                        <span>Decryption</span>
+                      </Button>
+                    </div>
                   </div>
                 )}
-              </div>
 
-              {/* Column Headings: PLAINTEXT & CIPHERTEXT */}
-              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono tracking-wider uppercase font-medium">
-                <div className="text-[#6F6F6A] dark:text-[#A0A09B]">
-                  PLAINTEXT
-                </div>
-                <div className="border-l border-[#E8E8E3] dark:border-[#242424] pl-2.5 text-[#059669] dark:text-[#34D399]">
-                  CIPHERTEXT
-                </div>
-              </div>
-
-              {/* Metric 1: Information Entropy */}
-              <div className="rounded-md border border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#121212] p-2.5 space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] font-mono tracking-wider uppercase text-[#999993] dark:text-[#6A6A6A]">
-                  <span>Entropy</span>
-                  <span className="text-[10px] text-[#059669] dark:text-[#34D399]">Ideal ~8.00 b/px</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 items-end">
-                  {/* Plaintext Entropy */}
-                  <div>
-                    <div className="font-mono text-xs font-medium text-[#181818] dark:text-[#F2F2F0]">
-                      {comparisonStats.realEntropy !== null ? `${comparisonStats.realEntropy} b/px` : "--"}
-                    </div>
-                    <div className="w-full bg-[#E5E5DE] dark:bg-[#252525] h-1.5 rounded-full mt-1.5 overflow-hidden">
-                      <div
-                        className="bg-[#6F6F6A] dark:bg-[#888882] h-full rounded-full transition-all duration-300"
-                        style={{
-                          width: `${Math.min(100, Math.max(0, ((comparisonStats.realEntropy ?? 0) / 8.0) * 100))}%`,
-                        }}
-                      />
-                    </div>
+                {error && (
+                  <div className="text-xs text-[#DC2626] font-mono py-1">
+                    Error: {error}
                   </div>
-
-                  {/* Ciphertext Entropy */}
-                  <div className="border-l border-[#E8E8E3] dark:border-[#242424] pl-2.5">
-                    <div className="font-mono text-xs font-medium text-[#059669] dark:text-[#34D399]">
-                      {comparisonStats.cipherEntropy !== null ? `${comparisonStats.cipherEntropy} b/px` : "--"}
-                    </div>
-                    <div className="w-full bg-[#E5E5DE] dark:bg-[#252525] h-1.5 rounded-full mt-1.5 overflow-hidden">
-                      <div
-                        className="bg-[#059669] dark:bg-[#34D399] h-full rounded-full transition-all duration-300 shadow-[0_0_6px_rgba(52,211,153,0.4)]"
-                        style={{
-                          width: `${Math.min(100, Math.max(0, ((comparisonStats.cipherEntropy ?? 0) / 8.0) * 100))}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Metric 2: Adjacent Spatial Correlation */}
-              <div className="rounded-md border border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#121212] p-2.5 space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] font-mono tracking-wider uppercase text-[#999993] dark:text-[#6A6A6A]">
-                  <span>Correlation</span>
-                  <span className="text-[10px] text-[#059669] dark:text-[#34D399]">Target ~0.000</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 items-end">
-                  {/* Plaintext Correlation */}
-                  <div>
-                    <div className="font-mono text-xs font-medium text-[#181818] dark:text-[#F2F2F0]">
-                      {comparisonStats.realCorr !== null ? comparisonStats.realCorr : "--"}
-                    </div>
-                    <div className="w-full bg-[#E5E5DE] dark:bg-[#252525] h-1.5 rounded-full mt-1.5 overflow-hidden">
-                      <div
-                        className="bg-[#181818] dark:bg-[#D4D4CE] h-full rounded-full transition-all duration-300"
-                        style={{
-                          width: `${Math.min(100, Math.max(0, Math.abs(comparisonStats.realCorr ?? 0) * 100))}%`,
-                        }}
-                      />
-                    </div>
-                    <div className="text-[9px] text-[#6F6F6A] dark:text-[#A0A09B] mt-1 font-sans">
-                      High spatial correlation
-                    </div>
-                  </div>
-
-                  {/* Ciphertext Correlation */}
-                  <div className="border-l border-[#E8E8E3] dark:border-[#242424] pl-2.5">
-                    <div className="font-mono text-xs font-medium text-[#059669] dark:text-[#34D399]">
-                      {comparisonStats.cipherCorr !== null ? comparisonStats.cipherCorr : "--"}
-                    </div>
-                    <div className="w-full bg-[#E5E5DE] dark:bg-[#252525] h-1.5 rounded-full mt-1.5 overflow-hidden">
-                      <div
-                        className="bg-[#059669] dark:bg-[#34D399] h-full rounded-full transition-all duration-300 shadow-[0_0_6px_rgba(52,211,153,0.4)]"
-                        style={{
-                          width: `${Math.min(100, Math.max(2, Math.abs(comparisonStats.cipherCorr ?? 0) * 100))}%`,
-                        }}
-                      />
-                    </div>
-                    <div className="text-[9px] text-[#059669] dark:text-[#34D399] mt-1 font-sans">
-                      Diffused (zero)
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          )}
+                )}
+              </Card>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Download Options Modal Popup */}
+      {isDownloadModalOpen && isMounted && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150 select-none"
+          onClick={() => setIsDownloadModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] p-5 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[#181818] dark:text-[#F2F2F0]">
+                  Download Options
+                </h3>
+                <p className="text-xs text-[#71717A] dark:text-[#A1A1AA] mt-0.5">
+                  Choose what you want to download:
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDownloadModalOpen(false)}
+                className="p-1 rounded text-[#71717A] hover:text-[#181818] dark:text-[#A1A1AA] dark:hover:text-[#F2F2F0] hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* 2 Download Options */}
+            <div className="space-y-2.5">
+              {/* Option 1: Download Encrypted Image */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleDownloadCiphertext();
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#1C1C1C] hover:border-[#2563EB] dark:hover:border-[#3B82F6] hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-all text-left cursor-pointer group"
+              >
+                <div className="w-9 h-9 rounded-lg bg-blue-500/10 dark:bg-blue-500/15 text-[#2563EB] dark:text-[#60A5FA] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <PhotoIcon className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA]">
+                    Download Encrypted Image
+                  </div>
+                  <div className="text-[11px] text-[#71717A] dark:text-[#A1A1AA] truncate">
+                    PNG ciphertext format
+                  </div>
+                </div>
+                <Download className="h-4 w-4 text-[#71717A] dark:text-[#A1A1AA] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] shrink-0" />
+              </button>
+
+              {/* Option 2: Download Key File */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleDownloadKeyFile();
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#1C1C1C] hover:border-[#2563EB] dark:hover:border-[#3B82F6] hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-all text-left cursor-pointer group"
+              >
+                <div className="w-9 h-9 rounded-lg bg-amber-500/10 dark:bg-amber-500/15 text-[#D97706] dark:text-[#FBBF24] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA]">
+                    Download Key File (.txt)
+                  </div>
+                  <div className="text-[11px] text-[#71717A] dark:text-[#A1A1AA] truncate">
+                    Parameters &amp; seeds for decryption
+                  </div>
+                </div>
+                <Download className="h-4 w-4 text-[#71717A] dark:text-[#A1A1AA] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] shrink-0" />
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

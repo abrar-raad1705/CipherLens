@@ -3,13 +3,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  Download,
-  Maximize2,
-  RotateCcw,
-  ZoomIn,
-  ZoomOut,
-  X,
-} from "lucide-react";
+  ArrowDownTrayIcon as Download,
+  ArrowsPointingOutIcon as Maximize2,
+  ArrowPathIcon as RotateCcw,
+  MagnifyingGlassPlusIcon as ZoomIn,
+  MagnifyingGlassMinusIcon as ZoomOut,
+  XMarkIcon as X,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
@@ -207,15 +207,6 @@ export function CanvasViewer({
               title="Reset Zoom"
             >
               <RotateCcw className="h-3 w-3" />
-            </Button>
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              className="h-6 w-6"
-              onClick={handleDownload}
-              title="Download"
-            >
-              <Download className="h-3 w-3" />
             </Button>
 
             {/* Fullscreen / Close Buttons */}

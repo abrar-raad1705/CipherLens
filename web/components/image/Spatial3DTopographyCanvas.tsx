@@ -3,7 +3,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { Box, Check, ChevronDown, CircleDot, Layers, RotateCcw } from "lucide-react";
+import {
+  CubeIcon as Box,
+  CheckIcon as Check,
+  ChevronDownIcon as ChevronDown,
+  ViewfinderCircleIcon as CircleDot,
+  Square3Stack3DIcon as Layers,
+  ArrowPathIcon as RotateCcw,
+} from "@heroicons/react/24/outline";
 import { Slider } from "@/components/ui/slider";
 import { useTheme } from "@/hooks/use-theme";
 

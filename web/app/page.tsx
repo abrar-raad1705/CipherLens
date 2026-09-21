@@ -2,7 +2,17 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, BarChart3, Binary, ChevronDown, ImageIcon, Layers, Maximize2, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  ArrowRightIcon as ArrowRight,
+  ChartBarIcon as BarChart3,
+  ChevronDownIcon as ChevronDown,
+  PhotoIcon as ImageIcon,
+  Square3Stack3DIcon as Layers,
+  ArrowsPointingOutIcon as Maximize2,
+  ArrowPathIcon as RefreshCw,
+  ShieldCheckIcon as ShieldCheck,
+  SparklesIcon as Sparkles,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/hooks/use-image";
 import { ChangeImageModal } from "@/components/upload/ChangeImageModal";
@@ -25,20 +35,15 @@ export default function Home() {
 
   // Sync whether user has selected an image in this or previous session
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("cipherlens_user_has_selected");
-      if (stored === "true") {
-        setHasSelectedImage(true);
-      }
-    }
-  }, []);
-
-  // When activeArtifact changes away from default or is updated, mark user selected
-  useEffect(() => {
-    if (activeArtifact && activeArtifact.id !== "preset-target-cal512") {
+    if (activeArtifact) {
       setHasSelectedImage(true);
       if (typeof window !== "undefined") {
         localStorage.setItem("cipherlens_user_has_selected", "true");
+      }
+    } else {
+      setHasSelectedImage(false);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("cipherlens_user_has_selected");
       }
     }
   }, [activeArtifact]);

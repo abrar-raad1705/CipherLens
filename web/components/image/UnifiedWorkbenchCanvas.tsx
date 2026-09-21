@@ -3,13 +3,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  Download,
-  Maximize2,
-  RotateCcw,
-  ZoomIn,
-  ZoomOut,
-  X,
-} from "lucide-react";
+  ArrowDownTrayIcon as Download,
+  ArrowsPointingOutIcon as Maximize2,
+  ArrowPathIcon as RotateCcw,
+  MagnifyingGlassPlusIcon as ZoomIn,
+  MagnifyingGlassMinusIcon as ZoomOut,
+  XMarkIcon as X,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
@@ -328,17 +328,6 @@ export function UnifiedWorkbenchCanvas({
               </Button>
             </div>
           )}
-
-          {/* Download Button */}
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            className="h-6 w-6 text-[#6F6F6A] dark:text-[#A0A09B]"
-            onClick={handleDownload}
-            title="Download Image"
-          >
-            <Download className="h-3 w-3" />
-          </Button>
 
           {/* Fullscreen / Close Buttons */}
           {isModal ? (

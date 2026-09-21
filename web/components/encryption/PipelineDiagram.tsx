@@ -2,7 +2,7 @@
 
 import React from "react";
 import { cn } from "@/lib/utils/cn";
-import { ChevronRight } from "lucide-react";
+import { ChevronRightIcon as ChevronRight } from "@heroicons/react/24/outline";
 
 export interface PipelineStage {
   id: string;
