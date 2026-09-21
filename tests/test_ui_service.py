@@ -88,12 +88,18 @@ def test_fourier_and_dct():
     # Fourier
     res_f = sess.run_fourier(seed=100)
     assert res_f["status"] == "COMPLETE"
+    assert "stages" in res_f
+    assert "fft_spectrum" in res_f["stages"]
+    assert "permuted_spectrum" in res_f["stages"]
     dec_f = sess.run_decryption("FOURIER", {"seed": 100})
     assert dec_f["quality"]["ssim"] > 0.99
 
     # DCT
     res_d = sess.run_dct(seed=42)
     assert res_d["status"] == "COMPLETE"
+    assert "stages" in res_d
+    assert "dct_basis" in res_d["stages"]
+    assert "scrambled_dct" in res_d["stages"]
     dec_d = sess.run_decryption("DCT", {"seed": 42})
     assert dec_d["quality"]["ssim"] > 0.99
 
@@ -102,6 +108,9 @@ def test_arnold_xor():
     sess = LaboratorySession()
     res_a = sess.run_arnold_xor(itr=5, xor_value=0xAA)
     assert res_a["status"] == "COMPLETE"
+    assert "stages" in res_a
+    assert "arnold_scramble" in res_a["stages"]
+    assert "xor_diffusion" in res_a["stages"]
     dec_a = sess.run_decryption("ARNOLD_XOR", {"itr": 5, "xor_value": 0xAA})
     assert dec_a["quality"]["ssim"] == 1.0
 

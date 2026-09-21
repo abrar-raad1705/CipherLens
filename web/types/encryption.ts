@@ -21,6 +21,7 @@ export interface DRPEDecryptResponse {
   algorithm: string;
   decrypted_image: string;
   diff_heatmap?: string | null;
+  stages?: Record<string, string>;
   quality: {
     mse?: number;
     psnr?: number | string;

@@ -148,8 +148,146 @@ export const PIPELINE_CONNECTORS: Record<string, string[]> = {
   arnold: ["Pixel Scrambling", "Bit Mask", "XOR Diffusion"],
 };
 
+export const DECRYPTION_PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
+  drpe: [
+    {
+      id: "ciphertext",
+      tag: "INPUT",
+      primary: "Cipher",
+      secondary: "g(x, y)",
+      type: "source",
+    },
+    {
+      id: "r2_conj",
+      tag: "DEMOD 01",
+      primary: "R₂*",
+      secondary: "Fourier Conj",
+      type: "mask",
+    },
+    {
+      id: "fourier_demod",
+      tag: "IFFT",
+      primary: "IFFT",
+      secondary: "Frequency Plane",
+      type: "transform",
+    },
+    {
+      id: "r1_conj",
+      tag: "DEMOD 02",
+      primary: "R₁*",
+      secondary: "Spatial Conj",
+      type: "mask",
+    },
+    {
+      id: "decrypted",
+      tag: "OUTPUT",
+      primary: "Decrypted",
+      secondary: "f'(x, y)",
+      type: "result",
+    },
+  ],
+  fourier: [
+    {
+      id: "ciphertext",
+      tag: "INPUT",
+      primary: "Cipher",
+      secondary: "g(x, y)",
+      type: "source",
+    },
+    {
+      id: "fft_spectrum",
+      tag: "TRANSFORM",
+      primary: "FFT2",
+      secondary: "Frequency Plane",
+      type: "transform",
+    },
+    {
+      id: "inverse_perm",
+      tag: "INVERSION",
+      primary: "π⁻¹(k)",
+      secondary: "Key Inversion",
+      type: "mask",
+    },
+    {
+      id: "decrypted",
+      tag: "OUTPUT",
+      primary: "Decrypted",
+      secondary: "f'(x, y)",
+      type: "result",
+    },
+  ],
+  dct: [
+    {
+      id: "ciphertext",
+      tag: "INPUT",
+      primary: "Cipher",
+      secondary: "g(x, y)",
+      type: "source",
+    },
+    {
+      id: "dct_coeffs",
+      tag: "TRANSFORM",
+      primary: "DCT2",
+      secondary: "Cosine Basis",
+      type: "transform",
+    },
+    {
+      id: "inverse_perm",
+      tag: "INVERSION",
+      primary: "π⁻¹(k)",
+      secondary: "Basis Inversion",
+      type: "mask",
+    },
+    {
+      id: "decrypted",
+      tag: "OUTPUT",
+      primary: "Decrypted",
+      secondary: "f'(x, y)",
+      type: "result",
+    },
+  ],
+  arnold: [
+    {
+      id: "ciphertext",
+      tag: "INPUT",
+      primary: "Cipher",
+      secondary: "g(x, y)",
+      type: "source",
+    },
+    {
+      id: "xor_invert",
+      tag: "DIFFUSION",
+      primary: "XOR ⊕",
+      secondary: "Mask Invert",
+      type: "mask",
+    },
+    {
+      id: "inverse_arnold",
+      tag: "CHAOS MAP",
+      primary: "CAT⁻¹",
+      secondary: "Toral Unshear",
+      type: "transform",
+    },
+    {
+      id: "decrypted",
+      tag: "OUTPUT",
+      primary: "Decrypted",
+      secondary: "f'(x, y)",
+      type: "result",
+    },
+  ],
+};
+
+export const DECRYPTION_PIPELINE_CONNECTORS: Record<string, string[]> = {
+  drpe: ["Conj R₂*", "Inverse FFT", "Conj R₁*", "Wavefront Readout"],
+  fourier: ["FFT2", "Inverse Permute", "IFFT2"],
+  dct: ["DCT2", "Inverse Permute", "IDCT2"],
+  arnold: ["XOR Invert", "Toral Unshear", "Decrypted Output"],
+};
+
 interface OpticalBenchDiagramProps {
   algorithm?: string;
+  mode?: "encrypt" | "decrypt";
   activeStage?: string;
   onSelectStage?: (stageKey: string) => void;
   className?: string;
@@ -163,7 +301,8 @@ interface OpticalBenchDiagramProps {
 
 export function OpticalBenchDiagram({
   algorithm = "drpe",
-  activeStage = "ciphertext",
+  mode = "encrypt",
+  activeStage,
   onSelectStage,
   className = "",
   hasExecuted = false,
@@ -172,11 +311,14 @@ export function OpticalBenchDiagram({
   outputPreviewSrc,
   stagePreviews,
 }: OpticalBenchDiagramProps) {
-  const stages = PIPELINE_SPECS[algorithm] || PIPELINE_SPECS.drpe;
-  const connectorLabels = PIPELINE_CONNECTORS[algorithm] || PIPELINE_CONNECTORS.drpe;
+  const specMap = mode === "decrypt" ? DECRYPTION_PIPELINE_SPECS : PIPELINE_SPECS;
+  const connMap = mode === "decrypt" ? DECRYPTION_PIPELINE_CONNECTORS : PIPELINE_CONNECTORS;
+  const stages = specMap[algorithm] || specMap.drpe;
+  const connectorLabels = connMap[algorithm] || connMap.drpe;
+  const resolvedActiveStage = activeStage || (mode === "decrypt" ? "decrypted" : "ciphertext");
   const activeIndex = Math.max(
     0,
-    stages.findIndex((s) => s.id === activeStage)
+    stages.findIndex((s) => s.id === resolvedActiveStage)
   );
 
   const fillPercent = stages.length > 1 ? (activeIndex / (stages.length - 1)) * 100 : 0;
@@ -215,7 +357,7 @@ export function OpticalBenchDiagram({
           </div>
 
           {stages.map((st, idx) => {
-            const isSelected = activeStage === st.id;
+            const isSelected = resolvedActiveStage === st.id;
             const isPastOrCurrent = idx <= activeIndex;
             const isSource = st.type === "source";
             const isResult = st.type === "result";
@@ -224,12 +366,12 @@ export function OpticalBenchDiagram({
 
             // Determine stage preview image if available
             let previewUri: string | undefined = undefined;
-            if (isSource) {
+            if (stagePreviews?.[st.id]) {
+              previewUri = stagePreviews[st.id];
+            } else if (isSource) {
               previewUri = sourcePreviewSrc;
             } else if (isResult) {
-              previewUri = outputPreviewSrc || stagePreviews?.[st.id] || stagePreviews?.ciphertext;
-            } else if (stagePreviews?.[st.id]) {
-              previewUri = stagePreviews[st.id];
+              previewUri = outputPreviewSrc || stagePreviews?.decrypted || stagePreviews?.ciphertext;
             }
 
             const hasPreview = Boolean(previewUri && (hasExecuted || isSource));

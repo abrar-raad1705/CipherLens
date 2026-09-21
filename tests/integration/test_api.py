@@ -165,6 +165,11 @@ def test_fourier_endpoint(client, sample_image_uri):
     data = res.json()
     assert data["algorithm"] == "Fourier"
     assert data["output_image"].startswith("data:image/png;base64,")
+    assert "stages" in data
+    assert "original" in data["stages"]
+    assert "fft_spectrum" in data["stages"]
+    assert "permuted_spectrum" in data["stages"]
+    assert "ciphertext" in data["stages"]
 
 
 def test_dct_endpoint(client, sample_image_uri):
@@ -175,6 +180,12 @@ def test_dct_endpoint(client, sample_image_uri):
     assert res.status_code == 200
     data = res.json()
     assert data["algorithm"] == "DCT"
+    assert data["output_image"].startswith("data:image/png;base64,")
+    assert "stages" in data
+    assert "original" in data["stages"]
+    assert "dct_basis" in data["stages"]
+    assert "scrambled_dct" in data["stages"]
+    assert "ciphertext" in data["stages"]
 
 
 def test_arnold_xor_endpoint(client, sample_image_uri):
@@ -190,6 +201,12 @@ def test_arnold_xor_endpoint(client, sample_image_uri):
     assert res.status_code == 200
     data = res.json()
     assert data["algorithm"] == "Arnold-XOR"
+    assert data["output_image"].startswith("data:image/png;base64,")
+    assert "stages" in data
+    assert "original" in data["stages"]
+    assert "arnold_scramble" in data["stages"]
+    assert "xor_diffusion" in data["stages"]
+    assert "ciphertext" in data["stages"]
 
 
 # =============================================================================

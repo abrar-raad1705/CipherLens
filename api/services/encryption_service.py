@@ -19,6 +19,7 @@ from api.schemas.encryption import (
 )
 from api.services.utils import (
     array_to_data_uri,
+    dct_spectrum_to_data_uri,
     decode_image_payload,
     diff_heatmap_to_data_uri,
     log_spectrum_to_data_uri,
@@ -147,10 +148,26 @@ def run_drpe_decrypt(
     drpe.validate_key(key)
 
     # DRPE Decryption: F^-1 [ F(C) * R2^* ] * R1^*
-    recovered = drpe.decrypt(cipher_input, key)
-    rec_uint8 = np.clip(np.round(np.real(recovered)), 0, 255).astype(np.uint8)
+    r1 = drpe.generate_phase_mask(cipher_input.shape, key.seed1)
+    r2 = drpe.generate_phase_mask(cipher_input.shape, key.seed2)
+
+    fourier_plane = np.fft.fft2(cipher_input, norm="ortho")
+    demodulated_fourier = fourier_plane * np.conj(r2)
+    demodulated_spatial = np.fft.ifft2(demodulated_fourier, norm="ortho")
+
+    recovered = np.real(demodulated_spatial * np.conj(r1))
+    rec_uint8 = np.clip(np.round(recovered), 0, 255).astype(np.uint8)
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
+
+    cipher_vis = cv2.normalize(np.abs(cipher_input), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    stages = {
+        "ciphertext": array_to_data_uri(cipher_vis),
+        "r2_conj": phase_to_data_uri(np.angle(np.conj(r2))),
+        "fourier_demod": log_spectrum_to_data_uri(demodulated_fourier),
+        "r1_conj": phase_to_data_uri(np.angle(np.conj(r1))),
+        "decrypted": array_to_data_uri(rec_uint8),
+    }
 
     quality = {}
     diff_heatmap_uri = None
@@ -175,6 +192,7 @@ def run_drpe_decrypt(
     return DRPEDecryptResponse(
         decrypted_image=array_to_data_uri(rec_uint8),
         diff_heatmap=diff_heatmap_uri,
+        stages=stages,
         quality=quality,
         metadata={
             "seed1": seed1,
@@ -193,16 +211,36 @@ def run_fourier(
 
     if action.lower() == "encrypt":
         img = decode_image_payload(image_payload)
-        result = fourier.encrypt(img, key)
+        fourier.validate_key(key)
+
+        # 1. Unpermuted 2D Fourier transform
+        coeffs = np.fft.fft2(img, norm="ortho")
+        fft_spec_uri = log_spectrum_to_data_uri(coeffs)
+
+        # 2. Key-based permutation of frequency coefficients
+        flat = coeffs.flatten()
+        perm = fourier.generate_permutation(flat.size, key.seed)
+        encrypted_flat = flat[perm]
+        encrypted_coeffs = encrypted_flat.reshape(coeffs.shape)
+        spec_uri = log_spectrum_to_data_uri(encrypted_coeffs)
+
+        # 3. Inverse 2D Fourier transform to spatial ciphertext
+        result = np.asarray(np.fft.ifft2(encrypted_coeffs, norm="ortho"))
         output_vis = cv2.normalize(
             np.real(result), None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
-        f_coeffs = np.fft.fft2(result, norm="ortho")
-        spec_uri = log_spectrum_to_data_uri(f_coeffs)
         out_uri = array_to_data_uri(output_vis)
+
         # Cache raw complex transform array
         _cache_cipher_array(out_uri, result)
         shape_str = f"{img.shape[1]}×{img.shape[0]}"
+
+        stages = {
+            "original": array_to_data_uri(img),
+            "fft_spectrum": fft_spec_uri,
+            "permuted_spectrum": spec_uri,
+            "ciphertext": out_uri,
+        }
     else:
         # Decrypt from exact cached complex array if available, or fallback to decoded payload
         cached_cipher = _get_cached_cipher_array(image_payload)
@@ -211,11 +249,26 @@ def run_fourier(
         else:
             cipher_input = decode_image_payload(image_payload)
 
-        result = fourier.decrypt(cipher_input, key)
-        output_vis = np.clip(np.round(np.real(result)), 0, 255).astype(np.uint8)
+        f_cipher = np.fft.fft2(cipher_input, norm="ortho")
+        flat = f_cipher.flatten()
+        perm = fourier.generate_permutation(flat.size, key.seed)
+        inv_perm = np.empty_like(perm)
+        inv_perm[perm] = np.arange(flat.size)
+        original_coeffs = flat[inv_perm].reshape(f_cipher.shape)
+        result = np.asarray(np.real(np.fft.ifft2(original_coeffs, norm="ortho")))
+
+        output_vis = np.clip(np.round(result), 0, 255).astype(np.uint8)
         spec_uri = None
         out_uri = array_to_data_uri(output_vis)
         shape_str = f"{output_vis.shape[1]}×{output_vis.shape[0]}"
+
+        cipher_vis = cv2.normalize(np.real(cipher_input), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        stages = {
+            "ciphertext": array_to_data_uri(cipher_vis),
+            "fft_spectrum": log_spectrum_to_data_uri(f_cipher),
+            "inverse_perm": log_spectrum_to_data_uri(original_coeffs),
+            "decrypted": out_uri,
+        }
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -223,6 +276,7 @@ def run_fourier(
         action=action.lower(),
         output_image=out_uri,
         spectrum=spec_uri,
+        stages=stages,
         metadata={"seed": seed, "shape": shape_str},
         latency_ms=round(latency_ms, 2),
     )
@@ -236,14 +290,36 @@ def run_dct(
 
     if action.lower() == "encrypt":
         img = decode_image_payload(image_payload)
-        result = dct.encrypt(img, key)
+        dct.validate_key(key)
+
+        # 1. Unpermuted 2D DCT transform
+        coeffs = dct.dctn(img, norm="ortho")
+        dct_basis_uri = dct_spectrum_to_data_uri(coeffs)
+
+        # 2. Key-based permutation of DCT coefficients
+        flat = coeffs.flatten()
+        perm = dct.generate_permutation(flat.size, key.seed)
+        encrypted_flat = flat[perm]
+        encrypted_coeffs = encrypted_flat.reshape(coeffs.shape)
+        scrambled_dct_uri = dct_spectrum_to_data_uri(encrypted_coeffs)
+
+        # 3. Inverse 2D DCT to spatial ciphertext
+        result = np.asarray(dct.idctn(encrypted_coeffs, norm="ortho"))
         output_vis = cv2.normalize(
             np.real(result), None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
         out_uri = array_to_data_uri(output_vis)
+
         # Cache raw float DCT transform array
         _cache_cipher_array(out_uri, result)
         shape_str = f"{img.shape[1]}×{img.shape[0]}"
+
+        stages = {
+            "original": array_to_data_uri(img),
+            "dct_basis": dct_basis_uri,
+            "scrambled_dct": scrambled_dct_uri,
+            "ciphertext": out_uri,
+        }
     else:
         # Decrypt from exact cached DCT array if available, or fallback to decoded payload
         cached_cipher = _get_cached_cipher_array(image_payload)
@@ -252,16 +328,32 @@ def run_dct(
         else:
             cipher_input = decode_image_payload(image_payload)
 
-        result = dct.decrypt(cipher_input, key)
-        output_vis = np.clip(np.round(np.real(result)), 0, 255).astype(np.uint8)
+        d_cipher = dct.dctn(cipher_input, norm="ortho")
+        flat = d_cipher.flatten()
+        perm = dct.generate_permutation(flat.size, key.seed)
+        inv_perm = np.empty_like(perm)
+        inv_perm[perm] = np.arange(flat.size)
+        original_coeffs = flat[inv_perm].reshape(d_cipher.shape)
+        result = np.asarray(dct.idctn(original_coeffs, norm="ortho"))
+
+        output_vis = np.clip(np.round(result), 0, 255).astype(np.uint8)
         out_uri = array_to_data_uri(output_vis)
         shape_str = f"{output_vis.shape[1]}×{output_vis.shape[0]}"
+
+        cipher_vis = cv2.normalize(np.real(cipher_input), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        stages = {
+            "ciphertext": array_to_data_uri(cipher_vis),
+            "dct_coeffs": dct_spectrum_to_data_uri(d_cipher),
+            "inverse_perm": dct_spectrum_to_data_uri(original_coeffs),
+            "decrypted": out_uri,
+        }
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
     return DCTResponse(
         action=action.lower(),
         output_image=out_uri,
+        stages=stages,
         metadata={"seed": seed, "shape": shape_str},
         latency_ms=round(latency_ms, 2),
     )
@@ -287,18 +379,38 @@ def run_arnold_xor(
         cropped = True
 
     key = arnold_xor.ArnoldXORKey(itr=itr, xor_value=xor_value)
+    arnold_xor.validate_key(key)
 
     if action.lower() == "encrypt":
-        result = arnold_xor.encrypt(img, key)
-    else:
-        result = arnold_xor.decrypt(img, key)
+        scrambled = arnold_xor.arnold_scramble(img, key.itr)
+        result = arnold_xor.xor_transform(scrambled, key.xor_value)
+        output_vis = np.clip(result, 0, 255).astype(np.uint8)
+        out_uri = array_to_data_uri(output_vis)
 
-    output_vis = np.clip(result, 0, 255).astype(np.uint8)
+        stages = {
+            "original": array_to_data_uri(img),
+            "arnold_scramble": array_to_data_uri(scrambled),
+            "xor_diffusion": out_uri,
+            "ciphertext": out_uri,
+        }
+    else:
+        xored = arnold_xor.xor_transform(img, key.xor_value)
+        result = arnold_xor.arnold_unscramble(xored, key.itr)
+        output_vis = np.clip(result, 0, 255).astype(np.uint8)
+        out_uri = array_to_data_uri(output_vis)
+        stages = {
+            "ciphertext": array_to_data_uri(img),
+            "xor_invert": array_to_data_uri(xored),
+            "inverse_arnold": out_uri,
+            "decrypted": out_uri,
+        }
+
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
     return ArnoldXORResponse(
         action=action.lower(),
-        output_image=array_to_data_uri(output_vis),
+        output_image=out_uri,
+        stages=stages,
         metadata={
             "itr": itr,
             "xor_value": xor_value,

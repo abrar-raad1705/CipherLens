@@ -92,6 +92,21 @@ def log_spectrum_to_base64_png(complex_array: np.ndarray) -> str:
     return f"data:image/png;base64,{b64}"
 
 
+def dct_spectrum_to_base64_png(dct_array: np.ndarray) -> str:
+    """
+    Render 2D DCT coefficient spectrum using logarithmic magnitude: log(1 + |C(u, v)|).
+    """
+    magnitude = np.abs(dct_array)
+    log_spec = np.log1p(magnitude)
+    norm = cv2.normalize(log_spec, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    colored = cv2.applyColorMap(norm, cv2.COLORMAP_INFERNO)
+    pil_img = Image.fromarray(cv2.cvtColor(colored, cv2.COLOR_BGR2RGB))
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG", optimize=True)
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return f"data:image/png;base64,{b64}"
+
+
 def error_heatmap_to_base64_png(diff_array: np.ndarray) -> str:
     """Render absolute error difference heatmap."""
     diff_norm = cv2.normalize(
@@ -505,14 +520,22 @@ class LaboratorySession:
         )
 
         key = fourier.FourierKey(seed=seed)
-        ciphertext = fourier.encrypt(img, key)
+        fourier.validate_key(key)
+
+        unpermuted_coeffs = np.fft.fft2(img, norm="ortho")
+        flat = unpermuted_coeffs.flatten()
+        perm = fourier.generate_permutation(flat.size, key.seed)
+        encrypted_flat = flat[perm]
+        encrypted_coeffs = encrypted_flat.reshape(unpermuted_coeffs.shape)
+        ciphertext = np.asarray(np.fft.ifft2(encrypted_coeffs, norm="ortho"))
+
         c_vis = cv2.normalize(
             np.real(ciphertext), None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
+        c_uri = array_to_base64_png(c_vis)
 
-        # Fourier spectrum of ciphertext
-        f_coeffs = np.fft.fft2(ciphertext, norm="ortho")
-        spec_vis = log_spectrum_to_base64_png(f_coeffs)
+        spec_vis = log_spectrum_to_base64_png(encrypted_coeffs)
+        fft_spec_vis = log_spectrum_to_base64_png(unpermuted_coeffs)
 
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -524,10 +547,18 @@ class LaboratorySession:
             "latency_ms": round(latency_ms, 2),
         }
 
+        stages = {
+            "original": array_to_base64_png(img),
+            "fft_spectrum": fft_spec_vis,
+            "permuted_spectrum": spec_vis,
+            "ciphertext": c_uri,
+        }
+
         return {
             "status": "COMPLETE",
             "metadata": self.encryption_meta,
-            "ciphertext_vis": array_to_base64_png(c_vis),
+            "stages": stages,
+            "ciphertext_vis": c_uri,
             "spectrum_vis": spec_vis,
         }
 
@@ -541,10 +572,19 @@ class LaboratorySession:
         )
 
         key = dct.DCT_Key(seed=seed)
-        ciphertext = dct.encrypt(img, key)
+        dct.validate_key(key)
+
+        coeffs = dct.dctn(img, norm="ortho")
+        flat = coeffs.flatten()
+        perm = dct.generate_permutation(flat.size, key.seed)
+        encrypted_flat = flat[perm]
+        encrypted_coeffs = encrypted_flat.reshape(coeffs.shape)
+        ciphertext = np.asarray(dct.idctn(encrypted_coeffs, norm="ortho"))
+
         c_vis = cv2.normalize(
             np.real(ciphertext), None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
+        c_uri = array_to_base64_png(c_vis)
 
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -556,10 +596,18 @@ class LaboratorySession:
             "latency_ms": round(latency_ms, 2),
         }
 
+        stages = {
+            "original": array_to_base64_png(img),
+            "dct_basis": dct_spectrum_to_base64_png(coeffs),
+            "scrambled_dct": dct_spectrum_to_base64_png(encrypted_coeffs),
+            "ciphertext": c_uri,
+        }
+
         return {
             "status": "COMPLETE",
             "metadata": self.encryption_meta,
-            "ciphertext_vis": array_to_base64_png(c_vis),
+            "stages": stages,
+            "ciphertext_vis": c_uri,
         }
 
     def run_arnold_xor(self, itr: int = 10, xor_value: int = 0xAA) -> dict[str, Any]:
@@ -583,7 +631,12 @@ class LaboratorySession:
             img_square = img
 
         key = arnold_xor.ArnoldXORKey(itr=itr, xor_value=xor_value)
-        ciphertext = arnold_xor.encrypt(img_square, key)
+        arnold_xor.validate_key(key)
+
+        scrambled = arnold_xor.arnold_scramble(img_square, key.itr)
+        ciphertext = arnold_xor.xor_transform(scrambled, key.xor_value)
+        c_vis = np.clip(ciphertext, 0, 255).astype(np.uint8)
+        c_uri = array_to_base64_png(c_vis)
 
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -597,10 +650,18 @@ class LaboratorySession:
             "square_cropped": h != w,
         }
 
+        stages = {
+            "original": array_to_base64_png(img_square),
+            "arnold_scramble": array_to_base64_png(scrambled),
+            "xor_diffusion": c_uri,
+            "ciphertext": c_uri,
+        }
+
         return {
             "status": "COMPLETE",
             "metadata": self.encryption_meta,
-            "ciphertext_vis": array_to_base64_png(ciphertext),
+            "stages": stages,
+            "ciphertext_vis": c_uri,
         }
 
     # =========================================================================

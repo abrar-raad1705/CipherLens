@@ -4,18 +4,14 @@ import React, { useState, useEffect, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
+  BarChart3,
   Binary,
   CheckCircle2,
-  Eye,
-  Info,
-  Layers,
   Lock,
-  RefreshCw,
   RotateCcw,
   ShieldAlert,
   ShieldCheck,
   Shuffle,
-  Sparkles,
   Unlock,
   Waves,
 } from "lucide-react";
@@ -24,13 +20,14 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { CanvasViewer } from "@/components/image/CanvasViewer";
-import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
+import { UnifiedWorkbenchCanvas } from "@/components/image/UnifiedWorkbenchCanvas";
+import { OpticalBenchDiagram } from "@/components/encryption/OpticalBenchDiagram";
 import { useWorkspace } from "@/hooks/use-image";
 import { useEncryption } from "@/hooks/use-encryption";
 import {
   EncryptionAlgorithm,
   getEncryptionSession,
-  saveEncryptionSession,
+  subscribeToSession,
 } from "@/lib/encryption-session";
 import { runMetrics } from "@/lib/api/analysis";
 
@@ -90,7 +87,7 @@ const ALGORITHMS: AlgorithmMeta[] = [
 function DecryptionWorkbenchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { activeArtifact, presets, loadPresetById, addArtifact } = useWorkspace();
+  const { activeArtifact, addArtifact } = useWorkspace();
   const {
     loading,
     error,
@@ -103,10 +100,12 @@ function DecryptionWorkbenchContent() {
   // Load session from store
   const [session, setSession] = useState(getEncryptionSession());
 
-  // Current algorithm
+  // Current algorithm (syncs with ?algo= url param if present)
   const urlAlgo = searchParams.get("algo") as EncryptionAlgorithm;
-  const activeAlgoId = (urlAlgo || session?.algorithm || "drpe") as EncryptionAlgorithm;
-  const [selectedAlgo, setSelectedAlgo] = useState<EncryptionAlgorithm>(activeAlgoId);
+  const initialAlgo = (urlAlgo || session?.algorithm || "drpe") as EncryptionAlgorithm;
+  const [selectedAlgo, setSelectedAlgo] = useState<EncryptionAlgorithm>(
+    ALGORITHMS.some((a) => a.id === initialAlgo) ? initialAlgo : "drpe"
+  );
 
   // Ciphertext and Real Image sources
   const [cipherSrc, setCipherSrc] = useState<string>(session?.cipherImageUri || "");
@@ -117,6 +116,13 @@ function DecryptionWorkbenchContent() {
   // Decrypted Image output
   const [decryptedSrc, setDecryptedSrc] = useState<string | null>(null);
   const [lastLatency, setLastLatency] = useState<number | null>(null);
+
+  // Pipeline Stages state
+  const [pipelineStages, setPipelineStages] = useState<Record<string, string> | null>(null);
+  const [activePipelineStage, setActivePipelineStage] = useState<string>("decrypted");
+
+  // In-flight state to prevent double clicks
+  const [isDecrypting, setIsDecrypting] = useState<boolean>(false);
 
   // Quantitative Quality Metrics (SSIM, PSNR, MSE)
   const [qualityMetrics, setQualityMetrics] = useState<{
@@ -156,35 +162,36 @@ function DecryptionWorkbenchContent() {
     session?.keys.xorValue ?? 170
   );
 
-  // Deep comparison mode: Real vs Decrypted | Cipher vs Decrypted | Real vs Cipher
-  const [deepCompareMode, setDeepCompareMode] = useState<
-    "real-vs-decrypted" | "cipher-vs-decrypted" | "real-vs-cipher"
-  >("real-vs-decrypted");
-
-  // Load session on initial mount
+  // Subscribe and sync with encryption session
   useEffect(() => {
-    const currentSession = getEncryptionSession();
-    if (currentSession) {
-      setSession(currentSession);
-      if (currentSession.algorithm) {
-        setSelectedAlgo(currentSession.algorithm);
+    const sync = (s: ReturnType<typeof getEncryptionSession>) => {
+      if (s) {
+        setSession(s);
+        if (s.algorithm) setSelectedAlgo(s.algorithm);
+        if (s.cipherImageUri) setCipherSrc(s.cipherImageUri);
+        if (s.realImageUri) setRealSrc(s.realImageUri);
+        if (s.keys) {
+          if (s.keys.seed1 !== undefined) setDrpeSeed1(s.keys.seed1);
+          if (s.keys.seed2 !== undefined) setDrpeSeed2(s.keys.seed2);
+          if (s.keys.fourierSeed !== undefined) setFourierSeed(s.keys.fourierSeed);
+          if (s.keys.dctSeed !== undefined) setDctSeed(s.keys.dctSeed);
+          if (s.keys.iterations !== undefined) setArnoldItr(s.keys.iterations);
+          if (s.keys.xorValue !== undefined) setArnoldXor(s.keys.xorValue);
+        }
       }
-      if (currentSession.cipherImageUri) {
-        setCipherSrc(currentSession.cipherImageUri);
-      }
-      if (currentSession.realImageUri) {
-        setRealSrc(currentSession.realImageUri);
-      }
-      if (currentSession.keys) {
-        if (currentSession.keys.seed1 !== undefined) setDrpeSeed1(currentSession.keys.seed1);
-        if (currentSession.keys.seed2 !== undefined) setDrpeSeed2(currentSession.keys.seed2);
-        if (currentSession.keys.fourierSeed !== undefined) setFourierSeed(currentSession.keys.fourierSeed);
-        if (currentSession.keys.dctSeed !== undefined) setDctSeed(currentSession.keys.dctSeed);
-        if (currentSession.keys.iterations !== undefined) setArnoldItr(currentSession.keys.iterations);
-        if (currentSession.keys.xorValue !== undefined) setArnoldXor(currentSession.keys.xorValue);
-      }
-    }
+    };
+    const unsub = subscribeToSession(sync);
+    sync(getEncryptionSession());
+    return unsub;
   }, []);
+
+  // Sync algorithm if URL param changes
+  useEffect(() => {
+    const algoParam = searchParams.get("algo") as EncryptionAlgorithm;
+    if (algoParam && ALGORITHMS.some((a) => a.id === algoParam)) {
+      setSelectedAlgo(algoParam);
+    }
+  }, [searchParams]);
 
   // Check if current keys match correct encryption keys
   const isExactKeyMatch = useMemo(() => {
@@ -219,24 +226,39 @@ function DecryptionWorkbenchContent() {
     arnoldXor,
   ]);
 
-  // Execute Decryption Function
-  const handleExecuteDecrypt = async () => {
+  // Core Decryption Execution helper
+  const executeDecryptionWithParams = async (
+    algo: EncryptionAlgorithm,
+    params: {
+      seed1?: number;
+      seed2?: number;
+      fourierSeed?: number;
+      dctSeed?: number;
+      arnoldItr?: number;
+      arnoldXor?: number;
+    }
+  ) => {
     const targetCipher = cipherSrc || activeArtifact?.dataUri;
-    if (!targetCipher) return;
+    if (!targetCipher || isDecrypting) return;
 
+    setIsDecrypting(true);
     try {
       let recoveredUri = "";
       let latency = 0;
+      let returnedStages: Record<string, string> | undefined = undefined;
 
-      if (selectedAlgo === "drpe") {
+      if (algo === "drpe") {
+        const s1 = params.seed1 ?? drpeSeed1;
+        const s2 = params.seed2 ?? drpeSeed2;
         const res = await executeDRPEDecrypt(
           targetCipher,
-          drpeSeed1,
-          drpeSeed2,
+          s1,
+          s2,
           realSrc || undefined
         );
         recoveredUri = res.decrypted_image;
         latency = res.latency_ms;
+        returnedStages = res.stages;
 
         if (res.quality && Object.keys(res.quality).length > 0) {
           setQualityMetrics({
@@ -245,25 +267,36 @@ function DecryptionWorkbenchContent() {
             mse: res.quality.mse !== undefined ? Number(res.quality.mse) : null,
           });
         }
-      } else if (selectedAlgo === "fourier") {
-        const res = await executeFourier(targetCipher, fourierSeed, "decrypt");
+      } else if (algo === "fourier") {
+        const seed = params.fourierSeed ?? fourierSeed;
+        const res = await executeFourier(targetCipher, seed, "decrypt");
         recoveredUri = res.output_image;
         latency = res.latency_ms;
-      } else if (selectedAlgo === "dct") {
-        const res = await executeDCT(targetCipher, dctSeed, "decrypt");
+        returnedStages = res.stages;
+      } else if (algo === "dct") {
+        const seed = params.dctSeed ?? dctSeed;
+        const res = await executeDCT(targetCipher, seed, "decrypt");
         recoveredUri = res.output_image;
         latency = res.latency_ms;
-      } else if (selectedAlgo === "arnold") {
-        const res = await executeArnoldXOR(targetCipher, arnoldItr, arnoldXor, "decrypt");
+        returnedStages = res.stages;
+      } else if (algo === "arnold") {
+        const itr = params.arnoldItr ?? arnoldItr;
+        const xor = params.arnoldXor ?? arnoldXor;
+        const res = await executeArnoldXOR(targetCipher, itr, xor, "decrypt");
         recoveredUri = res.output_image;
         latency = res.latency_ms;
+        returnedStages = res.stages;
       }
 
       setDecryptedSrc(recoveredUri);
       setLastLatency(latency);
+      if (returnedStages) {
+        setPipelineStages(returnedStages);
+      }
+      setActivePipelineStage("decrypted");
 
-      // If we have both real image and recovered image, compute metrics for Fourier, DCT, Arnold (or DRPE fallback)
-      if (realSrc && recoveredUri && (selectedAlgo !== "drpe" || !qualityMetrics.ssim)) {
+      // Calculate comparative metrics if reference ground truth exists
+      if (realSrc && recoveredUri && (algo !== "drpe" || qualityMetrics.ssim === null)) {
         try {
           const metrics = await runMetrics(realSrc, recoveredUri, false);
           setQualityMetrics({
@@ -277,43 +310,86 @@ function DecryptionWorkbenchContent() {
       }
     } catch (err) {
       console.error("Decryption failed:", err);
+    } finally {
+      setIsDecrypting(false);
     }
+  };
+
+  const handleExecuteDecrypt = () => {
+    executeDecryptionWithParams(selectedAlgo, {
+      seed1: drpeSeed1,
+      seed2: drpeSeed2,
+      fourierSeed,
+      dctSeed,
+      arnoldItr,
+      arnoldXor,
+    });
   };
 
   // Auto-run decryption on first load if ciphertext is available
   useEffect(() => {
-    if (cipherSrc && !decryptedSrc) {
+    if (cipherSrc && !decryptedSrc && !isDecrypting) {
       handleExecuteDecrypt();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cipherSrc]);
 
-  // Utility to match correct keys
+  // Handle Algorithm Switch
+  const handleAlgorithmChange = (algoId: EncryptionAlgorithm) => {
+    setSelectedAlgo(algoId);
+    setDecryptedSrc(null);
+    setPipelineStages(null);
+    setActivePipelineStage("decrypted");
+    setQualityMetrics({ ssim: null, psnr: null, mse: null });
+    const params = new URLSearchParams(window.location.search);
+    params.set("algo", algoId);
+    router.replace(`/decryption?${params.toString()}`);
+  };
+
+  // Utility to match correct keys and auto-execute
   const handleMatchCorrectKeys = () => {
     if (!session) return;
     if (selectedAlgo === "drpe") {
-      setDrpeSeed1(session.keys.seed1 ?? 1234);
-      setDrpeSeed2(session.keys.seed2 ?? 5678);
+      const s1 = session.keys.seed1 ?? 1234;
+      const s2 = session.keys.seed2 ?? 5678;
+      setDrpeSeed1(s1);
+      setDrpeSeed2(s2);
+      executeDecryptionWithParams("drpe", { seed1: s1, seed2: s2 });
     } else if (selectedAlgo === "fourier") {
-      setFourierSeed(session.keys.fourierSeed ?? 100);
+      const seed = session.keys.fourierSeed ?? 100;
+      setFourierSeed(seed);
+      executeDecryptionWithParams("fourier", { fourierSeed: seed });
     } else if (selectedAlgo === "dct") {
-      setDctSeed(session.keys.dctSeed ?? 42);
+      const seed = session.keys.dctSeed ?? 42;
+      setDctSeed(seed);
+      executeDecryptionWithParams("dct", { dctSeed: seed });
     } else if (selectedAlgo === "arnold") {
-      setArnoldItr(session.keys.iterations ?? 10);
-      setArnoldXor(session.keys.xorValue ?? 170);
+      const itr = session.keys.iterations ?? 10;
+      const xor = session.keys.xorValue ?? 170;
+      setArnoldItr(itr);
+      setArnoldXor(xor);
+      executeDecryptionWithParams("arnold", { arnoldItr: itr, arnoldXor: xor });
     }
   };
 
-  // Utility to perturb keys by +1 to test sensitivity
+  // Utility to perturb keys by +1 to test sensitivity and auto-execute
   const handlePerturbKeys = () => {
     if (selectedAlgo === "drpe") {
-      setDrpeSeed1((s) => s + 1);
+      const s1 = drpeSeed1 + 1;
+      setDrpeSeed1(s1);
+      executeDecryptionWithParams("drpe", { seed1: s1, seed2: drpeSeed2 });
     } else if (selectedAlgo === "fourier") {
-      setFourierSeed((s) => s + 1);
+      const seed = fourierSeed + 1;
+      setFourierSeed(seed);
+      executeDecryptionWithParams("fourier", { fourierSeed: seed });
     } else if (selectedAlgo === "dct") {
-      setDctSeed((s) => s + 1);
+      const seed = dctSeed + 1;
+      setDctSeed(seed);
+      executeDecryptionWithParams("dct", { dctSeed: seed });
     } else if (selectedAlgo === "arnold") {
-      setArnoldItr((i) => i + 1);
+      const itr = arnoldItr + 1;
+      setArnoldItr(itr);
+      executeDecryptionWithParams("arnold", { arnoldItr: itr, arnoldXor });
     }
   };
 
@@ -326,15 +402,30 @@ function DecryptionWorkbenchContent() {
         dataUri: decryptedSrc,
         width: activeArtifact?.width || 512,
         height: activeArtifact?.height || 512,
-        sourceBench: "encryption",
+        sourceBench: "decryption",
       },
       true
     );
     router.push("/workspace");
   };
 
+  // Promote recovered image to analysis
+  const handlePromoteToAnalysis = () => {
+    if (!decryptedSrc) return;
+    addArtifact(
+      {
+        name: `Decrypted [${selectedAlgo.toUpperCase()}]`,
+        dataUri: decryptedSrc,
+        width: activeArtifact?.width || 512,
+        height: activeArtifact?.height || 512,
+        sourceBench: "decryption",
+      },
+      true
+    );
+    router.push("/analysis");
+  };
+
   const activeMeta = ALGORITHMS.find((a) => a.id === selectedAlgo) || ALGORITHMS[0];
-  const ActiveIcon = activeMeta.icon;
 
   // Format PSNR cleanly
   const formatPsnr = (psnr: number | string | null | undefined): string => {
@@ -351,9 +442,9 @@ function DecryptionWorkbenchContent() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl py-2">
+    <div className="space-y-4 max-w-7xl">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[#E8E8E3] dark:border-[#292929] pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[#E8E8E3] dark:border-[#242424] pb-4">
         <div>
           <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
             CRYPTOGRAPHIC VERIFICATION
@@ -362,7 +453,7 @@ function DecryptionWorkbenchContent() {
             Image Decryption & Reconstruction Bench
           </h1>
           <p className="text-xs text-[#6F6F6A] dark:text-[#A0A09B] mt-1">
-            Auto-configured with matching algorithm and phase keys. Change keys to test cryptographic avalanche effect.
+            Coherent conjugate phase-unwrapping and inverse keyed transform reconstruction
           </p>
         </div>
 
@@ -391,14 +482,14 @@ function DecryptionWorkbenchContent() {
         </div>
       </div>
 
-      {/* Algorithm Selector Row: Minimal, Instrument-Grade Cryptographic Cards */}
+      {/* Algorithm Selector Row: Compressed, Instrument-Grade Cryptographic Cards */}
       <div className="space-y-2.5">
         <div className="flex items-center justify-between text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
           <span>SELECT DECRYPTION ALGORITHM</span>
           {session?.algorithm === selectedAlgo && (
             <span className="text-[#059669] dark:text-[#34D399] font-medium flex items-center gap-1 font-mono text-[11px] normal-case">
               <CheckCircle2 className="h-3.5 w-3.5" />
-              <span>Auto-selected</span>
+              <span>Auto-selected from Encryption</span>
             </span>
           )}
         </div>
@@ -412,14 +503,7 @@ function DecryptionWorkbenchContent() {
               <button
                 key={algo.id}
                 type="button"
-                onClick={() => {
-                  setSelectedAlgo(algo.id);
-                  setDecryptedSrc(null);
-                  setQualityMetrics({ ssim: null, psnr: null, mse: null });
-                  const params = new URLSearchParams(window.location.search);
-                  params.set("algo", algo.id);
-                  router.replace(`/decryption?${params.toString()}`);
-                }}
+                onClick={() => handleAlgorithmChange(algo.id)}
                 className={`group text-left p-3.5 rounded-md border transition-all cursor-pointer select-none ${
                   isSelected
                     ? "border-[#2563EB] dark:border-[#5B8CFF] bg-[#2563EB]/[0.03] dark:bg-[#5B8CFF]/[0.04]"
@@ -453,418 +537,248 @@ function DecryptionWorkbenchContent() {
       </div>
 
       {/* Main Execution Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Visual Comparisons (8 cols on desktop) */}
-        <div className="lg:col-span-8 space-y-6">
-          {/* SECTION 1: TRI-VIEW COMPARISON (REAL, CIPHER, DECRYPTED) */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono tracking-wider text-[#181818] dark:text-[#F2F2F0] font-medium uppercase">
-                  TRI-VIEW STATE INSPECTION
-                </span>
-                <Badge variant="outline" className="text-[10px] font-mono">
-                  3-Way Values
-                </Badge>
-              </div>
-              <span className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
-                Real Plaintext · Cipher State · Decrypted Output
-              </span>
-            </div>
-
-            {/* 3-Column Inspection Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* 1. Real Image */}
-              <div className="rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] overflow-hidden flex flex-col">
-                <div className="px-3 py-2 border-b border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#121212] flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="h-2 w-2 rounded-full bg-[#2563EB] dark:bg-[#5B8CFF] shrink-0" />
-                    <span className="text-xs font-mono font-medium text-[#181818] dark:text-[#F2F2F0] truncate">
-                      1. REAL (PLAINTEXT)
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono text-[#999993] dark:text-[#6A6A6A]">
-                    Ground Truth
+      <div className="flex flex-col lg:flex-row gap-4 items-start">
+        {/* Left Column: Pipeline Execution Diagram + Unified Cryptographic Workbench */}
+        <div className="flex-1 min-w-0 w-full space-y-4">
+          {cipherSrc || decryptedSrc ? (
+            <div className="space-y-4">
+              {/* Algorithm Decryption Pipeline Architecture Diagram */}
+              <Card className="p-3 border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#161616] shadow-xs">
+                <div className="flex items-center justify-between pb-2 border-b border-[#E8E8E3] dark:border-[#242424] mb-2 px-1">
+                  <span className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                    {activeMeta.name} Decryption Pipeline
+                  </span>
+                  <span className="text-[10px] font-mono text-[#6F6F6A] dark:text-[#A0A09B]">
+                    Interactive Stages
                   </span>
                 </div>
-                <div className="p-3 bg-[#FAFAF8] dark:bg-[#101010] flex items-center justify-center min-h-[190px]">
-                  {realSrc ? (
-                    <img
-                      src={realSrc}
-                      alt="Real Plaintext"
-                      className="max-h-[180px] max-w-full object-contain rounded border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717]"
-                    />
-                  ) : (
-                    <span className="text-xs font-mono text-[#999993]">No image</span>
-                  )}
-                </div>
-                <div className="px-3 py-1.5 border-t border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-[11px] font-mono text-[#6F6F6A] dark:text-[#A0A09B] truncate">
-                  {session?.realImageName || activeArtifact?.name || "Target Image"}
-                </div>
-              </div>
+                <OpticalBenchDiagram
+                  mode="decrypt"
+                  algorithm={selectedAlgo}
+                  activeStage={activePipelineStage}
+                  hasExecuted={Boolean(decryptedSrc)}
+                  isExecuting={isDecrypting || loading}
+                  sourcePreviewSrc={cipherSrc}
+                  outputPreviewSrc={decryptedSrc || undefined}
+                  stagePreviews={pipelineStages}
+                  onSelectStage={(k) => {
+                    setActivePipelineStage(k);
+                  }}
+                />
+              </Card>
 
-              {/* 2. Cipher Image */}
-              <div className="rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] overflow-hidden flex flex-col">
-                <div className="px-3 py-2 border-b border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#121212] flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="h-2 w-2 rounded-full bg-[#8B5CF6] dark:bg-[#A78BFA] shrink-0" />
-                    <span className="text-xs font-mono font-medium text-[#181818] dark:text-[#F2F2F0] truncate">
-                      2. CIPHER (ENCRYPTED)
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono text-[#999993] dark:text-[#6A6A6A]">
-                    Stationary Noise
-                  </span>
-                </div>
-                <div className="p-3 bg-[#FAFAF8] dark:bg-[#101010] flex items-center justify-center min-h-[190px]">
-                  {cipherSrc ? (
-                    <img
-                      src={cipherSrc}
-                      alt="Ciphertext"
-                      className="max-h-[180px] max-w-full object-contain rounded border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717]"
-                    />
-                  ) : (
-                    <span className="text-xs font-mono text-[#999993]">No ciphertext</span>
-                  )}
-                </div>
-                <div className="px-3 py-1.5 border-t border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-[11px] font-mono text-[#6F6F6A] dark:text-[#A0A09B] truncate">
-                  Algorithm: {activeMeta.name}
-                </div>
-              </div>
+              {/* Unified Cryptographic Workbench: Multi-Mode Comparison Viewport */}
+              {(() => {
+                const isFinalDecrypted = activePipelineStage === "decrypted";
+                const isCipherInput = activePipelineStage === "ciphertext";
+                const currentStageUri =
+                  pipelineStages?.[activePipelineStage] || decryptedSrc || cipherSrc;
 
-              {/* 3. Decrypted Image */}
-              <div className="rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] overflow-hidden flex flex-col">
-                <div className="px-3 py-2 border-b border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#121212] flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span
-                      className={`h-2 w-2 rounded-full shrink-0 ${
-                        isExactKeyMatch
-                          ? "bg-[#059669] dark:text-[#34D399]"
-                          : "bg-[#DC2626] dark:text-[#F87171]"
-                      }`}
-                    />
-                    <span className="text-xs font-mono font-medium text-[#181818] dark:text-[#F2F2F0] truncate">
-                      3. DECRYPTED (RECOVERED)
-                    </span>
-                  </div>
-                  <Badge
-                    variant={isExactKeyMatch ? "emerald" : "rose"}
-                    className="text-[9px] font-mono px-1 py-0 uppercase"
-                  >
-                    {isExactKeyMatch ? "Exact" : "Perturbed"}
-                  </Badge>
-                </div>
-                <div className="p-3 bg-[#FAFAF8] dark:bg-[#101010] flex items-center justify-center min-h-[190px]">
-                  {decryptedSrc ? (
-                    <img
-                      src={decryptedSrc}
-                      alt="Decrypted Output"
-                      className="max-h-[180px] max-w-full object-contain rounded border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717]"
-                    />
-                  ) : (
-                    <span className="text-xs font-mono text-[#999993]">
-                      No decrypted output
-                    </span>
-                  )}
-                </div>
-                <div className="px-3 py-1.5 border-t border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-[11px] font-mono text-[#6F6F6A] dark:text-[#A0A09B] truncate">
-                  Fidelity: {qualityMetrics.ssim !== null ? `SSIM ${qualityMetrics.ssim.toFixed(4)}` : "Pending"}
-                </div>
-              </div>
+                let stageTitle = `${activeMeta.name.toUpperCase()} RECOVERED PLAINTEXT`;
+                let stageSubtitle = `Decrypted Outcome · Status: Complete · Latency: ${lastLatency ?? 0} ms`;
+
+                if (isCipherInput) {
+                  stageTitle = "CIPHERTEXT (ENCRYPTED INPUT)";
+                  stageSubtitle = "Stationary Random Wavefront / Permuted Frequency State";
+                } else if (!isFinalDecrypted && pipelineStages?.[activePipelineStage]) {
+                  const stageLabels: Record<string, { title: string; subtitle: string }> = {
+                    r2_conj: {
+                      title: "DRPE: CONJUGATE FOURIER MASK (R₂*)",
+                      subtitle: "Frequency domain phase cancellation wavefront",
+                    },
+                    fourier_demod: {
+                      title: "DRPE: DEMODULATED SPECTRUM (LENS L2)",
+                      subtitle: "Inverse optical Fourier transformation step",
+                    },
+                    r1_conj: {
+                      title: "DRPE: CONJUGATE SPATIAL MASK (R₁*)",
+                      subtitle: "Spatial domain phase cancellation wavefront",
+                    },
+                    fft_spectrum: {
+                      title: "FOURIER: CIPHER FREQUENCY SPECTRUM |F(u, v)|",
+                      subtitle: "2D Fast Fourier Transform log-magnitude of ciphertext",
+                    },
+                    inverse_perm: {
+                      title: "FOURIER: RESTORED SPECTRUM π⁻¹[F(u, v)]",
+                      subtitle: "Key-inverted 2D Fourier coefficient distribution",
+                    },
+                    dct_coeffs: {
+                      title: "DCT: CIPHER BASIS COEFFICIENTS",
+                      subtitle: "2D Cosine transform basis representation of ciphertext",
+                    },
+                    xor_invert: {
+                      title: "ARNOLD: INVERSE XOR DIFFUSION",
+                      subtitle: "Bitwise gray-level XOR inversion state",
+                    },
+                    inverse_arnold: {
+                      title: "ARNOLD: INVERSE TORAL SHEARING",
+                      subtitle: "Inverse Cat Map modulo coordinate realignment",
+                    },
+                  };
+
+                  const info = stageLabels[activePipelineStage];
+                  if (info) {
+                    stageTitle = info.title;
+                    stageSubtitle = info.subtitle;
+                  } else {
+                    stageTitle = `STAGE: ${activePipelineStage.toUpperCase().replace("_", " ")}`;
+                    stageSubtitle = "Intermediate Pipeline State";
+                  }
+                }
+
+                return (
+                  <UnifiedWorkbenchCanvas
+                    currentSrc={currentStageUri}
+                    originalSrc={realSrc || cipherSrc}
+                    title={stageTitle}
+                    subtitle={stageSubtitle}
+                    originalLabel={realSrc ? "Plaintext (Original)" : "Ciphertext"}
+                    currentLabel={
+                      isCipherInput
+                        ? "Ciphertext"
+                        : isFinalDecrypted
+                        ? "Decrypted"
+                        : activePipelineStage.toUpperCase().replace("_", " ")
+                    }
+                    defaultMode="split"
+                    isLoading={isDecrypting || loading}
+                  />
+                );
+              })()}
             </div>
-          </div>
-
-          {/* SECTION 2: DEEP DUAL COMPARISON (SLIDER, DIFFERENCE, SIDE-BY-SIDE) */}
-          <div className="space-y-3 pt-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E8E8E3] dark:border-[#292929] pb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono tracking-wider text-[#181818] dark:text-[#F2F2F0] font-medium uppercase">
-                  DEEP RECONSTRUCTION COMPARISON
-                </span>
-                <span className="text-xs text-[#999993]">·</span>
-                <span className="text-xs font-mono text-[#6F6F6A] dark:text-[#A0A09B]">
-                  Interactive Slider
-                </span>
-              </div>
-
-              {/* Mode Selector between Real vs Decrypted, Cipher vs Decrypted, Real vs Cipher */}
-              <div className="flex items-center gap-4 text-xs font-mono">
-                <button
-                  type="button"
-                  onClick={() => setDeepCompareMode("real-vs-decrypted")}
-                  className={`cursor-pointer transition-colors pb-1 -mb-2 border-b-2 font-medium ${
-                    deepCompareMode === "real-vs-decrypted"
-                      ? "text-[#2563EB] dark:text-[#5B8CFF] border-[#2563EB] dark:border-[#5B8CFF]"
-                      : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] border-transparent"
-                  }`}
-                >
-                  Real vs Decrypted
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeepCompareMode("cipher-vs-decrypted")}
-                  className={`cursor-pointer transition-colors pb-1 -mb-2 border-b-2 font-medium ${
-                    deepCompareMode === "cipher-vs-decrypted"
-                      ? "text-[#2563EB] dark:text-[#5B8CFF] border-[#2563EB] dark:border-[#5B8CFF]"
-                      : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] border-transparent"
-                  }`}
-                >
-                  Cipher vs Decrypted
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeepCompareMode("real-vs-cipher")}
-                  className={`cursor-pointer transition-colors pb-1 -mb-2 border-b-2 font-medium ${
-                    deepCompareMode === "real-vs-cipher"
-                      ? "text-[#2563EB] dark:text-[#5B8CFF] border-[#2563EB] dark:border-[#5B8CFF]"
-                      : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] border-transparent"
-                  }`}
-                >
-                  Real vs Cipher
-                </button>
-              </div>
+          ) : (
+            /* Empty State: Ready for Decryption */
+            <div>
+              <CanvasViewer
+                imageSrc={realSrc || activeArtifact?.dataUri || ""}
+                title="AWAITING CIPHERTEXT INPUT"
+                subtitle={
+                  activeArtifact
+                    ? `${activeArtifact.name} · Encrypt in Encryption Bench or select ciphertext`
+                    : "No ciphertext session detected · Encrypt an image first"
+                }
+                isLoading={isDecrypting || loading}
+                loadingText={`Decrypting with ${activeMeta.name}...`}
+              />
             </div>
+          )}
+        </div>
 
-            {/* Split Compare Canvas */}
-            {deepCompareMode === "real-vs-decrypted" && (
-              <SplitCompareCanvas
-                beforeSrc={realSrc}
-                afterSrc={decryptedSrc || realSrc}
-                beforeLabel="REAL (PLAINTEXT)"
-                afterLabel={isExactKeyMatch ? "DECRYPTED (EXACT KEY)" : "DECRYPTED (PERTURBED)"}
-              />
-            )}
-
-            {deepCompareMode === "cipher-vs-decrypted" && (
-              <SplitCompareCanvas
-                beforeSrc={cipherSrc}
-                afterSrc={decryptedSrc || cipherSrc}
-                beforeLabel="CIPHER (ENCRYPTED)"
-                afterLabel={isExactKeyMatch ? "DECRYPTED (RECOVERED)" : "DECRYPTED (PERTURBED)"}
-              />
-            )}
-
-            {deepCompareMode === "real-vs-cipher" && (
-              <SplitCompareCanvas
-                beforeSrc={realSrc}
-                afterSrc={cipherSrc || realSrc}
-                beforeLabel="REAL (PLAINTEXT)"
-                afterLabel="CIPHER (ENCRYPTED)"
-              />
-            )}
-          </div>
-
-          {/* SECTION 3: RECONSTRUCTION VERIFICATION TELEMETRY HUD */}
-          <div className="rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                QUANTITATIVE RECONSTRUCTION TELEMETRY
+        {/* Right Column: Key Tuning & Telemetry Metrics Sidebar */}
+        <div className="w-full lg:w-[310px] xl:w-[320px] shrink-0 space-y-3.5">
+          {/* Card 1: Key Tuning & Sensitivity Controls */}
+          <Card className="p-3.5 space-y-3 border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#161616] shadow-xs">
+            <div className="flex items-center justify-between pb-1">
+              <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                KEY TUNING & SENSITIVITY
               </div>
-              <Badge variant={isExactKeyMatch ? "emerald" : "rose"} dot>
-                {isExactKeyMatch ? "Exact Key Recovery" : "Zero Recovery (Diffused)"}
+              <Badge variant={isExactKeyMatch ? "emerald" : "rose"} dot className="text-[10px] font-mono">
+                {isExactKeyMatch ? "Exact Match" : "Perturbed"}
               </Badge>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] p-2.5">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-[#999993] dark:text-[#6A6A6A]">
-                  SSIM Fidelity
-                </div>
-                <div
-                  className={`font-mono text-sm font-medium mt-0.5 ${
-                    isExactKeyMatch
-                      ? "text-[#059669] dark:text-[#34D399]"
-                      : "text-[#DC2626] dark:text-[#F87171]"
-                  }`}
-                >
-                  {qualityMetrics.ssim !== null ? qualityMetrics.ssim.toFixed(4) : "—"}
-                </div>
-                <div className="text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] mt-0.5">
-                  {isExactKeyMatch ? "1.0000 = Lossless" : "Near 0.00 = Scrambled"}
-                </div>
-              </div>
-
-              <div className="rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] p-2.5">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-[#999993] dark:text-[#6A6A6A]">
-                  PSNR Quality
-                </div>
-                <div
-                  className={`font-mono text-sm font-medium mt-0.5 ${
-                    isExactKeyMatch
-                      ? "text-[#059669] dark:text-[#34D399]"
-                      : "text-[#DC2626] dark:text-[#F87171]"
-                  }`}
-                >
-                  {formatPsnr(qualityMetrics.psnr)}
-                </div>
-                <div className="text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] mt-0.5">
-                  {isExactKeyMatch ? "∞ dB = Zero distortion" : "< 15 dB = White noise"}
-                </div>
-              </div>
-
-              <div className="rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] p-2.5">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-[#999993] dark:text-[#6A6A6A]">
-                  MSE Error
-                </div>
-                <div className="font-mono text-sm font-medium text-[#181818] dark:text-[#F2F2F0] mt-0.5">
-                  {qualityMetrics.mse !== null ? qualityMetrics.mse.toFixed(4) : "—"}
-                </div>
-                <div className="text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] mt-0.5">
-                  Mean squared difference
-                </div>
-              </div>
-
-              <div className="rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] p-2.5">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-[#999993] dark:text-[#6A6A6A]">
-                  Inversion Latency
-                </div>
-                <div className="font-mono text-sm font-medium text-[#181818] dark:text-[#F2F2F0] mt-0.5">
-                  {lastLatency !== null ? `${lastLatency} ms` : "—"}
-                </div>
-                <div className="text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] mt-0.5">
-                  Algorithm compute time
-                </div>
-              </div>
-            </div>
-
-            {/* Explanatory callout */}
-            <div
-              className={`p-3 rounded-md border text-xs leading-relaxed ${
-                isExactKeyMatch
-                  ? "bg-[#ECFDF5] dark:bg-[#064E3B]/20 border-[#A7F3D0] dark:border-[#047857]/40 text-[#065F46] dark:text-[#6EE7B7]"
-                  : "bg-[#FEF2F2] dark:bg-[#7F1D1D]/20 border-[#FECACA] dark:border-[#991B1B]/40 text-[#991B1B] dark:text-[#FCA5A5]"
-              }`}
-            >
-              {isExactKeyMatch ? (
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                  <div>
-                    <strong>Lossless Recovery Verified:</strong> The decryption keys exactly match the parameters used during encryption. Optical and transform phase conjugation inverted the cryptosystem back to the pristine plaintext image.
+            {/* Dynamic Decryption Key Sliders per Algorithm */}
+            <div key={selectedAlgo} className="space-y-3 animate-option-switch">
+              {/* 1. DRPE Decrypt Controls */}
+              {selectedAlgo === "drpe" && (
+                <div className="space-y-3">
+                  <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                    OPTICAL CONJUGATE MASKS
                   </div>
+                  <Slider
+                    label="Spatial Phase Mask (R₁*)"
+                    valueDisplay={drpeSeed1}
+                    min={100}
+                    max={9999}
+                    step={1}
+                    value={drpeSeed1}
+                    onChange={(e) => setDrpeSeed1(Number(e.target.value))}
+                  />
+                  <Slider
+                    label="Fourier Phase Mask (R₂*)"
+                    valueDisplay={drpeSeed2}
+                    min={100}
+                    max={9999}
+                    step={1}
+                    value={drpeSeed2}
+                    onChange={(e) => setDrpeSeed2(Number(e.target.value))}
+                  />
                 </div>
-              ) : (
-                <div className="flex items-start gap-2">
-                  <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
-                  <div>
-                    <strong>Cryptographic Avalanche Active:</strong> The decryption key is perturbed from the original encryption key. Even a 1-unit difference produces stationary random noise, demonstrating strong resistance against key-guessing attacks.
+              )}
+
+              {/* 2. Fourier Decrypt Controls */}
+              {selectedAlgo === "fourier" && (
+                <div className="space-y-3">
+                  <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                    INVERSE FFT PERMUTATION KEY
                   </div>
+                  <Slider
+                    label="Phase Seed"
+                    valueDisplay={fourierSeed}
+                    min={1}
+                    max={9999}
+                    step={1}
+                    value={fourierSeed}
+                    onChange={(e) => setFourierSeed(Number(e.target.value))}
+                  />
+                </div>
+              )}
+
+              {/* 3. DCT Decrypt Controls */}
+              {selectedAlgo === "dct" && (
+                <div className="space-y-3">
+                  <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                    INVERSE DCT PERMUTATION KEY
+                  </div>
+                  <Slider
+                    label="Permutation Seed"
+                    valueDisplay={dctSeed}
+                    min={1}
+                    max={9999}
+                    step={1}
+                    value={dctSeed}
+                    onChange={(e) => setDctSeed(Number(e.target.value))}
+                  />
+                </div>
+              )}
+
+              {/* 4. Arnold Cat Map Decrypt Controls */}
+              {selectedAlgo === "arnold" && (
+                <div className="space-y-3">
+                  <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                    INVERSE CHAOTIC PARAMETERS
+                  </div>
+                  <Slider
+                    label="Inverse Cat Map Iterations"
+                    valueDisplay={arnoldItr}
+                    min={1}
+                    max={50}
+                    step={1}
+                    value={arnoldItr}
+                    onChange={(e) => setArnoldItr(Number(e.target.value))}
+                  />
+                  <Slider
+                    label="Inverse XOR Mask"
+                    valueDisplay={`0x${arnoldXor.toString(16).toUpperCase()} (${arnoldXor})`}
+                    min={0}
+                    max={255}
+                    step={1}
+                    value={arnoldXor}
+                    onChange={(e) => setArnoldXor(Number(e.target.value))}
+                  />
                 </div>
               )}
             </div>
-          </div>
-        </div>
 
-        {/* Right Column: Key Tuning & Sensitivity Controls (4 cols on desktop) */}
-        <Card className="lg:col-span-4 p-5 space-y-4 border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717]">
-          <div className="flex items-center justify-between pb-1">
-            <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-              KEY TUNING & SENSITIVITY
-            </div>
-            <Badge variant={isExactKeyMatch ? "emerald" : "rose"} dot>
-              {isExactKeyMatch ? "Exact Match" : "Perturbed"}
-            </Badge>
-          </div>
-
-          {/* Dynamic Decryption Key Sliders per Algorithm */}
-          <div key={selectedAlgo} className="space-y-4 animate-option-switch">
-            {/* 1. DRPE Decrypt Controls */}
-            {selectedAlgo === "drpe" && (
-              <div className="space-y-4">
-                <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                  OPTICAL PHASE MASKS
-                </div>
-                <Slider
-                  label="Decrypt Seed 1 (R₁*)"
-                  valueDisplay={drpeSeed1}
-                  min={100}
-                  max={9999}
-                  step={1}
-                  value={drpeSeed1}
-                  onChange={(e) => setDrpeSeed1(Number(e.target.value))}
-                />
-                <Slider
-                  label="Decrypt Seed 2 (R₂*)"
-                  valueDisplay={drpeSeed2}
-                  min={100}
-                  max={9999}
-                  step={1}
-                  value={drpeSeed2}
-                  onChange={(e) => setDrpeSeed2(Number(e.target.value))}
-                />
-              </div>
-            )}
-
-            {/* 2. Fourier Decrypt Controls */}
-            {selectedAlgo === "fourier" && (
-              <div className="space-y-4">
-                <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                  INVERSE FFT PERMUTATION KEY
-                </div>
-                <Slider
-                  label="Decrypt Seed"
-                  valueDisplay={fourierSeed}
-                  min={1}
-                  max={9999}
-                  step={1}
-                  value={fourierSeed}
-                  onChange={(e) => setFourierSeed(Number(e.target.value))}
-                />
-              </div>
-            )}
-
-            {/* 3. DCT Decrypt Controls */}
-            {selectedAlgo === "dct" && (
-              <div className="space-y-4">
-                <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                  INVERSE DCT PERMUTATION KEY
-                </div>
-                <Slider
-                  label="Decrypt Seed"
-                  valueDisplay={dctSeed}
-                  min={1}
-                  max={9999}
-                  step={1}
-                  value={dctSeed}
-                  onChange={(e) => setDctSeed(Number(e.target.value))}
-                />
-              </div>
-            )}
-
-            {/* 4. Arnold Cat Map Decrypt Controls */}
-            {selectedAlgo === "arnold" && (
-              <div className="space-y-4">
-                <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                  INVERSE CHAOTIC PARAMETERS
-                </div>
-                <Slider
-                  label="Inverse Iterations"
-                  valueDisplay={arnoldItr}
-                  min={1}
-                  max={50}
-                  step={1}
-                  value={arnoldItr}
-                  onChange={(e) => setArnoldItr(Number(e.target.value))}
-                />
-                <Slider
-                  label="Inverse XOR Mask"
-                  valueDisplay={`0x${arnoldXor.toString(16).toUpperCase()} (${arnoldXor})`}
-                  min={0}
-                  max={255}
-                  step={1}
-                  value={arnoldXor}
-                  onChange={(e) => setArnoldXor(Number(e.target.value))}
-                />
-              </div>
-            )}
-
-            {/* Key Sensitivity Preset Buttons */}
-            <div className="flex gap-2 pt-1">
+            {/* Key Sensitivity Preset Action Buttons */}
+            <div className="flex gap-2 pt-0.5">
               <Button
                 variant="outline"
                 size="sm"
-                className="flex-1 text-xs"
+                className="flex-1 h-7.5 text-[11px]"
                 onClick={handleMatchCorrectKeys}
                 disabled={!session}
+                title="Restore exact encryption keys"
               >
                 <RotateCcw className="h-3 w-3 mr-1" />
                 <span>Match Keys</span>
@@ -872,11 +786,12 @@ function DecryptionWorkbenchContent() {
               <Button
                 variant="outline"
                 size="sm"
-                className="flex-1 text-xs"
+                className="flex-1 h-7.5 text-[11px]"
                 onClick={handlePerturbKeys}
                 disabled={!cipherSrc}
-                title="Perturb key seed by +1"
+                title="Perturb key parameter by +1 to test avalanche sensitivity"
               >
+                <Shuffle className="h-3 w-3 mr-1" />
                 <span>Perturb (+1)</span>
               </Button>
             </div>
@@ -885,39 +800,155 @@ function DecryptionWorkbenchContent() {
             <Button
               variant="primary"
               onClick={handleExecuteDecrypt}
-              disabled={loading || !cipherSrc}
-              className="w-full h-9 mt-1"
+              disabled={isDecrypting || loading || (!cipherSrc && !activeArtifact)}
+              className="w-full h-8.5 mt-1 text-xs"
             >
               <Unlock className="h-3.5 w-3.5 mr-1" />
-              <span>Execute Decryption</span>
+              <span>Execute {activeMeta.name} Decryption</span>
             </Button>
-          </div>
 
-          {/* Cipher Source Selection */}
-          <div className="space-y-3 pt-4 border-t border-[#E8E8E3] dark:border-[#292929]">
-            <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-              INPUT CIPHERTEXT SOURCE
-            </div>
+            {/* Post-decryption Action Buttons */}
+            {decryptedSrc && (
+              <div className="flex items-center gap-2 pt-0.5">
+                <Button
+                  variant="secondary"
+                  onClick={handlePromoteToAnalysis}
+                  className="flex-1 h-8 text-xs"
+                >
+                  <BarChart3 className="h-3.5 w-3.5 mr-1 text-[#6F6F6A] dark:text-[#A0A09B]" />
+                  <span>Analyze</span>
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handlePromoteToWorkspace}
+                  className="flex-1 h-8 text-xs"
+                >
+                  <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                  <span>Workspace</span>
+                </Button>
+              </div>
+            )}
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={() => router.push("/encryption")}
-                className="text-[11px] flex-1"
+            {error && (
+              <div className="text-xs text-[#DC2626] font-mono py-1">
+                Error: {error}
+              </div>
+            )}
+          </Card>
+
+          {/* Card 2: Reconstruction Fidelity Telemetry Panel */}
+          {decryptedSrc && (
+            <Card className="p-3.5 space-y-2.5 border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#161616] shadow-xs">
+              {/* Header & Latency */}
+              <div className="flex items-center justify-between pb-1.5 border-b border-[#E8E8E3] dark:border-[#242424]">
+                <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                  RECONSTRUCTION FIDELITY METRICS
+                </div>
+                {lastLatency !== null && (
+                  <div className="text-[11px] font-mono text-[#6F6F6A] dark:text-[#A0A09B]">
+                    {lastLatency} ms
+                  </div>
+                )}
+              </div>
+
+              {/* SSIM Metric with Visual Progress Bar */}
+              <div className="rounded-md border border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#121212] p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-mono tracking-wider uppercase text-[#999993] dark:text-[#6A6A6A]">
+                  <span>SSIM Fidelity</span>
+                  <span
+                    className={
+                      isExactKeyMatch
+                        ? "text-[10px] text-[#059669] dark:text-[#34D399]"
+                        : "text-[10px] text-[#DC2626] dark:text-[#F87171]"
+                    }
+                  >
+                    {isExactKeyMatch ? "Ideal 1.0000" : "Avalanche Diffused"}
+                  </span>
+                </div>
+
+                <div className="flex items-baseline justify-between">
+                  <div
+                    className={`font-mono text-base font-semibold ${
+                      isExactKeyMatch
+                        ? "text-[#059669] dark:text-[#34D399]"
+                        : "text-[#DC2626] dark:text-[#F87171]"
+                    }`}
+                  >
+                    {qualityMetrics.ssim !== null ? qualityMetrics.ssim.toFixed(4) : "—"}
+                  </div>
+                  <div className="text-[10px] font-mono text-[#6F6F6A] dark:text-[#A0A09B]">
+                    {isExactKeyMatch ? "Lossless" : "Noise Floor"}
+                  </div>
+                </div>
+
+                <div className="w-full bg-[#E5E5DE] dark:bg-[#252525] h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      isExactKeyMatch
+                        ? "bg-[#059669] dark:bg-[#34D399] shadow-[0_0_6px_rgba(52,211,153,0.4)]"
+                        : "bg-[#DC2626] dark:bg-[#F87171]"
+                    }`}
+                    style={{
+                      width: `${Math.min(100, Math.max(0, (qualityMetrics.ssim ?? 0) * 100))}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* PSNR & MSE 2-column Grid */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-md border border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#121212] p-2 space-y-0.5">
+                  <div className="text-[10px] font-mono tracking-wider uppercase text-[#999993] dark:text-[#6A6A6A]">
+                    PSNR Quality
+                  </div>
+                  <div
+                    className={`font-mono text-xs font-medium ${
+                      isExactKeyMatch
+                        ? "text-[#059669] dark:text-[#34D399]"
+                        : "text-[#181818] dark:text-[#F2F2F0]"
+                    }`}
+                  >
+                    {formatPsnr(qualityMetrics.psnr)}
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#121212] p-2 space-y-0.5">
+                  <div className="text-[10px] font-mono tracking-wider uppercase text-[#999993] dark:text-[#6A6A6A]">
+                    MSE Error
+                  </div>
+                  <div className="font-mono text-xs font-medium text-[#181818] dark:text-[#F2F2F0]">
+                    {qualityMetrics.mse !== null ? qualityMetrics.mse.toFixed(4) : "—"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Cryptographic Avalanche / Lossless Callout */}
+              <div
+                className={`p-2.5 rounded-md border text-[11px] leading-relaxed ${
+                  isExactKeyMatch
+                    ? "bg-[#ECFDF5] dark:bg-[#064E3B]/20 border-[#A7F3D0] dark:border-[#047857]/40 text-[#065F46] dark:text-[#6EE7B7]"
+                    : "bg-[#FEF2F2] dark:bg-[#7F1D1D]/20 border-[#FECACA] dark:border-[#991B1B]/40 text-[#991B1B] dark:text-[#FCA5A5]"
+                }`}
               >
-                <RefreshCw className="h-3 w-3 mr-1" />
-                <span>Encrypt New Image</span>
-              </Button>
-            </div>
-          </div>
-
-          {error && (
-            <div className="text-xs text-[#DC2626] font-mono py-1">
-              Error: {error}
-            </div>
+                {isExactKeyMatch ? (
+                  <div className="flex items-start gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold">Lossless Recovery Verified:</span> Phase keys match encryption parameters. Conjugate unwrapping restored pristine plaintext.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-1.5">
+                    <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold">Cryptographic Avalanche Active:</span> Key perturbed by +1. Wavefront collapses to stationary white noise.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
           )}
-        </Card>
+        </div>
       </div>
     </div>
   );

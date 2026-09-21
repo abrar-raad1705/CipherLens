@@ -4,7 +4,7 @@ export interface ImageArtifact {
   dataUri: string;
   width: number;
   height: number;
-  sourceBench: "upload" | "preset" | "processing" | "encryption" | "analysis";
+  sourceBench: "upload" | "preset" | "processing" | "encryption" | "decryption" | "analysis";
   timestamp: number;
   metadata?: Record<string, unknown>;
 }

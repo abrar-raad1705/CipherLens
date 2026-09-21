@@ -87,6 +87,21 @@ def log_spectrum_to_data_uri(complex_array: np.ndarray) -> str:
     return f"data:image/png;base64,{b64}"
 
 
+def dct_spectrum_to_data_uri(dct_array: np.ndarray) -> str:
+    """
+    Render 2D DCT coefficient spectrum using logarithmic magnitude: log(1 + |C(u, v)|).
+    """
+    magnitude = np.abs(dct_array)
+    log_spec = np.log1p(magnitude)
+    norm = cv2.normalize(log_spec, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    colored = cv2.applyColorMap(norm, cv2.COLORMAP_INFERNO)
+    pil_img = Image.fromarray(cv2.cvtColor(colored, cv2.COLOR_BGR2RGB))
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG", optimize=True)
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return f"data:image/png;base64,{b64}"
+
+
 def diff_heatmap_to_data_uri(diff_array: np.ndarray) -> str:
     """
     Render absolute error difference heatmap.

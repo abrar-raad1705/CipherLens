@@ -55,6 +55,10 @@ class DRPEDecryptResponse(BaseModel):
     diff_heatmap: str | None = Field(
         None, description="Base64 PNG data URI of error heatmap vs reference"
     )
+    stages: dict[str, str] = Field(
+        default_factory=dict,
+        description="Base64 data URIs for all decryption pipeline stages",
+    )
     quality: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float
@@ -74,6 +78,10 @@ class FourierResponse(BaseModel):
     spectrum: str | None = Field(
         None, description="Base64 Fourier log magnitude spectrum"
     )
+    stages: dict[str, str] = Field(
+        default_factory=dict,
+        description="Base64 data URIs for all pipeline intermediate stages: original, fft_spectrum, permuted_spectrum, ciphertext",
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float
 
@@ -89,6 +97,10 @@ class DCTResponse(BaseModel):
     algorithm: str = "DCT"
     action: str
     output_image: str = Field(..., description="Base64 PNG data URI of resulting image")
+    stages: dict[str, str] = Field(
+        default_factory=dict,
+        description="Base64 data URIs for all pipeline intermediate stages: original, dct_basis, scrambled_dct, ciphertext",
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float
 
@@ -107,5 +119,9 @@ class ArnoldXORResponse(BaseModel):
     algorithm: str = "Arnold-XOR"
     action: str
     output_image: str = Field(..., description="Base64 PNG data URI of resulting image")
+    stages: dict[str, str] = Field(
+        default_factory=dict,
+        description="Base64 data URIs for all pipeline intermediate stages: original, arnold_scramble, xor_diffusion, ciphertext",
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float
