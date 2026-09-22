@@ -20,6 +20,7 @@ interface DriveDropzoneProps {
   title?: string;
   description?: string;
   actionLabel?: string;
+  skipCrop?: boolean;
   onImageUploaded: (image: UploadedImageInfo) => void;
 }
 
@@ -27,6 +28,7 @@ export function DriveDropzone({
   title = "Drop your image here",
   description = "Maximum 25 MB",
   actionLabel = "Browse files",
+  skipCrop = false,
   onImageUploaded,
 }: DriveDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -81,6 +83,33 @@ export function DriveDropzone({
       const dataUri = e.target?.result as string;
       if (!dataUri) {
         setErrorMessage("Empty image file received. Please try again.");
+        return;
+      }
+
+      if (skipCrop) {
+        const img = new Image();
+        img.onload = () => {
+          onImageUploaded({
+            name: file.name,
+            dataUri,
+            width: img.naturalWidth || 512,
+            height: img.naturalHeight || 512,
+            sizeBytes: file.size,
+          });
+        };
+        img.onerror = () => {
+          onImageUploaded({
+            name: file.name,
+            dataUri,
+            width: 512,
+            height: 512,
+            sizeBytes: file.size,
+          });
+        };
+        img.src = dataUri;
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
         return;
       }
 

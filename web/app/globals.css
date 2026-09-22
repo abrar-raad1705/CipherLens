@@ -353,3 +353,31 @@ input[type="range"]::-moz-range-thumb {
 .animate-pipeline-beam-continuous {
   animation: pipelineBeamContinuous 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
 }
+
+@keyframes benchSmoothEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-bench-enter {
+  animation: benchSmoothEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes dotWave {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4.5px);
+  }
+}
+
+.animate-dot-wave {
+  animation: dotWave 0.95s ease-in-out infinite;
+}

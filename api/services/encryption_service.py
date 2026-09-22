@@ -22,6 +22,7 @@ from api.services.utils import (
     dct_spectrum_to_data_uri,
     decode_image_payload,
     diff_heatmap_to_data_uri,
+    extract_embedded_array,
     log_spectrum_to_data_uri,
     phase_to_data_uri,
 )
@@ -32,29 +33,45 @@ from batsignal.encryption import arnold_xor, dct, drpe, fourier
 import collections
 import hashlib
 
-# Ciphertext Array Cache for DRPE, Fourier, and DCT (maps ciphertext visual hash -> exact raw array)
+# Ciphertext Array Cache for DRPE, Fourier, and DCT (maps visual URI hash & pixel hash -> exact raw array)
 _CIPHER_CACHE_MAX = 64
 _cipher_array_cache: collections.OrderedDict[str, np.ndarray] = collections.OrderedDict()
+_cipher_pixel_cache: collections.OrderedDict[str, np.ndarray] = collections.OrderedDict()
 
 
-def _cache_cipher_array(c_vis_uri: str, raw_array: np.ndarray) -> None:
+def _cache_cipher_array(c_vis_uri: str, raw_array: np.ndarray, c_vis_pixels: np.ndarray | None = None) -> None:
     uri_hash = hashlib.sha256(c_vis_uri.encode("utf-8")).hexdigest()
     _cipher_array_cache[uri_hash] = raw_array
     _cipher_array_cache.move_to_end(uri_hash)
     if len(_cipher_array_cache) > _CIPHER_CACHE_MAX:
         _cipher_array_cache.popitem(last=False)
 
+    if c_vis_pixels is not None:
+        pix_hash = hashlib.sha256(c_vis_pixels.tobytes()).hexdigest()
+        _cipher_pixel_cache[pix_hash] = raw_array
+        _cipher_pixel_cache.move_to_end(pix_hash)
+        if len(_cipher_pixel_cache) > _CIPHER_CACHE_MAX:
+            _cipher_pixel_cache.popitem(last=False)
 
-def _get_cached_cipher_array(payload: str | bytes) -> np.ndarray | None:
+
+def _get_cached_cipher_array(payload: str | bytes, decoded_pixels: np.ndarray | None = None) -> np.ndarray | None:
     if isinstance(payload, bytes):
         try:
             payload = payload.decode("utf-8")
         except Exception:
-            return None
-    uri_hash = hashlib.sha256(payload.strip().encode("utf-8")).hexdigest()
-    if uri_hash in _cipher_array_cache:
-        _cipher_array_cache.move_to_end(uri_hash)
-        return _cipher_array_cache[uri_hash]
+            payload = ""
+    if payload:
+        uri_hash = hashlib.sha256(payload.strip().encode("utf-8")).hexdigest()
+        if uri_hash in _cipher_array_cache:
+            _cipher_array_cache.move_to_end(uri_hash)
+            return _cipher_array_cache[uri_hash]
+
+    if decoded_pixels is not None:
+        pix_hash = hashlib.sha256(decoded_pixels.tobytes()).hexdigest()
+        if pix_hash in _cipher_pixel_cache:
+            _cipher_pixel_cache.move_to_end(pix_hash)
+            return _cipher_pixel_cache[pix_hash]
+
     return None
 
 
@@ -95,17 +112,18 @@ def run_drpe_encrypt(
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
-    c_uri = array_to_data_uri(c_vis)
+    c_uri = array_to_data_uri(c_vis, embedded_array=ciphertext)
+    c_vis_uri = array_to_data_uri(c_vis)
 
-    # Cache full complex optical field associated with this visual ciphertext
-    _cache_wavefront(c_uri, ciphertext)
+    # Cache full complex optical field associated with this visual ciphertext (both URI & pixel hash)
+    _cache_wavefront(c_uri, ciphertext, c_vis)
 
     stages = {
         "original": array_to_data_uri(img),
         "r1_phase": phase_to_data_uri(r1_phase),
         "fourier_spectrum": log_spectrum_to_data_uri(fourier_plane),
         "r2_phase": phase_to_data_uri(r2_phase),
-        "ciphertext": c_uri,
+        "ciphertext": c_vis_uri,
     }
 
     metadata = {
@@ -121,7 +139,7 @@ def run_drpe_encrypt(
     }
 
     return DRPEEncryptResponse(
-        ciphertext=stages["ciphertext"],
+        ciphertext=c_uri,
         stages=stages,
         metadata=metadata,
         latency_ms=round(latency_ms, 2),
@@ -136,12 +154,23 @@ def run_drpe_decrypt(
 ) -> DRPEDecryptResponse:
     t0 = time.perf_counter()
 
-    # Check if we have the coherent complex optical wavefront cached for this session
-    cached_field = _get_cached_wavefront(ciphertext_payload)
-    if cached_field is not None:
-        cipher_input = cached_field
+    # 1. First priority: extract embedded mathematical wavefront from PNG metadata chunk (100% stateless!)
+    embedded_field = extract_embedded_array(ciphertext_payload)
+
+    # 2. Second priority: check server memory cache by URI / pixel content
+    decoded_img = None
+    if embedded_field is not None:
+        cipher_input = embedded_field
+        is_intensity_only = False
     else:
-        cipher_input = decode_image_payload(ciphertext_payload)
+        decoded_img = decode_image_payload(ciphertext_payload)
+        cached_field = _get_cached_wavefront(ciphertext_payload, decoded_img)
+        if cached_field is not None:
+            cipher_input = cached_field
+            is_intensity_only = False
+        else:
+            cipher_input = decoded_img
+            is_intensity_only = True
 
     # Re-generate phase masks for decryption
     key = drpe.DRPEKey(seed1=seed1, seed2=seed2)
@@ -156,7 +185,13 @@ def run_drpe_decrypt(
     demodulated_spatial = np.fft.ifft2(demodulated_fourier, norm="ortho")
 
     recovered = np.real(demodulated_spatial * np.conj(r1))
-    rec_uint8 = np.clip(np.round(recovered), 0, 255).astype(np.uint8)
+
+    if is_intensity_only:
+        # Intensity-only upload (no phase info): normalize the recovered wavefront to full 8-bit dynamic range
+        rec_uint8 = cv2.normalize(recovered, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    else:
+        # Exact complex field: recovered real values directly match the original grayscale intensity
+        rec_uint8 = np.clip(np.round(recovered), 0, 255).astype(np.uint8)
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -229,25 +264,32 @@ def run_fourier(
         output_vis = cv2.normalize(
             np.real(result), None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
-        out_uri = array_to_data_uri(output_vis)
+        out_uri = array_to_data_uri(output_vis, embedded_array=result)
+        out_vis_uri = array_to_data_uri(output_vis)
 
         # Cache raw complex transform array
-        _cache_cipher_array(out_uri, result)
+        _cache_cipher_array(out_uri, result, output_vis)
         shape_str = f"{img.shape[1]}×{img.shape[0]}"
 
         stages = {
             "original": array_to_data_uri(img),
             "fft_spectrum": fft_spec_uri,
             "permuted_spectrum": spec_uri,
-            "ciphertext": out_uri,
+            "ciphertext": out_vis_uri,
         }
     else:
-        # Decrypt from exact cached complex array if available, or fallback to decoded payload
-        cached_cipher = _get_cached_cipher_array(image_payload)
-        if cached_cipher is not None:
-            cipher_input = cached_cipher
+        # Decrypt from embedded array if present (100% stateless), or cached array, or decoded payload
+        embedded_cipher = extract_embedded_array(image_payload)
+        if embedded_cipher is not None:
+            cipher_input = embedded_cipher
+            cached_cipher = embedded_cipher
         else:
-            cipher_input = decode_image_payload(image_payload)
+            decoded_img = decode_image_payload(image_payload)
+            cached_cipher = _get_cached_cipher_array(image_payload, decoded_img)
+            if cached_cipher is not None:
+                cipher_input = cached_cipher
+            else:
+                cipher_input = decoded_img
 
         f_cipher = np.fft.fft2(cipher_input, norm="ortho")
         flat = f_cipher.flatten()
@@ -257,7 +299,10 @@ def run_fourier(
         original_coeffs = flat[inv_perm].reshape(f_cipher.shape)
         result = np.asarray(np.real(np.fft.ifft2(original_coeffs, norm="ortho")))
 
-        output_vis = np.clip(np.round(result), 0, 255).astype(np.uint8)
+        if cached_cipher is None:
+            output_vis = cv2.normalize(result, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        else:
+            output_vis = np.clip(np.round(result), 0, 255).astype(np.uint8)
         spec_uri = None
         out_uri = array_to_data_uri(output_vis)
         shape_str = f"{output_vis.shape[1]}×{output_vis.shape[0]}"
@@ -308,25 +353,31 @@ def run_dct(
         output_vis = cv2.normalize(
             np.real(result), None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
-        out_uri = array_to_data_uri(output_vis)
+        out_uri = array_to_data_uri(output_vis, embedded_array=result)
+        out_vis_uri = array_to_data_uri(output_vis)
 
         # Cache raw float DCT transform array
-        _cache_cipher_array(out_uri, result)
+        _cache_cipher_array(out_uri, result, output_vis)
         shape_str = f"{img.shape[1]}×{img.shape[0]}"
 
         stages = {
             "original": array_to_data_uri(img),
             "dct_basis": dct_basis_uri,
             "scrambled_dct": scrambled_dct_uri,
-            "ciphertext": out_uri,
+            "ciphertext": out_vis_uri,
         }
     else:
-        # Decrypt from exact cached DCT array if available, or fallback to decoded payload
-        cached_cipher = _get_cached_cipher_array(image_payload)
-        if cached_cipher is not None:
-            cipher_input = cached_cipher
+        # Decrypt from embedded array if present (100% stateless), or cached array, or decoded payload
+        embedded_cipher = extract_embedded_array(image_payload)
+        if embedded_cipher is not None:
+            cipher_input = embedded_cipher
         else:
-            cipher_input = decode_image_payload(image_payload)
+            decoded_img = decode_image_payload(image_payload)
+            cached_cipher = _get_cached_cipher_array(image_payload, decoded_img)
+            if cached_cipher is not None:
+                cipher_input = cached_cipher
+            else:
+                cipher_input = decoded_img
 
         d_cipher = dct.dctn(cipher_input, norm="ortho")
         flat = d_cipher.flatten()

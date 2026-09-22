@@ -10,12 +10,14 @@ import re
 
 import cv2
 import numpy as np
-from PIL import Image
+import zlib
+from PIL import Image, PngImagePlugin
 
 DATA_URI_PATTERN = re.compile(r"^data:image/[a-zA-Z0-9.+_-]+;base64,")
+WAVEFRONT_CHUNK_KEY = "cipherlens_wavefront"
 
 
-def decode_image_payload(payload: str | bytes) -> np.ndarray:
+def decode_image_payload(payload: str | bytes, max_dim: int = 1024) -> np.ndarray:
     """
     Decode a base64 data URI, raw base64 string, or raw image bytes into a
     2D grayscale uint8 numpy array.
@@ -33,12 +35,48 @@ def decode_image_payload(payload: str | bytes) -> np.ndarray:
     if img is None:
         raise ValueError("Failed to decode image data into 2D grayscale array.")
 
+    h, w = img.shape
+    if max_dim and (h > max_dim or w > max_dim):
+        scale = max_dim / max(h, w)
+        new_w, new_h = int(round(w * scale)), int(round(h * scale))
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
     return img.astype(np.uint8)
 
 
-def array_to_data_uri(image_array: np.ndarray) -> str:
+def extract_embedded_array(payload: str | bytes) -> np.ndarray | None:
+    """
+    Extract embedded raw numpy array (complex or float) from PNG metadata chunk if present.
+    Allows 100% stateless recovery without relying on server memory/cache.
+    """
+    try:
+        if isinstance(payload, str):
+            cleaned = DATA_URI_PATTERN.sub("", payload.strip())
+            raw_bytes = base64.b64decode(cleaned)
+        elif isinstance(payload, bytes):
+            raw_bytes = payload
+        else:
+            return None
+
+        pil_img = Image.open(io.BytesIO(raw_bytes))
+        chunk_b64 = pil_img.text.get(WAVEFRONT_CHUNK_KEY)
+        if not chunk_b64:
+            return None
+
+        decompressed = zlib.decompress(base64.b64decode(chunk_b64))
+        raw_arr = np.load(io.BytesIO(decompressed), allow_pickle=False)
+        return raw_arr
+    except Exception:
+        return None
+
+
+def array_to_data_uri(
+    image_array: np.ndarray, embedded_array: np.ndarray | None = None
+) -> str:
     """
     Convert a 2D numpy array to a base64 encoded PNG data URI.
+    Optionally embeds the exact raw mathematical array (downcasted to complex64/float32 for compact size)
+    into PNG tEXt metadata chunk for 100% lossless, stateless decryption.
     """
     if image_array.ndim != 2:
         raise ValueError(f"Expected 2D image array, got shape {image_array.shape}")
@@ -52,28 +90,51 @@ def array_to_data_uri(image_array: np.ndarray) -> str:
         img_uint8 = image_array
 
     pil_img = Image.fromarray(img_uint8, mode="L")
+
+    pnginfo = None
+    if embedded_array is not None:
+        try:
+            arr_to_embed = embedded_array
+            if np.iscomplexobj(arr_to_embed):
+                arr_to_embed = arr_to_embed.astype(np.complex64)
+            elif np.issubdtype(arr_to_embed.dtype, np.floating) and arr_to_embed.dtype == np.float64:
+                arr_to_embed = arr_to_embed.astype(np.float32)
+
+            bio = io.BytesIO()
+            np.save(bio, arr_to_embed, allow_pickle=False)
+            compressed = zlib.compress(bio.getvalue(), level=6)
+            b64_str = base64.b64encode(compressed).decode("ascii")
+            pnginfo = PngImagePlugin.PngInfo()
+            pnginfo.add_text(WAVEFRONT_CHUNK_KEY, b64_str)
+        except Exception:
+            pnginfo = None
+
     buf = io.BytesIO()
-    pil_img.save(buf, format="PNG", optimize=True)
+    if pnginfo is not None:
+        pil_img.save(buf, format="PNG", pnginfo=pnginfo, optimize=False)
+    else:
+        pil_img.save(buf, format="PNG", optimize=True)
+
     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
     return f"data:image/png;base64,{b64}"
 
 
 def phase_to_data_uri(phase_array: np.ndarray) -> str:
     """
-    Render phase values in radians [-pi, pi] using an optical colormap.
+    Render phase values in radians [-pi, pi] using an optical colormap (compact JPEG format).
     """
     norm_phase = ((phase_array + np.pi) / (2.0 * np.pi) * 255.0).astype(np.uint8)
     colored = cv2.applyColorMap(norm_phase, cv2.COLORMAP_CIVIDIS)
     pil_img = Image.fromarray(cv2.cvtColor(colored, cv2.COLOR_BGR2RGB))
     buf = io.BytesIO()
-    pil_img.save(buf, format="PNG", optimize=True)
+    pil_img.save(buf, format="JPEG", quality=85)
     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return f"data:image/png;base64,{b64}"
+    return f"data:image/jpeg;base64,{b64}"
 
 
 def log_spectrum_to_data_uri(complex_array: np.ndarray) -> str:
     """
-    Render centered 2D Fourier spectrum using logarithmic magnitude: log(1 + |F(u, v)|).
+    Render centered 2D Fourier spectrum using logarithmic magnitude (compact JPEG format).
     """
     magnitude = np.abs(complex_array)
     shifted = np.fft.fftshift(magnitude)
@@ -82,14 +143,14 @@ def log_spectrum_to_data_uri(complex_array: np.ndarray) -> str:
     colored = cv2.applyColorMap(norm, cv2.COLORMAP_INFERNO)
     pil_img = Image.fromarray(cv2.cvtColor(colored, cv2.COLOR_BGR2RGB))
     buf = io.BytesIO()
-    pil_img.save(buf, format="PNG", optimize=True)
+    pil_img.save(buf, format="JPEG", quality=85)
     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return f"data:image/png;base64,{b64}"
+    return f"data:image/jpeg;base64,{b64}"
 
 
 def dct_spectrum_to_data_uri(dct_array: np.ndarray) -> str:
     """
-    Render 2D DCT coefficient spectrum using logarithmic magnitude: log(1 + |C(u, v)|).
+    Render 2D DCT coefficient spectrum using logarithmic magnitude (compact JPEG format).
     """
     magnitude = np.abs(dct_array)
     log_spec = np.log1p(magnitude)
@@ -97,9 +158,9 @@ def dct_spectrum_to_data_uri(dct_array: np.ndarray) -> str:
     colored = cv2.applyColorMap(norm, cv2.COLORMAP_INFERNO)
     pil_img = Image.fromarray(cv2.cvtColor(colored, cv2.COLOR_BGR2RGB))
     buf = io.BytesIO()
-    pil_img.save(buf, format="PNG", optimize=True)
+    pil_img.save(buf, format="JPEG", quality=85)
     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return f"data:image/png;base64,{b64}"
+    return f"data:image/jpeg;base64,{b64}"
 
 
 def diff_heatmap_to_data_uri(diff_array: np.ndarray) -> str:

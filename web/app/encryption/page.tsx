@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef, Suspense } from "react";
-import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChartBarIcon as BarChart3,
@@ -16,11 +15,17 @@ import {
   LockOpenIcon as Unlock,
   ArrowUpTrayIcon as Upload,
   SignalIcon as Waves,
-  XMarkIcon as X,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { CanvasViewer } from "@/components/image/CanvasViewer";
 import { UnifiedWorkbenchCanvas } from "@/components/image/UnifiedWorkbenchCanvas";
 import { OpticalBenchDiagram } from "@/components/encryption/OpticalBenchDiagram";
@@ -39,6 +44,7 @@ import {
 } from "@/lib/key-file";
 import { runCorrelation, runEntropy } from "@/lib/api/analysis";
 import { DRPEStages } from "@/types/encryption";
+import { cn } from "@/lib/utils/cn";
 
 interface AlgorithmMeta {
   id: EncryptionAlgorithm;
@@ -109,20 +115,7 @@ function EncryptionWorkbenchContent() {
   // Operation-Specific Upload State (Starts as null so user sees the upload intro on enter)
   const [uploadedImage, setUploadedImage] = useState<UploadedImageInfo | null>(null);
 
-  // Sync with top-right tablet when user explicitly changes image via the tablet
-  const prevActiveIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!activeArtifact) return;
-    if (prevActiveIdRef.current !== null && prevActiveIdRef.current !== activeArtifact.id) {
-      setUploadedImage({
-        name: activeArtifact.name,
-        dataUri: activeArtifact.dataUri,
-        width: activeArtifact.width,
-        height: activeArtifact.height,
-      });
-    }
-    prevActiveIdRef.current = activeArtifact.id;
-  }, [activeArtifact]);
+
 
   // Algorithm selection (syncs with ?algo= url param if present)
   const initialAlgo = (searchParams.get("algo") as EncryptionAlgorithm) || "drpe";
@@ -169,12 +162,22 @@ function EncryptionWorkbenchContent() {
   // Immediate synchronous encryption in-flight state (prevents double clicks instantly)
   const [isEncrypting, setIsEncrypting] = useState<boolean>(false);
 
+  // Real-time background packaging state for downloads
+  const [downloadPackagingProgress, setDownloadPackagingProgress] = useState<number>(100);
+  const [isPackagingReady, setIsPackagingReady] = useState<boolean>(true);
+  const [autoDownloadRequested, setAutoDownloadRequested] = useState<boolean>(false);
+  const packagingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const packagingStartTimeRef = useRef<number>(0);
+
   // Download popup modal state
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState<boolean>(false);
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
   useEffect(() => {
     setIsMounted(true);
+    return () => {
+      if (packagingTimerRef.current) clearInterval(packagingTimerRef.current);
+    };
   }, []);
 
   // Keyboard shortcut: Escape to close download modal
@@ -208,6 +211,10 @@ function EncryptionWorkbenchContent() {
       realCorr: null,
       cipherCorr: null,
     });
+    setDownloadPackagingProgress(100);
+    setIsPackagingReady(true);
+    setAutoDownloadRequested(false);
+    if (packagingTimerRef.current) clearInterval(packagingTimerRef.current);
   }, [uploadedImage?.dataUri, selectedAlgo]);
 
   // Execute Encryption handler
@@ -215,6 +222,20 @@ function EncryptionWorkbenchContent() {
     if (!uploadedImage || isEncrypting || loading) return;
 
     setIsEncrypting(true);
+    setIsPackagingReady(false);
+    setDownloadPackagingProgress(15);
+    setAutoDownloadRequested(false);
+    packagingStartTimeRef.current = Date.now();
+
+    if (packagingTimerRef.current) clearInterval(packagingTimerRef.current);
+    packagingTimerRef.current = setInterval(() => {
+      setDownloadPackagingProgress((prev) => {
+        if (prev >= 94) return prev;
+        const diff = 94 - prev;
+        const inc = Math.max(1, Math.round(diff * 0.15));
+        return Math.min(94, prev + inc);
+      });
+    }, 90);
 
     try {
       let outputUri = "";
@@ -293,10 +314,21 @@ function EncryptionWorkbenchContent() {
         });
       }
 
+      // Show encrypted image on screen instantly!
       setCiphertextUri(outputUri);
       setLastLatency(latency);
+      setIsEncrypting(false);
 
-      // Fetch comparative metrics asynchronously for educational verification
+      // Finish background packaging smoothly towards 100%
+      const elapsed = Date.now() - packagingStartTimeRef.current;
+      const finishDelay = Math.max(400, 1600 - elapsed);
+      setTimeout(() => {
+        if (packagingTimerRef.current) clearInterval(packagingTimerRef.current);
+        setDownloadPackagingProgress(100);
+        setIsPackagingReady(true);
+      }, finishDelay);
+
+      // Fetch comparative metrics asynchronously in background
       if (outputUri && uploadedImage.dataUri) {
         Promise.all([
           runEntropy(uploadedImage.dataUri).catch(() => ({ entropy: 5.2 })),
@@ -318,6 +350,9 @@ function EncryptionWorkbenchContent() {
       }
     } catch (err) {
       console.error("Encryption failed:", err);
+      if (packagingTimerRef.current) clearInterval(packagingTimerRef.current);
+      setDownloadPackagingProgress(100);
+      setIsPackagingReady(true);
     } finally {
       setIsEncrypting(false);
     }
@@ -413,7 +448,7 @@ function EncryptionWorkbenchContent() {
   return (
     <div className="space-y-3.5 max-w-7xl py-1">
       {/* Header */}
-      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
+      <div className="flex items-end justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
         <div>
           <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
             CRYPTOGRAPHIC LABORATORY
@@ -422,6 +457,21 @@ function EncryptionWorkbenchContent() {
             Image Encryption Bench
           </h1>
         </div>
+
+        {uploadedImage && (
+          <Button
+            variant="outline"
+            onClick={() => {
+              setUploadedImage(null);
+              setCiphertextUri(null);
+              setPipelineStages(null);
+            }}
+            className="text-xs font-medium h-9 px-3.5 rounded-lg border-[#DCDCD6] dark:border-[#333333] hover:border-[#2563EB]/70 dark:hover:border-[#3B82F6]/70 bg-white/80 dark:bg-[#181818] hover:bg-white dark:hover:bg-[#1E1E1E] text-[#181818] dark:text-[#F2F2F0] shadow-2xs hover:shadow-xs transition-all cursor-pointer animate-in fade-in duration-300"
+          >
+            <RotateCcw className="h-4 w-4 mr-1.5 text-blue-600 dark:text-blue-400 stroke-[2]" />
+            <span>Change Image</span>
+          </Button>
+        )}
       </div>
 
       {/* Empty State: Focused Upload Card */}
@@ -443,7 +493,7 @@ function EncryptionWorkbenchContent() {
         />
       ) : (
         /* Image Active: Reveal Encryption Workflow Controls directly */
-        <div className="space-y-3.5 animate-in fade-in duration-300">
+        <div className="space-y-3.5 animate-bench-enter">
           {/* Algorithm Selector Row */}
           <div className="space-y-1.5">
             <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
@@ -729,47 +779,87 @@ function EncryptionWorkbenchContent() {
                     type="button"
                     onClick={handleExecuteEncrypt}
                     disabled={isEncrypting || loading || !uploadedImage}
-                    className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB] dark:border-[#3B82F6] ring-1 ring-[#2563EB]/40 dark:ring-[#3B82F6]/50 shadow-[0_0_10px_rgba(37,99,235,0.25)] hover:shadow-[0_0_14px_rgba(37,99,235,0.4)] flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                    className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 shadow-[0_0_6px_rgba(37,99,235,0.12)] hover:shadow-[0_0_8px_rgba(37,99,235,0.2)] flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
                   >
-                    <Lock className="h-3.5 w-3.5 text-white shrink-0" />
-                    <span>{isEncrypting ? "Encrypting..." : "Encrypt"}</span>
+                    {isEncrypting ? (
+                      <div className="flex items-center justify-center gap-1.5 py-0.5">
+                        <span
+                          className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                          style={{ animationDelay: "0ms" }}
+                        />
+                        <span
+                          className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                          style={{ animationDelay: "140ms" }}
+                        />
+                        <span
+                          className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                          style={{ animationDelay: "280ms" }}
+                        />
+                        <span
+                          className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                          style={{ animationDelay: "420ms" }}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <Lock className="h-3.5 w-3.5 text-white shrink-0" />
+                        <span>Encrypt</span>
+                      </>
+                    )}
                   </Button>
                 ) : (
-                  /* Post-encryption State: Download button in place of Encrypt, with Analyze & Decryption side-by-side */
+                  /* Post-encryption State: Download button and Decryption button */
                   <div className="space-y-2 animate-in fade-in duration-200">
-                    {/* Full-width Download Button (replaces Encrypt) */}
+                    {!isPackagingReady ? (
+                      /* Wave-jiggling dots inside Download Button while packaging */
+                      <Button
+                        type="button"
+                        onClick={() => setAutoDownloadRequested(true)}
+                        className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 shadow-[0_0_6px_rgba(37,99,235,0.12)] hover:shadow-[0_0_8px_rgba(37,99,235,0.2)] flex items-center justify-center gap-1.5"
+                        title={autoDownloadRequested ? "Will open download options as soon as packaging completes..." : "Packaging download... Click to open automatically once ready"}
+                      >
+                        <div className="flex items-center justify-center gap-1.5 py-0.5">
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                            style={{ animationDelay: "0ms" }}
+                          />
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                            style={{ animationDelay: "140ms" }}
+                          />
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                            style={{ animationDelay: "280ms" }}
+                          />
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                            style={{ animationDelay: "420ms" }}
+                          />
+                        </div>
+                      </Button>
+                    ) : (
+                      /* Full-width Download Button (replaces progress bar) */
+                      <Button
+                        type="button"
+                        onClick={() => setIsDownloadModalOpen(true)}
+                        className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 shadow-[0_0_6px_rgba(37,99,235,0.12)] hover:shadow-[0_0_8px_rgba(37,99,235,0.2)] flex items-center justify-center gap-1.5 animate-in fade-in duration-200"
+                        title="Download Encrypted Image or Key File"
+                      >
+                        <Download className="h-3.5 w-3.5 text-white shrink-0" />
+                        <span>Download</span>
+                      </Button>
+                    )}
+
+                    {/* Single Full-Width Analyze Button (Auto-selects original and ciphertext in Analysis) */}
                     <Button
                       type="button"
-                      onClick={() => setIsDownloadModalOpen(true)}
-                      className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB] dark:border-[#3B82F6] ring-1 ring-[#2563EB]/40 dark:ring-[#3B82F6]/50 shadow-[0_0_10px_rgba(37,99,235,0.25)] hover:shadow-[0_0_14px_rgba(37,99,235,0.4)] flex items-center justify-center gap-1.5"
-                      title="Download Encrypted Image or Key File"
+                      onClick={handlePromoteToAnalysis}
+                      className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 shadow-[0_0_6px_rgba(37,99,235,0.12)] hover:shadow-[0_0_8px_rgba(37,99,235,0.2)] flex items-center justify-center gap-1.5 animate-in fade-in duration-200"
+                      title="Analyze diffusion, entropy, and correlation with original image"
                     >
-                      <Download className="h-3.5 w-3.5 text-white shrink-0" />
-                      <span>Download</span>
+                      <BarChart3 className="h-3.5 w-3.5 text-white shrink-0" />
+                      <span>Analyze</span>
                     </Button>
-
-                    {/* Side-by-side Analyze and Decryption Buttons */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={handlePromoteToAnalysis}
-                        className="w-full h-8.5 text-xs font-medium cursor-pointer shadow-2xs hover:shadow-xs transition-all active:scale-[0.99]"
-                        title="Analyze diffusion, entropy, and correlation"
-                      >
-                        <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
-                        <span>Analyze</span>
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        onClick={handleProceedToDecryption}
-                        className="w-full h-8.5 text-xs font-medium cursor-pointer shadow-2xs hover:shadow-xs transition-all active:scale-[0.99]"
-                        title="Proceed to Decryption Bench"
-                      >
-                        <Unlock className="h-3.5 w-3.5 mr-1.5" />
-                        <span>Decryption</span>
-                      </Button>
-                    </div>
                   </div>
                 )}
 
@@ -784,85 +874,84 @@ function EncryptionWorkbenchContent() {
         </div>
       )}
 
-      {/* Download Options Modal Popup */}
-      {isDownloadModalOpen && isMounted && createPortal(
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150 select-none"
-          onClick={() => setIsDownloadModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-xl border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] p-5 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
-              <div>
-                <h3 className="text-sm font-semibold text-[#181818] dark:text-[#F2F2F0]">
-                  Download Options
-                </h3>
-                <p className="text-xs text-[#71717A] dark:text-[#A1A1AA] mt-0.5">
-                  Choose what you want to download:
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsDownloadModalOpen(false)}
-                className="p-1 rounded text-[#71717A] hover:text-[#181818] dark:text-[#A1A1AA] dark:hover:text-[#F2F2F0] hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+      {/* Download Options Modal Dialog */}
+      <Dialog open={isDownloadModalOpen} onOpenChange={setIsDownloadModalOpen}>
+        <DialogContent className="max-w-[360px] p-4 gap-3 bg-white dark:bg-[#161618] border border-[#E8E8E3] dark:border-[#27272a] shadow-2xl">
+          <DialogHeader className="gap-1 pb-1">
+            <DialogTitle className="text-sm font-semibold text-[#181818] dark:text-[#F2F2F0]">
+              Download Options
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#71717A] dark:text-[#A1A1AA]">
+              Choose what you want to download:
+            </DialogDescription>
+          </DialogHeader>
 
-            {/* 2 Download Options */}
-            <div className="space-y-2.5">
-              {/* Option 1: Download Encrypted Image */}
-              <button
-                type="button"
-                onClick={() => {
+          <div className="space-y-2 pt-1">
+            {/* Option 1: Encrypted Image */}
+            <button
+              type="button"
+              onClick={() => {
+                if (isPackagingReady) {
                   handleDownloadCiphertext();
-                }}
-                className="w-full flex items-center gap-3 p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#1C1C1C] hover:border-[#2563EB] dark:hover:border-[#3B82F6] hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-all text-left cursor-pointer group"
-              >
-                <div className="w-9 h-9 rounded-lg bg-blue-500/10 dark:bg-blue-500/15 text-[#2563EB] dark:text-[#60A5FA] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <PhotoIcon className="h-5 w-5" />
+                } else {
+                  setAutoDownloadRequested(true);
+                }
+              }}
+              className={cn(
+                "w-full flex items-center justify-between p-2.5 rounded-lg border transition-all text-left group cursor-pointer",
+                isPackagingReady
+                  ? "border-[#E8E8E3] dark:border-[#27272a] bg-white dark:bg-[#1C1C1E] hover:border-[#2563EB] dark:hover:border-[#3B82F6] hover:bg-blue-50/30 dark:hover:bg-blue-950/20"
+                  : autoDownloadRequested
+                  ? "border-blue-500 bg-blue-50/40 dark:bg-blue-950/20"
+                  : "border-[#E8E8E3] dark:border-[#27272a] bg-white/70 dark:bg-[#1C1C1E]/70"
+              )}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-md bg-blue-500/10 dark:bg-blue-500/15 text-[#2563EB] dark:text-[#60A5FA] flex items-center justify-center shrink-0">
+                  <PhotoIcon className="h-4 w-4" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA]">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] transition-colors">
                     Download Encrypted Image
                   </div>
-                  <div className="text-[11px] text-[#71717A] dark:text-[#A1A1AA] truncate">
-                    PNG ciphertext format
+                  <div className="text-[11px] text-[#71717A] dark:text-[#8E8E93] truncate">
+                    {isPackagingReady
+                      ? "PNG ciphertext format"
+                      : autoDownloadRequested
+                      ? "Downloading as soon as ready..."
+                      : "PNG ciphertext (preparing...)"}
                   </div>
                 </div>
-                <Download className="h-4 w-4 text-[#71717A] dark:text-[#A1A1AA] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] shrink-0" />
-              </button>
+              </div>
+              <Download className="h-4 w-4 text-[#71717A] dark:text-[#8E8E93] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] shrink-0 ml-2" />
+            </button>
 
-              {/* Option 2: Download Key File */}
-              <button
-                type="button"
-                onClick={() => {
-                  handleDownloadKeyFile();
-                }}
-                className="w-full flex items-center gap-3 p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#1C1C1C] hover:border-[#2563EB] dark:hover:border-[#3B82F6] hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-all text-left cursor-pointer group"
-              >
-                <div className="w-9 h-9 rounded-lg bg-amber-500/10 dark:bg-amber-500/15 text-[#D97706] dark:text-[#FBBF24] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <FileText className="h-5 w-5" />
+            {/* Option 2: Decryption Key */}
+            <button
+              type="button"
+              onClick={() => {
+                handleDownloadKeyFile();
+              }}
+              className="w-full flex items-center justify-between p-2.5 rounded-lg border border-[#E8E8E3] dark:border-[#27272a] bg-white dark:bg-[#1C1C1E] hover:border-[#2563EB] dark:hover:border-[#3B82F6] hover:bg-blue-50/30 dark:hover:bg-blue-950/20 transition-all text-left cursor-pointer group"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-md bg-amber-500/10 dark:bg-amber-500/15 text-[#D97706] dark:text-[#FBBF24] flex items-center justify-center shrink-0">
+                  <FileText className="h-4 w-4" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA]">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] transition-colors">
                     Download Key File (.txt)
                   </div>
-                  <div className="text-[11px] text-[#71717A] dark:text-[#A1A1AA] truncate">
+                  <div className="text-[11px] text-[#71717A] dark:text-[#8E8E93] truncate">
                     Parameters &amp; seeds for decryption
                   </div>
                 </div>
-                <Download className="h-4 w-4 text-[#71717A] dark:text-[#A1A1AA] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] shrink-0" />
-              </button>
-            </div>
+              </div>
+              <Download className="h-4 w-4 text-[#71717A] dark:text-[#8E8E93] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] shrink-0 ml-2" />
+            </button>
           </div>
-        </div>,
-        document.body
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

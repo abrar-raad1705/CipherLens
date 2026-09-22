@@ -30,6 +30,9 @@ function Slider({
   disabled,
   ...props
 }: SliderProps) {
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editStr, setEditStr] = React.useState("");
+
   const isControlled = value !== undefined;
   const numValue = Array.isArray(value) ? value : value !== undefined ? [value] : undefined;
   const numDefault = Array.isArray(defaultValue)
@@ -46,7 +49,7 @@ function Slider({
 
   return (
     <div className="space-y-2 w-full select-none">
-      {(label || valueDisplay !== undefined) && (
+      {(label || valueDisplay !== undefined || value !== undefined) && (
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-1.5">
             {label && (
@@ -60,10 +63,75 @@ function Slider({
               </span>
             )}
           </div>
-          {valueDisplay !== undefined && (
-            <span className="font-mono text-[11px] font-medium px-2 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#1F1F1F] border border-[#E8E8E3] dark:border-[#292929] text-[#181818] dark:text-[#F2F2F0]">
-              {valueDisplay}
-            </span>
+          {typeof value === "number" && !Array.isArray(value) ? (
+            /* Editable Typeable & Scrollable Input Box with Compact Styling */
+            <input
+              type="text"
+              value={isEditing ? editStr : (valueDisplay !== undefined ? String(valueDisplay) : String(value))}
+              onFocus={() => {
+                setIsEditing(true);
+                setEditStr(String(value));
+              }}
+              onBlur={() => {
+                setIsEditing(false);
+                let parsed = Number(editStr.trim());
+                if (editStr.trim().startsWith("0x") || editStr.trim().startsWith("0X")) {
+                  parsed = parseInt(editStr.trim(), 16);
+                }
+                if (!isNaN(parsed)) {
+                  const clamped = Math.min(max, Math.max(min, parsed));
+                  onChange?.({ target: { value: clamped } });
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  const nextVal = Math.min(max, value + step);
+                  onChange?.({ target: { value: nextVal } });
+                  setEditStr(String(nextVal));
+                } else if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  const prevVal = Math.max(min, value - step);
+                  onChange?.({ target: { value: prevVal } });
+                  setEditStr(String(prevVal));
+                }
+              }}
+              onWheel={(e) => {
+                // Scroll up increases value, scroll down decreases value
+                e.preventDefault();
+                const delta = e.deltaY < 0 ? step : -step;
+                const nextVal = Math.min(max, Math.max(min, value + delta));
+                onChange?.({ target: { value: nextVal } });
+                if (isEditing) {
+                  setEditStr(String(nextVal));
+                }
+              }}
+              onChange={(e) => {
+                setEditStr(e.target.value);
+                let parsed = Number(e.target.value.trim());
+                if (e.target.value.trim().startsWith("0x") || e.target.value.trim().startsWith("0X")) {
+                  parsed = parseInt(e.target.value.trim(), 16);
+                }
+                if (!isNaN(parsed) && e.target.value.trim() !== "") {
+                  const clamped = Math.min(max, Math.max(min, parsed));
+                  onChange?.({ target: { value: clamped } });
+                }
+              }}
+              className={cn(
+                "font-mono text-[11px] font-medium py-0.5 px-1 text-center rounded bg-[#F4F4F1] dark:bg-[#1F1F1F] border border-[#E8E8E3] dark:border-[#292929] text-[#181818] dark:text-[#F2F2F0] focus:outline-none focus:ring-1 focus:ring-[#2563EB] dark:focus:ring-[#5B8CFF] focus:border-[#2563EB] dark:focus:border-[#5B8CFF] transition-all cursor-text select-text",
+                // Keep length compact: max 52px for numbers, slightly wider only if XOR hex formatted
+                valueDisplay && String(valueDisplay).includes("0x") ? "w-22" : "w-13"
+              )}
+              title="Type directly, use ↑/↓ keys, or scroll mouse wheel up/down to adjust"
+            />
+          ) : (
+            valueDisplay !== undefined && (
+              <span className="font-mono text-[11px] font-medium px-2 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#1F1F1F] border border-[#E8E8E3] dark:border-[#292929] text-[#181818] dark:text-[#F2F2F0]">
+                {valueDisplay}
+              </span>
+            )
           )}
         </div>
       )}

@@ -68,12 +68,14 @@ export function subscribeToSession(
 export function saveEncryptionSession(session: EncryptionSession): void {
   inMemorySession = session;
   if (typeof window !== "undefined") {
-    try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    } catch (e) {
-      console.warn("Could not save encryption session to storage:", e);
-    }
+    setTimeout(() => {
+      try {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+      } catch (e) {
+        console.warn("Could not save encryption session to storage:", e);
+      }
+    }, 0);
   }
   notifySessionListeners();
 }
