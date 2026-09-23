@@ -34,7 +34,7 @@ import {
 } from "@/lib/encryption-session";
 import { downloadImage, ParsedKeyData } from "@/lib/key-file";
 import { runMetrics } from "@/lib/api/analysis";
-import { preloadDRPECiphertext } from "@/lib/api/encryption";
+import { preloadDRPECiphertext, preloadFourierCiphertext, preloadDCTCiphertext } from "@/lib/api/encryption";
 
 interface AlgorithmMeta {
   id: EncryptionAlgorithm;
@@ -110,7 +110,7 @@ function DecryptionWorkbenchContent() {
     algorithm: EncryptionAlgorithm;
     keys: ParsedKeyData;
     fileName: string;
-    ciphertextPackage?: { real: string; imag: string; shape: number[] };
+    ciphertextPackage?: { real: string; imag?: string; shape: number[] };
   } | null>(null);
 
   // Optional session for reference comparison if image originated from the same session
@@ -212,20 +212,37 @@ function DecryptionWorkbenchContent() {
   // Trigger DRPE preload whenever BOTH image and key are ready.
   // This covers both orderings: key-first-then-image and image-first-then-key.
   useEffect(() => {
-    if (
-      uploadedImage &&
-      keyLoaded?.algorithm === "drpe" &&
-      keyLoaded.ciphertextPackage
-    ) {
-      preloadDRPECiphertext(
-        keyLoaded.ciphertextPackage.real,
-        keyLoaded.ciphertextPackage.imag,
-        keyLoaded.ciphertextPackage.shape,
-        uploadedImage.dataUri
-      ).catch((e) => {
-        console.warn("DRPE preload failed:", e);
-        setDecryptError(e.message || "Failed to validate ciphertext image against key package. The uploaded image does not match this key.");
-      });
+    if (uploadedImage && keyLoaded?.ciphertextPackage) {
+      if (keyLoaded.algorithm === "drpe" && keyLoaded.ciphertextPackage.imag) {
+        preloadDRPECiphertext(
+          keyLoaded.ciphertextPackage.real,
+          keyLoaded.ciphertextPackage.imag,
+          keyLoaded.ciphertextPackage.shape,
+          uploadedImage.dataUri
+        ).catch((e) => {
+          console.warn("DRPE preload failed:", e);
+          setDecryptError(e.message || "Failed to validate ciphertext image against key package.");
+        });
+      } else if (keyLoaded.algorithm === "fourier" && keyLoaded.ciphertextPackage.imag) {
+        preloadFourierCiphertext(
+          keyLoaded.ciphertextPackage.real,
+          keyLoaded.ciphertextPackage.imag,
+          keyLoaded.ciphertextPackage.shape,
+          uploadedImage.dataUri
+        ).catch((e) => {
+          console.warn("Fourier preload failed:", e);
+          setDecryptError(e.message || "Failed to validate ciphertext image against key package.");
+        });
+      } else if (keyLoaded.algorithm === "dct") {
+        preloadDCTCiphertext(
+          keyLoaded.ciphertextPackage.real,
+          keyLoaded.ciphertextPackage.shape,
+          uploadedImage.dataUri
+        ).catch((e) => {
+          console.warn("DCT preload failed:", e);
+          setDecryptError(e.message || "Failed to validate ciphertext image against key package.");
+        });
+      }
     }
   }, [uploadedImage?.dataUri, keyLoaded]);
 
@@ -381,7 +398,7 @@ function DecryptionWorkbenchContent() {
     algorithm: EncryptionAlgorithm;
     keys: ParsedKeyData;
     fileName: string;
-    ciphertextPackage?: { real: string; imag: string; shape: number[] };
+    ciphertextPackage?: { real: string; imag?: string; shape: number[] };
   }) => {
     if (params.algorithm !== selectedAlgo) {
       handleAlgorithmChange(params.algorithm);
@@ -392,7 +409,7 @@ function DecryptionWorkbenchContent() {
       if (params.keys.seed2 !== undefined) setDrpeSeed2(params.keys.seed2);
 
       // Warm backend cache from embedded ciphertext package
-      if (params.ciphertextPackage && uploadedImage) {
+      if (params.ciphertextPackage && params.ciphertextPackage.imag && uploadedImage) {
         try {
           await preloadDRPECiphertext(
             params.ciphertextPackage.real,
@@ -406,8 +423,33 @@ function DecryptionWorkbenchContent() {
       }
     } else if (params.algorithm === "fourier") {
       if (params.keys.fourierSeed !== undefined) setFourierSeed(params.keys.fourierSeed);
+      
+      if (params.ciphertextPackage && params.ciphertextPackage.imag && uploadedImage) {
+        try {
+          await preloadFourierCiphertext(
+            params.ciphertextPackage.real,
+            params.ciphertextPackage.imag,
+            params.ciphertextPackage.shape,
+            uploadedImage.dataUri
+          );
+        } catch (e) {
+          console.warn("Fourier preload failed:", e);
+        }
+      }
     } else if (params.algorithm === "dct") {
       if (params.keys.dctSeed !== undefined) setDctSeed(params.keys.dctSeed);
+      
+      if (params.ciphertextPackage && uploadedImage) {
+        try {
+          await preloadDCTCiphertext(
+            params.ciphertextPackage.real,
+            params.ciphertextPackage.shape,
+            uploadedImage.dataUri
+          );
+        } catch (e) {
+          console.warn("DCT preload failed:", e);
+        }
+      }
     } else if (params.algorithm === "arnold") {
       if (params.keys.iterations !== undefined) setArnoldItr(params.keys.iterations);
       if (params.keys.xorValue !== undefined) setArnoldXor(params.keys.xorValue);

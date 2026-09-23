@@ -69,3 +69,26 @@ export async function preloadDRPECiphertext(
     body: JSON.stringify({ ciphertext_real, ciphertext_imag, ciphertext_shape, visual_uri }),
   });
 }
+
+export async function preloadFourierCiphertext(
+  ciphertext_real: string,
+  ciphertext_imag: string,
+  ciphertext_shape: number[],
+  visual_uri: string
+): Promise<{ status: string; shape: number[]; message: string }> {
+  return apiClient("/api/encryption/fourier/preload", {
+    method: "POST",
+    body: JSON.stringify({ ciphertext_real, ciphertext_imag, ciphertext_shape, visual_uri }),
+  });
+}
+
+export async function preloadDCTCiphertext(
+  ciphertext_real: string,
+  ciphertext_shape: number[],
+  visual_uri: string
+): Promise<{ status: string; shape: number[]; message: string }> {
+  return apiClient("/api/encryption/dct/preload", {
+    method: "POST",
+    body: JSON.stringify({ ciphertext_real, ciphertext_shape, visual_uri }),
+  });
+}

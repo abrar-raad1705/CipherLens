@@ -296,13 +296,19 @@ def run_fourier(
         # 3. Inverse 2D Fourier transform to spatial ciphertext
         # Use clip (not normalize) so the stored PNG is numerically consistent
         # with the raw spatial values and decryption works on fresh upload.
-        result = np.asarray(np.real(np.fft.ifft2(encrypted_coeffs, norm="ortho")))
+        complex_result = np.asarray(np.fft.ifft2(encrypted_coeffs, norm="ortho"))
+        result = np.asarray(np.real(complex_result))
         output_vis = np.clip(np.round(result), 0, 255).astype(np.uint8)
         out_uri = array_to_data_uri(output_vis)
 
-        # Cache raw float array (cache hit gives exact lossless decryption)
-        _cache_cipher_array(out_uri, result)
+        # Cache raw complex array (cache hit gives exact lossless decryption)
+        _cache_cipher_array(out_uri, complex_result)
         shape_str = f"{img.shape[1]}×{img.shape[0]}"
+
+        real_bytes = complex_result.real.astype(np.float32).tobytes()
+        imag_bytes = complex_result.imag.astype(np.float32).tobytes()
+        cipher_real_b64 = base64.b64encode(real_bytes).decode("utf-8")
+        cipher_imag_b64 = base64.b64encode(imag_bytes).decode("utf-8")
 
         stages = {
             "original": array_to_data_uri(img),
@@ -316,7 +322,7 @@ def run_fourier(
         # so the PNG ciphertext carries the same spatial values as the cached array (±0.5 LSB).
         cached_cipher = _get_cached_cipher_array(image_payload)
         if cached_cipher is not None:
-            cipher_input = np.asarray(cached_cipher, dtype=np.float64)
+            cipher_input = np.asarray(cached_cipher, dtype=np.complex128)
         else:
             cipher_input = decode_image_payload(image_payload).astype(np.float64)
 
@@ -350,7 +356,27 @@ def run_fourier(
         stages=stages,
         metadata={"seed": seed, "shape": shape_str},
         latency_ms=round(latency_ms, 2),
+        ciphertext_real=cipher_real_b64 if action.lower() == "encrypt" else None,
+        ciphertext_imag=cipher_imag_b64 if action.lower() == "encrypt" else None,
+        ciphertext_shape=list(complex_result.shape) if action.lower() == "encrypt" else None,
     )
+
+def run_fourier_preload(
+    ciphertext_real_b64: str,
+    ciphertext_imag_b64: str,
+    shape: list[int],
+    visual_uri: str,
+) -> dict:
+    real_plane = np.frombuffer(
+        base64.b64decode(ciphertext_real_b64), dtype=np.float32
+    ).reshape(shape).astype(np.float64)
+    imag_plane = np.frombuffer(
+        base64.b64decode(ciphertext_imag_b64), dtype=np.float32
+    ).reshape(shape).astype(np.float64)
+    complex_array = real_plane + 1j * imag_plane
+
+    _cache_wavefront(visual_uri, complex_array)
+    return {"status": "CACHED", "shape": shape, "message": "Complex ciphertext loaded into session cache."}
 
 
 def run_dct(
@@ -384,6 +410,9 @@ def run_dct(
         # Cache raw float array (cache hit gives exact lossless decryption)
         _cache_cipher_array(out_uri, result)
         shape_str = f"{img.shape[1]}×{img.shape[0]}"
+
+        real_bytes = result.astype(np.float32).tobytes()
+        cipher_real_b64 = base64.b64encode(real_bytes).decode("utf-8")
 
         stages = {
             "original": array_to_data_uri(img),
@@ -429,7 +458,21 @@ def run_dct(
         stages=stages,
         metadata={"seed": seed, "shape": shape_str},
         latency_ms=round(latency_ms, 2),
+        ciphertext_real=cipher_real_b64 if action.lower() == "encrypt" else None,
+        ciphertext_shape=list(result.shape) if action.lower() == "encrypt" else None,
     )
+
+def run_dct_preload(
+    ciphertext_real_b64: str,
+    shape: list[int],
+    visual_uri: str,
+) -> dict:
+    real_plane = np.frombuffer(
+        base64.b64decode(ciphertext_real_b64), dtype=np.float32
+    ).reshape(shape).astype(np.float64)
+
+    _cache_wavefront(visual_uri, real_plane)
+    return {"status": "CACHED", "shape": shape, "message": "Real ciphertext loaded into session cache."}
 
 
 def run_arnold_xor(

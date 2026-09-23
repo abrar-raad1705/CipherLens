@@ -118,6 +118,28 @@ class FourierResponse(BaseModel):
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float
+    # Complex ciphertext package for cross-session decryption (included in JSON key file)
+    ciphertext_real: str | None = Field(
+        None, description="Base64-encoded float32 real plane of the complex ciphertext array"
+    )
+    ciphertext_imag: str | None = Field(
+        None, description="Base64-encoded float32 imaginary plane of the complex ciphertext array"
+    )
+    ciphertext_shape: list[int] | None = Field(
+        None, description="Shape of the ciphertext array [height, width]"
+    )
+
+class FourierPreloadRequest(BaseModel):
+    ciphertext_real: str = Field(..., description="Base64 float32 real plane")
+    ciphertext_imag: str = Field(..., description="Base64 float32 imaginary plane")
+    ciphertext_shape: list[int] = Field(..., description="[height, width]")
+    visual_uri: str = Field(..., description="The ciphertext PNG data URI (used as cache key)")
+
+class FourierPreloadResponse(BaseModel):
+    status: str = "CACHED"
+    shape: list[int]
+    message: str = "Complex ciphertext loaded into session cache."
+
 
 
 class DCTRequest(BaseModel):
@@ -137,6 +159,24 @@ class DCTResponse(BaseModel):
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float
+    # Real ciphertext package for cross-session decryption (included in JSON key file)
+    ciphertext_real: str | None = Field(
+        None, description="Base64-encoded float32 array of the exact DCT ciphertext"
+    )
+    ciphertext_shape: list[int] | None = Field(
+        None, description="Shape of the ciphertext array [height, width]"
+    )
+
+class DCTPreloadRequest(BaseModel):
+    ciphertext_real: str = Field(..., description="Base64 float32 real plane")
+    ciphertext_shape: list[int] = Field(..., description="[height, width]")
+    visual_uri: str = Field(..., description="The ciphertext PNG data URI (used as cache key)")
+
+class DCTPreloadResponse(BaseModel):
+    status: str = "CACHED"
+    shape: list[int]
+    message: str = "Real ciphertext loaded into session cache."
+
 
 
 class ArnoldXORRequest(BaseModel):

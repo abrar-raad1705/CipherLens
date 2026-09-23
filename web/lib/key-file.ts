@@ -19,10 +19,10 @@ export interface ParsedKeyData {
   // Arnold
   iterations?: number;
   xorValue?: number;
-  // DRPE cross-session ciphertext package (from JSON key file)
+  // Cross-session ciphertext package (from JSON key file)
   ciphertextPackage?: {
     real: string;
-    imag: string;
+    imag?: string;
     shape: number[];
   };
 }
@@ -90,8 +90,17 @@ export function generateKeyFileJson(options: KeyPackageOptions): string {
     }
   } else if (algorithm === "fourier") {
     obj.seed = keys.fourierSeed ?? 100;
+    if (options.ciphertextReal && options.ciphertextImag && options.ciphertextShape) {
+      obj.ciphertext_real = options.ciphertextReal;
+      obj.ciphertext_imag = options.ciphertextImag;
+      obj.ciphertext_shape = options.ciphertextShape;
+    }
   } else if (algorithm === "dct") {
     obj.seed = keys.dctSeed ?? 42;
+    if (options.ciphertextReal && options.ciphertextShape) {
+      obj.ciphertext_real = options.ciphertextReal;
+      obj.ciphertext_shape = options.ciphertextShape;
+    }
   } else if (algorithm === "arnold") {
     obj.iterations = keys.iterations ?? 10;
     obj.xor_value = keys.xorValue ?? 170;
@@ -164,11 +173,9 @@ export function parseAndValidateKeyFile(
         xorValue: json.xorValue ?? json.xor_value ?? json.xor,
       };
 
-      // Extract DRPE complex ciphertext package if present
+      // Extract complex/real ciphertext package if present (DRPE, Fourier, DCT)
       if (
-        algo === "drpe" &&
         json.ciphertext_real &&
-        json.ciphertext_imag &&
         Array.isArray(json.ciphertext_shape)
       ) {
         keys.ciphertextPackage = {
@@ -368,7 +375,10 @@ function validateParsedKeys(
     return {
       valid: true,
       algorithm: algo,
-      keys: { fourierSeed: seed },
+      keys: { 
+        fourierSeed: seed,
+        ...(keys.ciphertextPackage ? { ciphertextPackage: keys.ciphertextPackage } : {})
+      },
       metadata,
       algorithmMismatch: isMismatch,
     };
@@ -393,7 +403,10 @@ function validateParsedKeys(
     return {
       valid: true,
       algorithm: algo,
-      keys: { dctSeed: seed },
+      keys: { 
+        dctSeed: seed,
+        ...(keys.ciphertextPackage ? { ciphertextPackage: keys.ciphertextPackage } : {})
+      },
       metadata,
       algorithmMismatch: isMismatch,
     };

@@ -44,4 +44,7 @@ export interface TransformResponse {
   stages?: Record<string, string>;
   metadata: Record<string, unknown>;
   latency_ms: number;
+  ciphertext_real?: string;
+  ciphertext_imag?: string;
+  ciphertext_shape?: number[];
 }

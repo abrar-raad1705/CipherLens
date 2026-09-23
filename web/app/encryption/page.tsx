@@ -170,10 +170,10 @@ function EncryptionWorkbenchContent() {
   // Immediate synchronous encryption in-flight state (prevents double clicks instantly)
   const [isEncrypting, setIsEncrypting] = useState<boolean>(false);
 
-  // DRPE complex ciphertext package (for JSON key file with embedded ciphertext)
-  const [drpeComplexPackage, setDrpeComplexPackage] = useState<{
+  // Cross-session ciphertext package (for JSON key file with embedded raw floats)
+  const [ciphertextPackage, setCiphertextPackage] = useState<{
     real: string;
-    imag: string;
+    imag?: string;
     shape: number[];
   } | null>(null);
 
@@ -210,7 +210,7 @@ function EncryptionWorkbenchContent() {
     setCiphertextUri(null);
     setPipelineStages(null);
     setActivePipelineStage("ciphertext");
-    setDrpeComplexPackage(null);
+    setCiphertextPackage(null);
     setComparisonStats({
       realEntropy: null,
       cipherEntropy: null,
@@ -238,7 +238,7 @@ function EncryptionWorkbenchContent() {
 
         // Capture complex package for JSON key download
         if (res.ciphertext_real && res.ciphertext_imag && res.ciphertext_shape) {
-          setDrpeComplexPackage({
+          setCiphertextPackage({
             real: res.ciphertext_real,
             imag: res.ciphertext_imag,
             shape: res.ciphertext_shape,
@@ -263,6 +263,14 @@ function EncryptionWorkbenchContent() {
         }
         setActivePipelineStage("ciphertext");
 
+        if (res.ciphertext_real && res.ciphertext_imag && res.ciphertext_shape) {
+          setCiphertextPackage({
+            real: res.ciphertext_real,
+            imag: res.ciphertext_imag,
+            shape: res.ciphertext_shape,
+          });
+        }
+
         saveEncryptionSession({
           algorithm: "fourier",
           realImageUri: uploadedImage.dataUri,
@@ -280,6 +288,13 @@ function EncryptionWorkbenchContent() {
           setPipelineStages(res.stages);
         }
         setActivePipelineStage("ciphertext");
+
+        if (res.ciphertext_real && res.ciphertext_shape) {
+          setCiphertextPackage({
+            real: res.ciphertext_real,
+            shape: res.ciphertext_shape,
+          });
+        }
 
         saveEncryptionSession({
           algorithm: "dct",
@@ -365,12 +380,12 @@ function EncryptionWorkbenchContent() {
       keys,
       sourceImageName: uploadedImage.name,
       imageDimensions: { width: uploadedImage.width, height: uploadedImage.height },
-      // Embed DRPE complex ciphertext for cross-session decryption
-      ...(selectedAlgo === "drpe" && drpeComplexPackage
+      // Embed ciphertext package for cross-session decryption if available
+      ...(ciphertextPackage
         ? {
-            ciphertextReal: drpeComplexPackage.real,
-            ciphertextImag: drpeComplexPackage.imag,
-            ciphertextShape: drpeComplexPackage.shape,
+            ciphertextReal: ciphertextPackage.real,
+            ciphertextImag: ciphertextPackage.imag,
+            ciphertextShape: ciphertextPackage.shape,
           }
         : {}),
     });

@@ -18,8 +18,12 @@ from api.schemas.encryption import (
     DRPEEncryptResponse,
     DRPEPreloadRequest,
     DRPEPreloadResponse,
+    FourierPreloadRequest,
+    FourierPreloadResponse,
     FourierRequest,
     FourierResponse,
+    DCTPreloadRequest,
+    DCTPreloadResponse,
 )
 from api.services import encryption_service
 
@@ -82,6 +86,20 @@ async def post_fourier(req: FourierRequest):
         )
 
 
+@router.post("/fourier/preload", response_model=FourierPreloadResponse)
+async def post_fourier_preload(req: FourierPreloadRequest):
+    try:
+        result = encryption_service.run_fourier_preload(
+            req.ciphertext_real,
+            req.ciphertext_imag,
+            req.ciphertext_shape,
+            req.visual_uri,
+        )
+        return FourierPreloadResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Fourier preload failed: {str(e)}")
+
+
 @router.post("/dct", response_model=DCTResponse)
 async def post_dct(req: DCTRequest):
     try:
@@ -90,6 +108,19 @@ async def post_dct(req: DCTRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DCT cipher failed: {str(e)}")
+
+
+@router.post("/dct/preload", response_model=DCTPreloadResponse)
+async def post_dct_preload(req: DCTPreloadRequest):
+    try:
+        result = encryption_service.run_dct_preload(
+            req.ciphertext_real,
+            req.ciphertext_shape,
+            req.visual_uri,
+        )
+        return DCTPreloadResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"DCT preload failed: {str(e)}")
 
 
 @router.post("/arnold-xor", response_model=ArnoldXORResponse)
