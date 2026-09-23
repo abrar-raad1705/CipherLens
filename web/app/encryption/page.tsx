@@ -3,7 +3,9 @@
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  BookmarkIcon,
   ChartBarIcon as BarChart3,
+  CheckIcon as Check,
   CommandLineIcon as Binary,
   ArrowDownTrayIcon as Download,
   DocumentTextIcon as FileText,
@@ -16,6 +18,7 @@ import {
   ArrowUpTrayIcon as Upload,
   SignalIcon as Waves,
 } from "@heroicons/react/24/outline";
+import { saveImageToServer } from "@/lib/api/storage";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -102,7 +105,8 @@ const ALGORITHMS: AlgorithmMeta[] = [
 function EncryptionWorkbenchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { activeArtifact, addArtifact } = useWorkspace();
+  const { activeArtifact, artifacts, addArtifact } = useWorkspace();
+  const [isSaved, setIsSaved] = useState<boolean>(false);
   const {
     loading,
     error,
@@ -114,6 +118,7 @@ function EncryptionWorkbenchContent() {
 
   // Operation-Specific Upload State (Starts as null so user sees the upload intro on enter)
   const [uploadedImage, setUploadedImage] = useState<UploadedImageInfo | null>(null);
+  const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
 
 
 
@@ -214,6 +219,7 @@ function EncryptionWorkbenchContent() {
     setDownloadPackagingProgress(100);
     setIsPackagingReady(true);
     setAutoDownloadRequested(false);
+    setIsSaved(false);
     if (packagingTimerRef.current) clearInterval(packagingTimerRef.current);
   }, [uploadedImage?.dataUri, selectedAlgo]);
 
@@ -222,6 +228,7 @@ function EncryptionWorkbenchContent() {
     if (!uploadedImage || isEncrypting || loading) return;
 
     setIsEncrypting(true);
+    setIsSaved(false);
     setIsPackagingReady(false);
     setDownloadPackagingProgress(15);
     setAutoDownloadRequested(false);
@@ -387,6 +394,50 @@ function EncryptionWorkbenchContent() {
     downloadKeyFile(content, `${baseName}_${selectedAlgo}_key.txt`);
   };
 
+  // Save ciphertext to workspace gallery & local storage
+  const handleSaveCiphertext = () => {
+    if (!ciphertextUri || !uploadedImage) return;
+
+    const currentKeys: Record<string, number> = {};
+    if (selectedAlgo === "drpe") {
+      currentKeys.seed1 = drpeSeed1;
+      currentKeys.seed2 = drpeSeed2;
+    } else if (selectedAlgo === "fourier") {
+      currentKeys.fourierSeed = fourierSeed;
+    } else if (selectedAlgo === "dct") {
+      currentKeys.dctSeed = dctSeed;
+    } else if (selectedAlgo === "arnold") {
+      currentKeys.iterations = arnoldItr;
+      currentKeys.xorValue = arnoldXor;
+    }
+
+    addArtifact(
+      {
+        name: `${uploadedImage.name.replace(/\.[^/.]+$/, "")} [${selectedAlgo.toUpperCase()} Cipher]`,
+        dataUri: ciphertextUri,
+        width: uploadedImage.width,
+        height: uploadedImage.height,
+        sourceBench: "encryption",
+        metadata: {
+          algorithm: selectedAlgo,
+          keys: currentKeys,
+          latency_ms: lastLatency,
+          comparisonStats,
+        },
+      },
+      false
+    );
+
+    saveImageToServer(
+      "encrypted",
+      `${uploadedImage.name.replace(/\.[^/.]+$/, "")}_${selectedAlgo}_ciphertext.png`,
+      ciphertextUri,
+      { algorithm: selectedAlgo, keys: currentKeys }
+    ).catch(() => {});
+
+    setIsSaved(true);
+  };
+
   // Navigate to Decryption
   const handleProceedToDecryption = () => {
     router.push(`/decryption?algo=${selectedAlgo}`);
@@ -458,19 +509,36 @@ function EncryptionWorkbenchContent() {
           </h1>
         </div>
 
-        {uploadedImage && (
-          <Button
-            variant="outline"
+        {uploadedImage ? (
+          <button
+            type="button"
             onClick={() => {
               setUploadedImage(null);
               setCiphertextUri(null);
               setPipelineStages(null);
             }}
-            className="text-xs font-medium h-9 px-3.5 rounded-lg border-[#DCDCD6] dark:border-[#333333] hover:border-[#2563EB]/70 dark:hover:border-[#3B82F6]/70 bg-white/80 dark:bg-[#181818] hover:bg-white dark:hover:bg-[#1E1E1E] text-[#181818] dark:text-[#F2F2F0] shadow-2xs hover:shadow-xs transition-all cursor-pointer animate-in fade-in duration-300"
+            className="group relative inline-flex items-center gap-2.5 h-10 px-4 rounded-xl border border-[#DCDCD6] dark:border-[#2C2C2C] hover:border-blue-500/60 dark:hover:border-blue-500/60 bg-white/90 dark:bg-[#161616] hover:bg-zinc-50 dark:hover:bg-[#1C1C1C] shadow-2xs hover:shadow-xs transition-all duration-200 active:scale-[0.98] cursor-pointer"
           >
-            <RotateCcw className="h-4 w-4 mr-1.5 text-blue-600 dark:text-blue-400 stroke-[2]" />
-            <span>Change Image</span>
-          </Button>
+            <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+              <RotateCcw className="h-4 w-4 stroke-[2]" />
+            </div>
+            <span className="text-sm font-medium text-[#181818] dark:text-[#E4E4E7] group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+              Change Image
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsGalleryOpen(true)}
+            className="group relative inline-flex items-center gap-2.5 h-10 px-4 rounded-xl border border-[#DCDCD6] dark:border-[#2C2C2C] hover:border-blue-500/60 dark:hover:border-blue-500/60 bg-white/90 dark:bg-[#161616] hover:bg-zinc-50 dark:hover:bg-[#1C1C1C] shadow-2xs hover:shadow-xs transition-all duration-200 active:scale-[0.98] cursor-pointer"
+          >
+            <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+              <PhotoIcon className="h-4 w-4 stroke-[2]" />
+            </div>
+            <span className="text-sm font-medium text-[#181818] dark:text-[#E4E4E7] group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+              Pick from Gallery
+            </span>
+          </button>
         )}
       </div>
 
@@ -480,15 +548,20 @@ function EncryptionWorkbenchContent() {
           title="Drop your image here"
           description="Maximum 25 MB"
           actionLabel="Browse files"
+          isExternalGalleryOpen={isGalleryOpen}
+          onCloseExternalGallery={() => setIsGalleryOpen(false)}
           onImageUploaded={(img) => {
             setUploadedImage(img);
-            addArtifact({
-              name: img.name,
-              dataUri: img.dataUri,
-              width: img.width,
-              height: img.height,
-              sourceBench: "upload",
-            });
+            const exists = artifacts.some((a) => a.dataUri === img.dataUri);
+            if (!exists) {
+              addArtifact({
+                name: img.name,
+                dataUri: img.dataUri,
+                width: img.width,
+                height: img.height,
+                sourceBench: "upload",
+              });
+            }
           }}
         />
       ) : (
@@ -662,7 +735,7 @@ function EncryptionWorkbenchContent() {
                 <div>
                   <CanvasViewer
                     imageSrc={uploadedImage?.dataUri || ""}
-                    title="INPUT PLAINTEXT (REAL IMAGE)"
+                    title="INPUT PLAINTEXT"
                     subtitle={`${uploadedImage.name} · ${uploadedImage.width}×${uploadedImage.height}`}
                     isLoading={isEncrypting || loading}
                     loadingText={`Simulating ${activeMeta.name} Cipher...`}
@@ -808,47 +881,75 @@ function EncryptionWorkbenchContent() {
                     )}
                   </Button>
                 ) : (
-                  /* Post-encryption State: Download button and Decryption button */
+                  /* Post-encryption State: Download button, Save button, and Analyze button */
                   <div className="space-y-2 animate-in fade-in duration-200">
-                    {!isPackagingReady ? (
-                      /* Wave-jiggling dots inside Download Button while packaging */
+                    <div className="grid grid-cols-2 gap-2">
+                      {!isPackagingReady ? (
+                        /* Wave-jiggling dots inside Download Button while packaging */
+                        <Button
+                          type="button"
+                          onClick={() => setAutoDownloadRequested(true)}
+                          className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 shadow-[0_0_6px_rgba(37,99,235,0.12)] hover:shadow-[0_0_8px_rgba(37,99,235,0.2)] flex items-center justify-center gap-1.5"
+                          title={autoDownloadRequested ? "Will open download options as soon as packaging completes..." : "Packaging download... Click to open automatically once ready"}
+                        >
+                          <div className="flex items-center justify-center gap-1.5 py-0.5">
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                              style={{ animationDelay: "0ms" }}
+                            />
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                              style={{ animationDelay: "140ms" }}
+                            />
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                              style={{ animationDelay: "280ms" }}
+                            />
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
+                              style={{ animationDelay: "420ms" }}
+                            />
+                          </div>
+                        </Button>
+                      ) : (
+                        /* Download Button */
+                        <Button
+                          type="button"
+                          onClick={() => setIsDownloadModalOpen(true)}
+                          className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 shadow-[0_0_6px_rgba(37,99,235,0.12)] hover:shadow-[0_0_8px_rgba(37,99,235,0.2)] flex items-center justify-center gap-1.5"
+                          title="Download Encrypted Image or Key File"
+                        >
+                          <Download className="h-3.5 w-3.5 text-white shrink-0" />
+                          <span>Download</span>
+                        </Button>
+                      )}
+
+                      {/* Save Button beside Download */}
                       <Button
                         type="button"
-                        onClick={() => setAutoDownloadRequested(true)}
-                        className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 shadow-[0_0_6px_rgba(37,99,235,0.12)] hover:shadow-[0_0_8px_rgba(37,99,235,0.2)] flex items-center justify-center gap-1.5"
-                        title={autoDownloadRequested ? "Will open download options as soon as packaging completes..." : "Packaging download... Click to open automatically once ready"}
+                        onClick={handleSaveCiphertext}
+                        disabled={isSaved}
+                        className={cn(
+                          "w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] flex items-center justify-center gap-1.5 shadow-[0_0_6px_rgba(37,99,235,0.12)]",
+                          isSaved
+                            ? "bg-emerald-600/15 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40"
+                            : "bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 hover:shadow-[0_0_8px_rgba(37,99,235,0.2)]"
+                        )}
+                        title="Save ciphertext to Workspace Gallery for analysis or decryption"
                       >
-                        <div className="flex items-center justify-center gap-1.5 py-0.5">
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
-                            style={{ animationDelay: "0ms" }}
-                          />
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
-                            style={{ animationDelay: "140ms" }}
-                          />
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
-                            style={{ animationDelay: "280ms" }}
-                          />
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-[#2563EB] dark:bg-[#3B82F6] animate-dot-wave"
-                            style={{ animationDelay: "420ms" }}
-                          />
-                        </div>
+                        {isSaved ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
+                            <span>Saved</span>
+                          </>
+                        ) : (
+                          <>
+                            <BookmarkIcon className="h-3.5 w-3.5 text-white shrink-0" />
+                            <span>Save</span>
+                          </>
+                        )}
                       </Button>
-                    ) : (
-                      /* Full-width Download Button (replaces progress bar) */
-                      <Button
-                        type="button"
-                        onClick={() => setIsDownloadModalOpen(true)}
-                        className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 shadow-[0_0_6px_rgba(37,99,235,0.12)] hover:shadow-[0_0_8px_rgba(37,99,235,0.2)] flex items-center justify-center gap-1.5 animate-in fade-in duration-200"
-                        title="Download Encrypted Image or Key File"
-                      >
-                        <Download className="h-3.5 w-3.5 text-white shrink-0" />
-                        <span>Download</span>
-                      </Button>
-                    )}
+                    </div>
 
                     {/* Single Full-Width Analyze Button (Auto-selects original and ciphertext in Analysis) */}
                     <Button

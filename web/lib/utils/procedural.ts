@@ -107,3 +107,109 @@ export function generateCalibrationTarget(size = 512): string {
 
   return canvas.toDataURL("image/png");
 }
+
+export function generateSiemensStarTarget(size = 512): string {
+  if (typeof document === "undefined") {
+    return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  ctx.fillStyle = "#0A0A0A";
+  ctx.fillRect(0, 0, size, size);
+
+  const center = size / 2;
+  const numSpokes = 36;
+  const spokeAngle = (Math.PI * 2) / numSpokes;
+
+  for (let i = 0; i < numSpokes; i += 2) {
+    ctx.beginPath();
+    ctx.moveTo(center, center);
+    ctx.arc(center, center, center - 16, i * spokeAngle, (i + 1) * spokeAngle);
+    ctx.closePath();
+    ctx.fillStyle = "#F5F5F5";
+    ctx.fill();
+  }
+
+  // Concentric calibration rings
+  ctx.strokeStyle = "#FFFFFF";
+  ctx.lineWidth = 1.5;
+  for (const r of [60, 120, 180, 235]) {
+    ctx.beginPath();
+    ctx.arc(center, center, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Center fiducial
+  ctx.fillStyle = "#FFFFFF";
+  ctx.beginPath();
+  ctx.arc(center, center, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  return canvas.toDataURL("image/png");
+}
+
+export function generateFresnelZonePlate(size = 512): string {
+  if (typeof document === "undefined") {
+    return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  const imgData = ctx.createImageData(size, size);
+  const data = imgData.data;
+  const center = size / 2;
+  const k = 0.0018;
+
+  for (let y = 0; y < size; y++) {
+    const dy = y - center;
+    for (let x = 0; x < size; x++) {
+      const dx = x - center;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      const chirp = 127.5 * (1.0 + Math.cos(k * r * r));
+      const window = Math.max(0, Math.min(1, (center - r) / 16.0));
+      const val = Math.min(255, Math.max(0, Math.round(chirp * window + 24 * (1 - window))));
+
+      const idx = (y * size + x) * 4;
+      data[idx] = val;
+      data[idx + 1] = val;
+      data[idx + 2] = val;
+      data[idx + 3] = 255;
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
+export function generateCheckerboardTarget(size = 512): string {
+  if (typeof document === "undefined") {
+    return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  const tile = 32;
+  for (let y = 0; y < size; y += tile) {
+    for (let x = 0; x < size; x += tile) {
+      ctx.fillStyle = ((x / tile + y / tile) % 2 === 0) ? "#F8F8F8" : "#141414";
+      ctx.fillRect(x, y, tile, tile);
+    }
+  }
+
+  ctx.strokeStyle = "#808080";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1, 1, size - 2, size - 2);
+
+  return canvas.toDataURL("image/png");
+}
+

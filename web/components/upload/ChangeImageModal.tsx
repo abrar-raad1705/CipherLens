@@ -4,10 +4,11 @@ import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   CheckIcon as Check,
+  ClockIcon as Clock,
   ScissorsIcon as Crop,
   PhotoIcon as ImageIcon,
   ArrowPathIcon as RotateCcw,
-  ArrowUpTrayIcon as Upload,
+  TrashIcon as Trash,
   XMarkIcon as X,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export interface ChangeImageModalProps {
   initialImageSrc?: string | null;
   initialFileName?: string;
   title?: string;
+  skipCrop?: boolean;
 }
 
 type DragHandle = "move" | "nw" | "ne" | "sw" | "se" | null;
@@ -49,14 +51,15 @@ export function ChangeImageModal({
   initialImageSrc,
   initialFileName,
   title,
+  skipCrop = false,
 }: ChangeImageModalProps) {
   const {
     artifacts,
-    activeArtifact,
     presets,
     loadPresetById,
     addArtifact,
     setActiveArtifactId,
+    removeArtifact,
   } = useWorkspace();
 
   // Mode: "choose" (gallery/upload) or "crop" (resizable selection box)
@@ -74,7 +77,6 @@ export function ChangeImageModal({
     h: 240,
   });
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "free">("1:1");
-  const [dragOver, setDragOver] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
@@ -223,29 +225,6 @@ export function ChangeImageModal({
 
   if (!isOpen) return null;
 
-  const handleFile = (file: File) => {
-    if (!file || !file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const src = e.target?.result as string;
-      setRawImageSrc(src);
-      setRawFileName(file.name);
-      setMode("crop");
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
-  };
 
   // Start dragging handle (corner or move)
   const handleStartDrag = (e: React.PointerEvent, handle: DragHandle) => {
@@ -493,89 +472,58 @@ export function ChangeImageModal({
       >
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#E8E8E3] dark:border-[#292929]">
-          <div className="flex items-center gap-2">
-            {mode === "crop" ? (
-              <Crop className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF]" />
-            ) : (
-              <ImageIcon className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF]" />
-            )}
-            <span className="font-medium text-sm text-[#181818] dark:text-[#F2F2F0]">
-              {mode === "crop" ? "Crop & Adjust Target Selection" : title || "Select or Upload Image Target"}
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 text-[#2563EB] dark:text-[#5B8CFF] border border-blue-500/20 shadow-xs flex items-center justify-center shrink-0">
+              {mode === "crop" ? (
+                <Crop className="h-5 w-5" />
+              ) : (
+                <ImageIcon className="h-5 w-5" />
+              )}
+            </div>
+            <span className="text-base font-semibold tracking-tight text-[#181818] dark:text-[#F2F2F0]">
+              {mode === "crop"
+                ? "Crop & Adjust Target Selection"
+                : title && title !== "Choose from Artifacts & Benchmarks" && title !== "Select Image Target"
+                ? title
+                : "Artifacts and Benchmarks"}
             </span>
           </div>
 
-          <button
-            onClick={handleClose}
-            className="p-1 rounded text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-3">
+            {mode === "choose" && (
+              <span className="text-xs text-[#6F6F6A] dark:text-[#A0A09B]">
+                {skipCrop ? "Click to select" : "Click to select or crop"}
+              </span>
+            )}
+            <button
+              onClick={handleClose}
+              className="p-1 rounded text-[#6F6F6A] dark:text-[#A0A09B] hover:text-red-500 dark:hover:text-red-400 bg-transparent hover:bg-transparent transition-colors cursor-pointer"
+              title="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body */}
         {mode === "choose" ? (
           <div className="p-5 space-y-6 overflow-y-auto">
-            {/* Upload Area */}
-            <div className="space-y-2">
-              <div className="text-xs font-semibold tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-                Upload New Image
-              </div>
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
-                onClick={() => document.getElementById("modal-file-upload")?.click()}
-                className={`border border-dashed rounded-lg p-5 flex flex-col items-center justify-center cursor-pointer transition-colors text-center ${
-                  dragOver
-                    ? "border-[#2563EB] bg-[#2563EB]/5"
-                    : "border-[#D7D7D1] dark:border-[#383838] hover:border-[#181818] dark:hover:border-[#F2F2F0] bg-[#FAFAF8] dark:bg-[#121212]"
-                }`}
-              >
-                <div className="h-9 w-9 rounded-full bg-white dark:bg-[#1E1E1E] border border-[#E8E8E3] dark:border-[#292929] flex items-center justify-center mb-2 shadow-xs">
-                  <Upload className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF]" />
-                </div>
-                <span className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0]">
-                  Click to browse or drop an image here
-                </span>
-                <span className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] mt-0.5">
-                  PNG, JPG, WEBP
-                </span>
-                <input
-                  id="modal-file-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                />
-              </div>
-            </div>
-
-            {/* Workspace Artifacts: Facebook-Style Photo Gallery Grid */}
+            {/* Artifacts: Photo Gallery Grid */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase flex items-center gap-2">
-                  <span>Workspace Artifacts</span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] font-medium text-[#6F6F6A] dark:text-[#A0A09B]">
-                    {artifacts.length}
-                  </span>
+                <div className="text-xs font-semibold tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
+                  <span>Artifacts</span>
                 </div>
-                {artifacts.length > 0 && (
-                  <span className="text-xs text-[#6F6F6A] dark:text-[#A0A09B]">
-                    Click to activate or crop
-                  </span>
-                )}
               </div>
 
               {artifacts.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-[380px] overflow-y-auto p-1">
-                  {artifacts.map((art) => {
-                    const isSelected = activeArtifact?.id === art.id;
+                  {artifacts.map((art, index) => {
+                    const isRecent = index === 0;
                     return (
                       <div
                         key={art.id}
+                        title={art.name}
                         onClick={() => {
                           if (onSelectImage) {
                             onSelectImage({
@@ -595,7 +543,7 @@ export function ChangeImageModal({
                         }}
                         className={cn(
                           "group relative aspect-square rounded-lg overflow-hidden border transition-all duration-200 cursor-pointer bg-[#0A0A0A]",
-                          isSelected
+                          isRecent
                             ? "border-[#2563EB] dark:border-[#5B8CFF] ring-2 ring-[#2563EB]/50 dark:ring-[#5B8CFF]/50 shadow-md"
                             : "border-[#E8E8E3] dark:border-[#292929] hover:border-[#888888] dark:hover:border-[#666666]"
                         )}
@@ -605,6 +553,7 @@ export function ChangeImageModal({
                           <img
                             src={art.dataUri}
                             alt={art.name}
+                            title={art.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           />
                         ) : (
@@ -613,34 +562,51 @@ export function ChangeImageModal({
                           </div>
                         )}
 
-                        {/* Active Selection Badge on Left Corner */}
-                        {isSelected && (
-                          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-[#2563EB] dark:bg-[#5B8CFF] text-white text-[10px] font-medium flex items-center gap-1 shadow-md z-10">
-                            <Check className="h-3 w-3" />
-                            <span>Active</span>
+                        {/* Top badges: Recent Badge */}
+                        {isRecent && (
+                          <div className="absolute top-2 left-2 pointer-events-none z-10">
+                            <div className="px-2 py-0.5 rounded-full bg-[#2563EB] dark:bg-[#5B8CFF] text-white text-[10px] font-medium flex items-center gap-1 shadow-md">
+                              <Clock className="h-3 w-3" />
+                              <span>Recent</span>
+                            </div>
                           </div>
                         )}
 
-                        {/* Facebook-style Hover Overlay with metadata & crop button */}
+                        {/* Hover Overlay with metadata, crop button & delete button */}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 text-white">
-                          <div className="flex justify-end">
+                          <div className="flex justify-end gap-1.5 pointer-events-auto">
+                            {!skipCrop && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (art.dataUri) {
+                                    setRawImageSrc(art.dataUri);
+                                    setRawFileName(art.name);
+                                    setMode("crop");
+                                  }
+                                }}
+                                className="p-1.5 rounded-full bg-black/60 hover:bg-black/90 text-white border border-white/20 transition-transform active:scale-95 shadow-sm cursor-pointer"
+                                title={`Crop ${art.name}`}
+                              >
+                                <Crop className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (art.dataUri) {
-                                  setRawImageSrc(art.dataUri);
-                                  setRawFileName(art.name);
-                                  setMode("crop");
-                                }
+                                removeArtifact(art.id);
                               }}
-                              className="p-1.5 rounded-full bg-black/60 hover:bg-black/90 text-white border border-white/20 transition-transform active:scale-95 shadow-sm"
-                              title="Crop this artifact"
+                              className="p-1.5 rounded-full bg-black/60 hover:bg-rose-600 text-white/90 hover:text-white border border-white/20 transition-all active:scale-95 shadow-sm cursor-pointer"
+                              title={`Delete ${art.name}`}
+                              aria-label={`Delete ${art.name}`}
                             >
-                              <Crop className="h-3.5 w-3.5" />
+                              <Trash className="h-3.5 w-3.5" />
                             </button>
                           </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-medium truncate drop-shadow-sm">
+                          <div className="min-w-0" title={art.name}>
+                            <div className="text-xs font-medium line-clamp-2 break-all drop-shadow-sm" title={art.name}>
                               {art.name}
                             </div>
                             <div className="text-[11px] text-white/80 drop-shadow-sm font-normal">
@@ -653,13 +619,13 @@ export function ChangeImageModal({
                   })}
                 </div>
               ) : (
-                <div className="p-8 border border-dashed border-[#E8E8E3] dark:border-[#292929] rounded-lg text-center space-y-2">
+                <div className="p-6 border border-dashed border-[#E8E8E3] dark:border-[#292929] rounded-lg text-center space-y-1.5">
                   <ImageIcon className="h-8 w-8 text-[#999993] dark:text-[#6A6A6A] mx-auto" />
                   <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0]">
-                    No workspace artifacts yet
+                    No artifacts yet
                   </div>
                   <div className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
-                    Upload an image above to get started
+                    Pick a calibration benchmark below to save artifacts
                   </div>
                 </div>
               )}
@@ -668,46 +634,84 @@ export function ChangeImageModal({
             {/* Calibration Standards / Presets */}
             {presets.length > 0 && (
               <div className="space-y-2 pt-2 border-t border-[#E8E8E3] dark:border-[#292929]">
-                <div className="text-xs font-semibold tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-                  Calibration Benchmarks
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
+                    <span>Calibration Benchmarks</span>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {presets.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => {
-                        if (onSelectImage) {
-                          onSelectImage({
-                            name: preset.name,
-                            dataUri: preset.image,
-                            width: preset.width,
-                            height: preset.height,
-                          });
-                          handleClose();
-                          return;
-                        }
-                        loadPresetById(preset.id);
-                        if (typeof window !== "undefined") {
-                          localStorage.setItem("cipherlens_user_has_selected", "true");
-                        }
-                        onClose();
-                      }}
-                      className="flex items-center gap-2.5 p-2 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#151515] hover:border-[#2563EB] dark:hover:border-[#5B8CFF] hover:bg-white dark:hover:bg-[#1C1C1C] transition-colors text-left cursor-pointer"
-                    >
-                      <div className="w-8 h-8 rounded shrink-0 bg-black/10 dark:bg-white/10 flex items-center justify-center font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B]">
-                        {preset.width}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] truncate">
-                          {preset.name}
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-[380px] overflow-y-auto p-1">
+                  {presets.map((preset) => {
+                    return (
+                      <div
+                        key={preset.id}
+                        title={preset.name}
+                        onClick={() => {
+                          if (onSelectImage) {
+                            onSelectImage({
+                              name: preset.name,
+                              dataUri: preset.image,
+                              width: preset.width,
+                              height: preset.height,
+                            });
+                            handleClose();
+                            return;
+                          }
+                          loadPresetById(preset.id);
+                          if (typeof window !== "undefined") {
+                            localStorage.setItem("cipherlens_user_has_selected", "true");
+                          }
+                          onClose();
+                        }}
+                        className="group relative aspect-square rounded-lg overflow-hidden border border-[#E8E8E3] dark:border-[#292929] hover:border-[#888888] dark:hover:border-[#666666] transition-all duration-200 cursor-pointer bg-[#0A0A0A]"
+                      >
+                        {/* Thumbnail Image */}
+                        {preset.image ? (
+                          <img
+                            src={preset.image}
+                            alt={preset.name}
+                            title={preset.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[#6A6A6A]">
+                            <ImageIcon className="h-6 w-6" />
+                          </div>
+                        )}
+
+                        {/* Hover Overlay with metadata & crop button */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 text-white">
+                          <div className="flex justify-end pointer-events-auto">
+                            {!skipCrop && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (preset.image) {
+                                    setRawImageSrc(preset.image);
+                                    setRawFileName(preset.name);
+                                    setMode("crop");
+                                  }
+                                }}
+                                className="p-1.5 rounded-full bg-black/60 hover:bg-black/90 text-white border border-white/20 transition-transform active:scale-95 shadow-sm cursor-pointer"
+                                title={`Crop ${preset.name}`}
+                              >
+                                <Crop className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="min-w-0" title={preset.name}>
+                            <div className="text-xs font-medium line-clamp-2 break-words drop-shadow-sm" title={preset.name}>
+                              {preset.name}
+                            </div>
+                            <div className="text-[11px] text-white/80 drop-shadow-sm font-normal">
+                              {preset.width} × {preset.height} px
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-[10px] font-mono text-[#8E8E88] dark:text-[#7A7A75]">
-                          {preset.width} × {preset.height} px
-                        </div>
                       </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

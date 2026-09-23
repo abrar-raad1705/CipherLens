@@ -277,7 +277,7 @@ export function ImageInspectionModal({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 ml-1 rounded-lg text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors cursor-pointer"
+              className="p-1.5 ml-1 rounded-lg text-[#6F6F6A] dark:text-[#A0A09B] hover:text-red-500 dark:hover:text-red-400 bg-transparent hover:bg-transparent transition-colors cursor-pointer"
               title="Close (Esc)"
             >
               <X className="h-4.5 w-4.5" />

@@ -29,7 +29,7 @@ async def list_sample_images():
     """List and supply standard benchmark preset images."""
     samples = []
 
-    # 1. Cat512 benchmark
+    # 1. Cat512 natural benchmark
     cat_path = (
         Path(__file__).resolve().parent.parent.parent
         / "src"
@@ -51,20 +51,68 @@ async def list_sample_images():
                 }
             )
 
-    # 2. Frequency Zone Plate
+    # 2. Mandrill natural texture benchmark
+    baboon_path = (
+        Path(__file__).resolve().parent.parent.parent
+        / "src"
+        / "batsignal"
+        / "pipeline"
+        / "baboon512.png"
+    )
+    if baboon_path.exists():
+        baboon_img = cv2.imread(str(baboon_path), cv2.IMREAD_GRAYSCALE)
+        if baboon_img is not None:
+            samples.append(
+                {
+                    "id": "baboon512",
+                    "name": "Mandrill Benchmark (512×512)",
+                    "description": "Standard high-frequency natural texture benchmark from USC-SIPI database.",
+                    "image": array_to_data_uri(baboon_img),
+                    "width": 512,
+                    "height": 512,
+                }
+            )
+
+    # 3. Siemens Star Target
+    siemens = create_synthetic_target("siemens_star", 512)
+    samples.append(
+        {
+            "id": "siemens_star",
+            "name": "Siemens Star Target",
+            "description": "Standard radial MTF spoke resolution pattern for optical transfer function testing.",
+            "image": array_to_data_uri(siemens),
+            "width": 512,
+            "height": 512,
+        }
+    )
+
+    # 4. Concentric Fresnel Zone Plate
     freq_grid = create_synthetic_target("frequency_grid", 512)
     samples.append(
         {
             "id": "frequency_grid",
-            "name": "Frequency Zone Plate",
-            "description": "Synthetic chirp pattern with radial frequencies for optical modulation testing.",
+            "name": "Concentric Fresnel Zone Plate",
+            "description": "High-fidelity radial chirp pattern with smooth quadratic phase fringes.",
             "image": array_to_data_uri(freq_grid),
             "width": 512,
             "height": 512,
         }
     )
 
-    # 3. High-Contrast Checkerboard
+    # 5. USAF Optical Resolution Target
+    usaf = create_synthetic_target("usaf_target", 512)
+    samples.append(
+        {
+            "id": "usaf_target",
+            "name": "USAF Optical Resolution Target",
+            "description": "Precision spatial frequency bar groups and optical alignment target.",
+            "image": array_to_data_uri(usaf),
+            "width": 512,
+            "height": 512,
+        }
+    )
+
+    # 6. High-Contrast Checkerboard
     checker = create_synthetic_target("checkerboard", 512)
     samples.append(
         {
@@ -77,7 +125,7 @@ async def list_sample_images():
         }
     )
 
-    # 4. Optical Bar Target
+    # 7. Optical Resolution Grating
     bars = create_synthetic_target("resolution_bars", 512)
     samples.append(
         {

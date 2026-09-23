@@ -147,7 +147,7 @@ export default function PlaygroundPage() {
 
                   <button
                     type="button"
-                    className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
+                    className="p-1 rounded text-zinc-400 hover:text-red-500 dark:hover:text-red-400 bg-transparent hover:bg-transparent transition-colors cursor-pointer shrink-0"
                     title="Remove key file"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -217,7 +217,7 @@ export default function PlaygroundPage() {
 
                   <button
                     type="button"
-                    className="p-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer shrink-0"
+                    className="p-1 rounded text-zinc-500 hover:text-red-500 dark:hover:text-red-400 bg-transparent hover:bg-transparent transition-colors cursor-pointer shrink-0"
                     title="Remove key file"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -292,7 +292,7 @@ export default function PlaygroundPage() {
                     </span>
                     <button
                       type="button"
-                      className="p-1 rounded text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                      className="p-1 rounded text-zinc-500 hover:text-red-500 dark:hover:text-red-400 bg-transparent hover:bg-transparent transition-colors cursor-pointer"
                       title="Clear key file"
                     >
                       <X className="h-3 w-3" />

@@ -186,25 +186,73 @@ def create_synthetic_target(
     """
     y, x = np.ogrid[:size, :size]
     center = size / 2.0
+    r = np.sqrt((x - center) ** 2 + (y - center) ** 2)
 
     if target_type == "frequency_grid":
-        r = np.sqrt((x - center) ** 2 + (y - center) ** 2)
-        pattern = 127.5 * (1.0 + np.sin(0.002 * (r**2)))
-        pattern[int(center) - 1 : int(center) + 2, :] = 255
-        pattern[:, int(center) - 1 : int(center) + 2] = 255
+        # High-fidelity Fresnel zone plate with quadratic radial chirp and apodized window
+        k = 0.0018
+        chirp = 127.5 * (1.0 + np.cos(k * (r**2)))
+        window = np.clip((center - r) / 16.0, 0.0, 1.0)
+        pattern = chirp * window + 24.0 * (1.0 - window)
+        pattern[r < 2.5] = 255
         return np.clip(pattern, 0, 255).astype(np.uint8)
+
+    elif target_type == "siemens_star":
+        # Classic Siemens star MTF resolution benchmark with 36 radial spokes and concentric guide rings
+        angle = np.arctan2(y - center, x - center)
+        spokes = 36
+        star = 127.5 * (1.0 + np.sign(np.sin(spokes * angle)) * 0.92)
+        for ring_r in [60, 120, 180, 235]:
+            star[np.abs(r - ring_r) < 1.5] = 255
+        star[r < 5] = 255
+        star[r > center - 4] = 16
+        return np.clip(star, 0, 255).astype(np.uint8)
+
+    elif target_type == "usaf_target":
+        # USAF / optical resolution target with orthogonal 3-bar groups and concentric alignment rings
+        chart = np.full((size, size), 245, dtype=np.uint8)
+        for cr in [20, 40, 75, 120, 175, 230]:
+            mask = np.abs(r - cr) < 1.2
+            chart[mask] = 25
+        c_int = int(center)
+        chart[c_int, max(0, c_int - 30) : min(size, c_int + 31)] = 20
+        chart[max(0, c_int - 30) : min(size, c_int + 31), c_int] = 20
+        frequencies = [
+            (35, 35, 14, 45, 8, True),
+            (35, 100, 9, 36, 6, True),
+            (35, 155, 6, 28, 4, True),
+            (35, 200, 4, 20, 3, True),
+            (size - 85, 35, 45, 14, 8, False),
+            (size - 75, 100, 36, 9, 6, False),
+            (size - 65, 155, 28, 6, 4, False),
+            (size - 55, 200, 20, 4, 3, False),
+        ]
+        for bx, by, bw, bh, sp, horiz in frequencies:
+            for b_idx in range(3):
+                if horiz:
+                    y0 = by + b_idx * (bh + sp)
+                    chart[y0 : y0 + bh, bx : bx + bw] = 20
+                else:
+                    x0 = bx + b_idx * (bw + sp)
+                    chart[by : by + bh, x0 : x0 + bw] = 20
+        return np.clip(chart, 0, 255).astype(np.uint8)
 
     elif target_type == "checkerboard":
         tile = 32
         board = ((x // tile) + (y // tile)) % 2
-        return (board * 255).astype(np.uint8)
+        img = (board * 255).astype(np.uint8)
+        img[:2, :] = 128
+        img[-2:, :] = 128
+        img[:, :2] = 128
+        img[:, -2:] = 128
+        return img
 
     elif target_type == "gradient_ramp":
         ramp = (x / size) * 200.0 + 55.0 * np.sin(2.0 * np.pi * y / 64.0)
         return np.clip(ramp, 0, 255).astype(np.uint8)
 
     elif target_type == "resolution_bars":
-        img = np.full((size, size), 200, dtype=np.uint8)
+        img = np.full((size, size), 220, dtype=np.uint8)
         frequencies = [2, 4, 8, 16, 32, 64]
         h_step = size // (len(frequencies) + 1)
         for i, freq in enumerate(frequencies):

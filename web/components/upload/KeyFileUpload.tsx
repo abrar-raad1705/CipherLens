@@ -157,7 +157,7 @@ export function KeyFileUpload({
             <button
               type="button"
               onClick={handleClear}
-              className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200/50 dark:hover:bg-zinc-800 p-0.5 rounded cursor-pointer transition-colors shrink-0"
+              className="text-[#6F6F6A] dark:text-[#A0A09B] hover:text-red-500 dark:hover:text-red-400 bg-transparent hover:bg-transparent transition-colors cursor-pointer p-0.5 rounded shrink-0"
               title="Remove key file"
             >
               <X className="h-3.5 w-3.5" />
@@ -245,7 +245,7 @@ export function KeyFileUpload({
           <button
             type="button"
             onClick={() => setErrorMessage(null)}
-            className="hover:opacity-75 p-0.5 rounded cursor-pointer shrink-0"
+            className="hover:text-red-500 dark:hover:text-red-400 bg-transparent hover:bg-transparent transition-colors cursor-pointer p-0.5 rounded shrink-0"
           >
             <X className="h-3 w-3" />
           </button>

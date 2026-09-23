@@ -4,10 +4,13 @@ import React, { useState, useEffect, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRightIcon as ArrowRight,
+  BookmarkIcon,
   ChartBarIcon as BarChart3,
+  CheckIcon as Check,
   CommandLineIcon as Binary,
   ArrowDownTrayIcon as Download,
   LockClosedIcon as Lock,
+  PhotoIcon,
   ArrowPathIcon as RotateCcw,
   ShieldExclamationIcon as ShieldAlert,
   ShieldCheckIcon as ShieldCheck,
@@ -15,6 +18,7 @@ import {
   LockOpenIcon as Unlock,
   SignalIcon as Waves,
 } from "@heroicons/react/24/outline";
+import { saveImageToServer } from "@/lib/api/storage";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -91,6 +95,7 @@ function DecryptionWorkbenchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { addArtifact } = useWorkspace();
+  const [isSaved, setIsSaved] = useState<boolean>(false);
   const {
     loading,
     error,
@@ -102,6 +107,7 @@ function DecryptionWorkbenchContent() {
 
   // Operation-Specific Upload State (Independent of centralized workspace image)
   const [uploadedImage, setUploadedImage] = useState<UploadedImageInfo | null>(null);
+  const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
 
   // Optional session for reference comparison if image originated from the same session
   const [session, setSession] = useState(getEncryptionSession());
@@ -180,6 +186,7 @@ function DecryptionWorkbenchContent() {
     setPipelineStages(null);
     setActivePipelineStage("decrypted");
     setQualityMetrics({ ssim: null, psnr: null, mse: null });
+    setIsSaved(false);
   }, [uploadedImage?.dataUri]);
 
   // Core Decryption Execution helper
@@ -197,6 +204,7 @@ function DecryptionWorkbenchContent() {
     if (!uploadedImage || isDecrypting) return;
 
     setIsDecrypting(true);
+    setIsSaved(false);
     try {
       let recoveredUri = "";
       let latency = 0;
@@ -378,6 +386,36 @@ function DecryptionWorkbenchContent() {
     }
   };
 
+  // Save decrypted image to workspace gallery & local storage
+  const handleSaveDecrypted = () => {
+    if (!decryptedSrc || !uploadedImage) return;
+
+    addArtifact(
+      {
+        name: `${uploadedImage.name.replace(/\.[^/.]+$/, "")} [${selectedAlgo.toUpperCase()} Decrypted]`,
+        dataUri: decryptedSrc,
+        width: uploadedImage.width || 512,
+        height: uploadedImage.height || 512,
+        sourceBench: "decryption",
+        metadata: {
+          algorithm: selectedAlgo,
+          latency_ms: lastLatency,
+          quality: qualityMetrics,
+        },
+      },
+      false
+    );
+
+    saveImageToServer(
+      "decrypted",
+      `${uploadedImage.name.replace(/\.[^/.]+$/, "")}_${selectedAlgo}_decrypted.png`,
+      decryptedSrc,
+      { algorithm: selectedAlgo }
+    ).catch(() => {});
+
+    setIsSaved(true);
+  };
+
   // Download recovered image
   const handleDownloadDecrypted = () => {
     if (!decryptedSrc || !uploadedImage) return;
@@ -446,15 +484,32 @@ function DecryptionWorkbenchContent() {
           </h1>
         </div>
 
-        {uploadedImage && (
-          <Button
-            variant="outline"
+        {uploadedImage ? (
+          <button
+            type="button"
             onClick={() => setUploadedImage(null)}
-            className="text-xs font-medium h-9 px-3.5 rounded-lg border-[#DCDCD6] dark:border-[#333333] hover:border-[#2563EB]/70 dark:hover:border-[#3B82F6]/70 bg-white/80 dark:bg-[#181818] hover:bg-white dark:hover:bg-[#1E1E1E] text-[#181818] dark:text-[#F2F2F0] shadow-2xs hover:shadow-xs transition-all cursor-pointer animate-in fade-in duration-300"
+            className="group relative inline-flex items-center gap-2.5 h-10 px-4 rounded-xl border border-[#DCDCD6] dark:border-[#2C2C2C] hover:border-blue-500/60 dark:hover:border-blue-500/60 bg-white/90 dark:bg-[#161616] hover:bg-zinc-50 dark:hover:bg-[#1C1C1C] shadow-2xs hover:shadow-xs transition-all duration-200 active:scale-[0.98] cursor-pointer"
           >
-            <RotateCcw className="h-4 w-4 mr-1.5 text-blue-600 dark:text-blue-400 stroke-[2]" />
-            <span>Change Ciphertext</span>
-          </Button>
+            <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+              <RotateCcw className="h-4 w-4 stroke-[2]" />
+            </div>
+            <span className="text-sm font-medium text-[#181818] dark:text-[#E4E4E7] group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+              Change Ciphertext
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsGalleryOpen(true)}
+            className="group relative inline-flex items-center gap-2.5 h-10 px-4 rounded-xl border border-[#DCDCD6] dark:border-[#2C2C2C] hover:border-blue-500/60 dark:hover:border-blue-500/60 bg-white/90 dark:bg-[#161616] hover:bg-zinc-50 dark:hover:bg-[#1C1C1C] shadow-2xs hover:shadow-xs transition-all duration-200 active:scale-[0.98] cursor-pointer"
+          >
+            <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+              <PhotoIcon className="h-4 w-4 stroke-[2]" />
+            </div>
+            <span className="text-sm font-medium text-[#181818] dark:text-[#E4E4E7] group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+              Pick from Gallery
+            </span>
+          </button>
         )}
       </div>
 
@@ -465,6 +520,8 @@ function DecryptionWorkbenchContent() {
           description="Maximum 25 MB"
           actionLabel="Browse files"
           skipCrop={true}
+          isExternalGalleryOpen={isGalleryOpen}
+          onCloseExternalGallery={() => setIsGalleryOpen(false)}
           onImageUploaded={(img) => setUploadedImage(img)}
         />
       ) : (
@@ -807,16 +864,42 @@ function DecryptionWorkbenchContent() {
                   )}
                 </Button>
 
-                {/* Post-decryption Action Buttons: Download Decrypted Image (styled identically to Encrypt/Decrypt) */}
+                {/* Post-decryption Action Buttons: Download Decrypted Image and Save */}
                 {decryptedSrc && (
-                  <div className="pt-0.5">
+                  <div className="pt-0.5 grid grid-cols-2 gap-2 animate-in fade-in duration-200">
                     <Button
                       type="button"
                       onClick={handleDownloadDecrypted}
-                      className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 shadow-[0_0_6px_rgba(37,99,235,0.12)] hover:shadow-[0_0_8px_rgba(37,99,235,0.2)] flex items-center justify-center gap-1.5 animate-in fade-in duration-200"
+                      className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 shadow-[0_0_6px_rgba(37,99,235,0.12)] hover:shadow-[0_0_8px_rgba(37,99,235,0.2)] flex items-center justify-center gap-1.5"
+                      title="Download Decrypted Image"
                     >
                       <Download className="h-3.5 w-3.5 text-white shrink-0" />
                       <span>Download</span>
+                    </Button>
+
+                    <Button
+                      type="button"
+                      onClick={handleSaveDecrypted}
+                      disabled={isSaved}
+                      className={cn(
+                        "w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] flex items-center justify-center gap-1.5 shadow-[0_0_6px_rgba(37,99,235,0.12)]",
+                        isSaved
+                          ? "bg-emerald-600/15 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40"
+                          : "bg-black hover:bg-neutral-900 text-white border border-[#2563EB]/70 dark:border-[#3B82F6]/70 hover:shadow-[0_0_8px_rgba(37,99,235,0.2)]"
+                      )}
+                      title="Save decrypted image to Workspace Gallery"
+                    >
+                      {isSaved ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
+                          <span>Saved</span>
+                        </>
+                      ) : (
+                        <>
+                          <BookmarkIcon className="h-3.5 w-3.5 text-white shrink-0" />
+                          <span>Save</span>
+                        </>
+                      )}
                     </Button>
                   </div>
                 )}

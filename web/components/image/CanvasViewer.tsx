@@ -214,7 +214,7 @@ export function CanvasViewer({
               <Button
                 size="icon-xs"
                 variant="ghost"
-                className="h-6 w-6 text-[#6F6F6A] hover:text-[#DC2626] dark:text-[#A0A09B] dark:hover:text-[#F87171]"
+                className="h-6 w-6 text-[#6F6F6A] dark:text-[#A0A09B] hover:text-red-500 dark:hover:text-red-400 bg-transparent hover:bg-transparent dark:hover:bg-transparent transition-colors cursor-pointer"
                 onClick={() => setIsFullscreen(false)}
                 title="Close (Esc)"
               >

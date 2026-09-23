@@ -10,7 +10,7 @@ import argparse
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import analysis, encryption, health, processing
+from api.routes import analysis, encryption, health, processing, storage
 
 app = FastAPI(
     title="Bat Signal API",
@@ -34,6 +34,7 @@ app.include_router(health.router, prefix="/api")
 app.include_router(processing.router, prefix="/api")
 app.include_router(encryption.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
+app.include_router(storage.router, prefix="/api")
 
 
 @app.get("/")

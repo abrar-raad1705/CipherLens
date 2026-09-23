@@ -9,6 +9,13 @@ import React, {
 } from "react";
 import { ImageArtifact, SamplePreset } from "@/types/image";
 import { getSamplePresets } from "@/lib/api/processing";
+import { listServerFiles, loadServerFile, deleteServerFile } from "@/lib/api/storage";
+import {
+  generateCalibrationTarget,
+  generateSiemensStarTarget,
+  generateFresnelZonePlate,
+  generateCheckerboardTarget,
+} from "@/lib/utils/procedural";
 
 interface WorkspaceContextType {
   artifacts: ImageArtifact[];
@@ -111,15 +118,94 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch((e) => {
-        console.warn("Backend API not reachable for sample presets:", e);
+        console.warn("Backend API not reachable for sample presets, generating client procedural presets:", e);
         setIsBackendConnected(false);
+        setPresets([
+          {
+            id: "siemens_star",
+            name: "Siemens Star Target",
+            description: "Standard radial MTF spoke resolution pattern for optical transfer function testing.",
+            image: generateSiemensStarTarget(512),
+            width: 512,
+            height: 512,
+          },
+          {
+            id: "frequency_grid",
+            name: "Concentric Fresnel Zone Plate",
+            description: "High-fidelity radial chirp pattern with smooth quadratic phase fringes.",
+            image: generateFresnelZonePlate(512),
+            width: 512,
+            height: 512,
+          },
+          {
+            id: "checkerboard",
+            name: "High-Contrast Checkerboard",
+            description: "32×32 binary tiles ideal for spatial filter boundary and edge analysis.",
+            image: generateCheckerboardTarget(512),
+            width: 512,
+            height: 512,
+          },
+          {
+            id: "calibration_standard",
+            name: "Precision Optical Calibration Target",
+            description: "Calibrated concentric chirps, radial spokes, and coordinate axes.",
+            image: generateCalibrationTarget(512),
+            width: 512,
+            height: 512,
+          },
+        ]);
       });
+
+    // Also populate any saved files from server disk into workspace artifacts
+    listServerFiles()
+      .then(async (res) => {
+        if (res.files && res.files.length > 0) {
+          for (const file of res.files.slice(0, 15)) {
+            try {
+              const loaded = await loadServerFile(file.category, file.filename);
+              addArtifact(
+                {
+                  name: loaded.name,
+                  dataUri: loaded.data_uri,
+                  width: loaded.width,
+                  height: loaded.height,
+                  sourceBench: (file.category === "encrypted"
+                    ? "encryption"
+                    : file.category === "decryption"
+                    ? "decryption"
+                    : "upload") as any,
+                  metadata: {
+                    category: file.category,
+                    filename: file.filename,
+                  },
+                },
+                false
+              );
+            } catch {
+              // ignore individually unparseable files
+            }
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const addArtifact = (
     newArt: Omit<ImageArtifact, "id" | "timestamp">,
     setActive: boolean = true
   ): ImageArtifact => {
+    // Avoid duplicate artifact entries with identical dataUri
+    const existing = store.artifacts.find((a) => a.dataUri === newArt.dataUri);
+    if (existing) {
+      if (setActive) {
+        updateStore((prev) => ({
+          ...prev,
+          activeId: existing.id,
+        }));
+      }
+      return existing;
+    }
+
     const created: ImageArtifact = {
       ...newArt,
       id: `art-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -159,6 +245,17 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeArtifact = (id: string) => {
+    // Find target artifact before removing from local store
+    const target = store.artifacts.find((a) => a.id === id);
+    if (target) {
+      const category = (target.metadata?.category as string) || (target.sourceBench === "encryption" ? "encrypted" : target.sourceBench === "decryption" ? "decrypted" : "uploads");
+      const filename = target.metadata?.filename as string | undefined;
+      // Asynchronously delete from server storage
+      deleteServerFile(category, filename, target.name).catch((err) => {
+        console.warn("Failed to delete artifact from server:", err);
+      });
+    }
+
     updateStore((prev) => {
       const nextArtifacts = prev.artifacts.filter((a) => a.id !== id);
       const nextActiveId =

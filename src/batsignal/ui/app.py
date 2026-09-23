@@ -117,9 +117,24 @@ async def list_samples():
                 "description": "Standard natural image with broad spectrum.",
             },
             {
+                "id": "baboon512",
+                "name": "Mandrill Benchmark (512×512)",
+                "description": "Standard high-frequency natural texture benchmark.",
+            },
+            {
+                "id": "siemens_star",
+                "name": "Siemens Star Target",
+                "description": "Radial MTF spoke resolution benchmark.",
+            },
+            {
                 "id": "frequency_grid",
                 "name": "Synthetic Frequency Zone Plate",
                 "description": "Concentric chirps and radial frequencies.",
+            },
+            {
+                "id": "usaf_target",
+                "name": "USAF Optical Resolution Target",
+                "description": "Multi-frequency orthogonal Ronchi bar groups.",
             },
             {
                 "id": "checkerboard",
@@ -151,8 +166,16 @@ async def load_sample(req: LoadSampleRequest):
             raise HTTPException(status_code=404, detail="cat512.png not found")
         img = cv2.imread(str(pkg_cat), cv2.IMREAD_GRAYSCALE)
         name = "cat512.png"
+    elif sample_id == "baboon512":
+        pkg_baboon = Path(__file__).resolve().parent.parent / "pipeline" / "baboon512.png"
+        if not pkg_baboon.exists():
+            raise HTTPException(status_code=404, detail="baboon512.png not found")
+        img = cv2.imread(str(pkg_baboon), cv2.IMREAD_GRAYSCALE)
+        name = "baboon512.png"
     elif sample_id in (
         "frequency_grid",
+        "siemens_star",
+        "usaf_target",
         "checkerboard",
         "gradient_ramp",
         "resolution_bars",

@@ -21,6 +21,8 @@ interface DriveDropzoneProps {
   description?: string;
   actionLabel?: string;
   skipCrop?: boolean;
+  isExternalGalleryOpen?: boolean;
+  onCloseExternalGallery?: () => void;
   onImageUploaded: (image: UploadedImageInfo) => void;
 }
 
@@ -29,13 +31,16 @@ export function DriveDropzone({
   description = "Maximum 25 MB",
   actionLabel = "Browse files",
   skipCrop = false,
+  isExternalGalleryOpen = false,
+  onCloseExternalGallery,
   onImageUploaded,
 }: DriveDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Edit / Crop Image Modal state
+  // Edit / Crop / Gallery Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"choose" | "crop">("crop");
   const [modalImageSrc, setModalImageSrc] = useState<string | null>(null);
   const [modalFileName, setModalFileName] = useState<string>("image.png");
 
@@ -116,6 +121,7 @@ export function DriveDropzone({
       // Open the Edit Image Dialogue with the selected image
       setModalImageSrc(dataUri);
       setModalFileName(file.name);
+      setModalMode("crop");
       setIsModalOpen(true);
 
       // Reset file input value safely so the same file can be re-selected if cancelled
@@ -126,6 +132,20 @@ export function DriveDropzone({
 
     reader.readAsDataURL(file);
   };
+
+  const handleOpenGallery = () => {
+    setErrorMessage(null);
+    setModalImageSrc(null);
+    setModalFileName("gallery.png");
+    setModalMode("choose");
+    setIsModalOpen(true);
+  };
+
+  useEffect(() => {
+    if (isExternalGalleryOpen) {
+      handleOpenGallery();
+    }
+  }, [isExternalGalleryOpen]);
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
@@ -219,12 +239,16 @@ export function DriveDropzone({
             <div className="h-px flex-1 bg-[#E4E4E7] dark:bg-[#27272A]/90" />
           </div>
 
-          {/* Dedicated Blue "Browse files" Button */}
-          <div
-            className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-sm font-medium shadow-xs group-hover:shadow-md transition-all active:scale-98 mb-3"
-          >
-            <Upload className="h-4 w-4 stroke-[2]" />
-            <span>{actionLabel}</span>
+          {/* Action Button: Browse files */}
+          <div className="mb-3 pointer-events-auto relative z-40">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-sm font-medium shadow-xs hover:shadow-md transition-all active:scale-98 cursor-pointer"
+            >
+              <Upload className="h-4 w-4 stroke-[2]" />
+              <span>{actionLabel}</span>
+            </button>
           </div>
 
           {/* Small Supporting Text - Modern Sans-Serif font, clean muted hierarchy */}
@@ -254,6 +278,7 @@ export function DriveDropzone({
         )}
       </div>
 
+
       {/* 
         Central Edit Image Dialogue:
         Opens immediately upon file selection or drop so the user can adjust,
@@ -264,14 +289,17 @@ export function DriveDropzone({
         onClose={() => {
           setIsModalOpen(false);
           setModalImageSrc(null);
+          onCloseExternalGallery?.();
         }}
-        initialMode="crop"
+        initialMode={modalMode}
         initialImageSrc={modalImageSrc}
         initialFileName={modalFileName}
-        title="Crop & Adjust Target Selection"
+        title={modalMode === "choose" ? "Artifacts and Benchmarks" : "Crop & Adjust Target Selection"}
+        skipCrop={skipCrop}
         onSelectImage={(cropped) => {
           setIsModalOpen(false);
           setModalImageSrc(null);
+          onCloseExternalGallery?.();
           onImageUploaded(cropped);
         }}
       />
