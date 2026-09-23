@@ -57,3 +57,15 @@ export async function runArnoldXOR(
     body: JSON.stringify({ image, itr, xor_value, action }),
   });
 }
+
+export async function preloadDRPECiphertext(
+  ciphertext_real: string,
+  ciphertext_imag: string,
+  ciphertext_shape: number[],
+  visual_uri: string
+): Promise<{ status: string; shape: number[]; message: string }> {
+  return apiClient("/api/encryption/drpe/preload", {
+    method: "POST",
+    body: JSON.stringify({ ciphertext_real, ciphertext_imag, ciphertext_shape, visual_uri }),
+  });
+}

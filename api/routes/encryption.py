@@ -16,6 +16,8 @@ from api.schemas.encryption import (
     DRPEDecryptResponse,
     DRPEEncryptRequest,
     DRPEEncryptResponse,
+    DRPEPreloadRequest,
+    DRPEPreloadResponse,
     FourierRequest,
     FourierResponse,
 )
@@ -49,6 +51,21 @@ async def post_drpe_decrypt(req: DRPEDecryptRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DRPE decryption failed: {str(e)}")
+
+
+@router.post("/drpe/preload", response_model=DRPEPreloadResponse)
+async def post_drpe_preload(req: DRPEPreloadRequest):
+    """Warm the DRPE cache from a JSON key package so decryption works cross-session."""
+    try:
+        result = encryption_service.run_drpe_preload(
+            req.ciphertext_real,
+            req.ciphertext_imag,
+            req.ciphertext_shape,
+            req.visual_uri,
+        )
+        return DRPEPreloadResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"DRPE preload failed: {str(e)}")
 
 
 @router.post("/fourier", response_model=FourierResponse)

@@ -19,6 +19,12 @@ export interface ParsedKeyData {
   // Arnold
   iterations?: number;
   xorValue?: number;
+  // DRPE cross-session ciphertext package (from JSON key file)
+  ciphertextPackage?: {
+    real: string;
+    imag: string;
+    shape: number[];
+  };
 }
 
 export interface KeyFileValidationResult {
@@ -43,8 +49,59 @@ export function normalizeAlgorithmName(raw: string): EncryptionAlgorithm | null 
   return null;
 }
 
+export interface KeyPackageOptions {
+  algorithm: EncryptionAlgorithm;
+  keys: EncryptionSessionKeys;
+  sourceImageName?: string;
+  imageDimensions?: { width: number; height: number };
+  // DRPE only — complex ciphertext planes for cross-session decryption
+  ciphertextReal?: string;
+  ciphertextImag?: string;
+  ciphertextShape?: number[];
+}
+
 /**
- * Generates clean, human-readable .txt key file content.
+ * Generates a JSON key package for all algorithms.
+ * For DRPE this also embeds the complex ciphertext so a friend can decrypt
+ * from a fresh session without the original encryption context.
+ */
+export function generateKeyFileJson(options: KeyPackageOptions): string {
+  const { algorithm, keys, sourceImageName, imageDimensions } = options;
+  const timestamp = new Date().toISOString();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const obj: Record<string, any> = {
+    algorithm: algorithm.toUpperCase(),
+    version: "2.0",
+    timestamp,
+    ...(sourceImageName ? { source_image: sourceImageName } : {}),
+    ...(imageDimensions
+      ? { dimensions: `${imageDimensions.width}x${imageDimensions.height}` }
+      : {}),
+  };
+
+  if (algorithm === "drpe") {
+    obj.seed1 = keys.seed1 ?? 1234;
+    obj.seed2 = keys.seed2 ?? 5678;
+    if (options.ciphertextReal && options.ciphertextImag && options.ciphertextShape) {
+      obj.ciphertext_real = options.ciphertextReal;
+      obj.ciphertext_imag = options.ciphertextImag;
+      obj.ciphertext_shape = options.ciphertextShape;
+    }
+  } else if (algorithm === "fourier") {
+    obj.seed = keys.fourierSeed ?? 100;
+  } else if (algorithm === "dct") {
+    obj.seed = keys.dctSeed ?? 42;
+  } else if (algorithm === "arnold") {
+    obj.iterations = keys.iterations ?? 10;
+    obj.xor_value = keys.xorValue ?? 170;
+  }
+
+  return JSON.stringify(obj, null, 2);
+}
+
+/**
+ * @deprecated Use generateKeyFileJson instead. Kept for reference only.
  */
 export function generateKeyFileContent(options: {
   algorithm: EncryptionAlgorithm;
@@ -52,50 +109,8 @@ export function generateKeyFileContent(options: {
   sourceImageName?: string;
   imageDimensions?: { width: number; height: number };
 }): string {
-  const { algorithm, keys, sourceImageName, imageDimensions } = options;
-  const timestamp = new Date().toISOString();
-
-  const lines: string[] = [
-    "# ============================================================",
-    "# Bat_Signal / CipherLens Cryptographic Key Specification",
-    "# Format Version: 1.0",
-    `# Generated: ${timestamp}`,
-    "# ============================================================",
-    "",
-    `Algorithm: ${algorithm.toUpperCase()}`,
-    "Version: 1.0",
-    `Timestamp: ${timestamp}`,
-  ];
-
-  if (sourceImageName) {
-    lines.push(`Source-Image: ${sourceImageName}`);
-  }
-
-  if (imageDimensions) {
-    lines.push(`Dimensions: ${imageDimensions.width}x${imageDimensions.height}`);
-  }
-
-  lines.push("", "# --- CRYPTOGRAPHIC PARAMETERS ---");
-
-  if (algorithm === "drpe") {
-    lines.push(`Seed1: ${keys.seed1 ?? 1234}`);
-    lines.push(`Seed2: ${keys.seed2 ?? 5678}`);
-    lines.push("# Note: Seed1 modulates spatial phase (R1), Seed2 modulates Fourier phase (R2).");
-  } else if (algorithm === "fourier") {
-    lines.push(`FourierSeed: ${keys.fourierSeed ?? 100}`);
-    lines.push("# Note: Key controls 2D FFT spectral permutation coordinates.");
-  } else if (algorithm === "dct") {
-    lines.push(`DctSeed: ${keys.dctSeed ?? 42}`);
-    lines.push("# Note: Key controls 2D DCT energy-compacted basis permutation.");
-  } else if (algorithm === "arnold") {
-    lines.push(`Iterations: ${keys.iterations ?? 10}`);
-    const xor = keys.xorValue ?? 170;
-    lines.push(`XorValue: ${xor}`);
-    lines.push(`# Note: Iterations controls 2D torus shearing; XorValue (0x${xor.toString(16).toUpperCase()}) controls gray-level diffusion.`);
-  }
-
-  lines.push("", "# End of Cryptographic Key File", "");
-  return lines.join("\n");
+  // Delegate to JSON generator for consistency
+  return generateKeyFileJson(options);
 }
 
 /**
@@ -148,6 +163,20 @@ export function parseAndValidateKeyFile(
         iterations: json.iterations ?? json.itr ?? json.iteration,
         xorValue: json.xorValue ?? json.xor_value ?? json.xor,
       };
+
+      // Extract DRPE complex ciphertext package if present
+      if (
+        algo === "drpe" &&
+        json.ciphertext_real &&
+        json.ciphertext_imag &&
+        Array.isArray(json.ciphertext_shape)
+      ) {
+        keys.ciphertextPackage = {
+          real: json.ciphertext_real,
+          imag: json.ciphertext_imag,
+          shape: json.ciphertext_shape,
+        };
+      }
 
       return validateParsedKeys(algo, keys, targetAlgorithm);
     } catch {
@@ -310,7 +339,11 @@ function validateParsedKeys(
     return {
       valid: true,
       algorithm: algo,
-      keys: { seed1: keys.seed1, seed2: keys.seed2 },
+      keys: { 
+        seed1: keys.seed1, 
+        seed2: keys.seed2,
+        ...(keys.ciphertextPackage ? { ciphertextPackage: keys.ciphertextPackage } : {})
+      },
       metadata,
       algorithmMismatch: isMismatch,
     };
@@ -411,11 +444,11 @@ function validateParsedKeys(
 }
 
 /**
- * Triggers browser download of key file .txt.
+ * Triggers browser download of a JSON key package file.
  */
-export function downloadKeyFile(content: string, filename: string = "encryption_key.txt"): void {
+export function downloadKeyJson(jsonStr: string, filename: string = "encryption_key.json"): void {
   if (typeof window === "undefined") return;
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const blob = new Blob([jsonStr], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -424,6 +457,13 @@ export function downloadKeyFile(content: string, filename: string = "encryption_
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * @deprecated Use downloadKeyJson instead.
+ */
+export function downloadKeyFile(content: string, filename: string = "encryption_key.txt"): void {
+  downloadKeyJson(content, filename.replace(".txt", ".json"));
 }
 
 /**

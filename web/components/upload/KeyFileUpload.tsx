@@ -21,14 +21,21 @@ interface KeyFileUploadProps {
     algorithm: EncryptionAlgorithm;
     keys: ParsedKeyData;
     fileName: string;
+    ciphertextPackage?: {
+      real: string;
+      imag: string;
+      shape: number[];
+    };
   }) => void;
   onSwitchAlgorithm?: (algo: EncryptionAlgorithm) => void;
+  dropzoneClassName?: string;
 }
 
 export function KeyFileUpload({
   selectedAlgo,
   onKeyLoaded,
   onSwitchAlgorithm,
+  dropzoneClassName,
 }: KeyFileUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [loadedFileName, setLoadedFileName] = useState<string | null>(null);
@@ -42,8 +49,14 @@ export function KeyFileUpload({
     setErrorMessage(null);
     setWarningMessage(null);
 
-    if (!file.name.endsWith(".txt") && !file.name.endsWith(".json") && file.type && !file.type.includes("text")) {
-      setErrorMessage("Please upload a .txt cryptographic key file.");
+    if (
+      !file.name.endsWith(".txt") &&
+      !file.name.endsWith(".json") &&
+      file.type &&
+      !file.type.includes("text") &&
+      !file.type.includes("json")
+    ) {
+      setErrorMessage("Please upload a .json or .txt cryptographic key file.");
       return;
     }
 
@@ -78,6 +91,7 @@ export function KeyFileUpload({
         algorithm: keyAlgo,
         keys: result.keys,
         fileName: file.name,
+        ciphertextPackage: result.keys.ciphertextPackage,
       });
     };
 
@@ -127,7 +141,7 @@ export function KeyFileUpload({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.json,text/plain"
+        accept=".json,.txt,application/json,text/plain"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -165,6 +179,12 @@ export function KeyFileUpload({
             <span className="font-medium bg-white/60 dark:bg-black/20 px-1.5 py-0.5 rounded">
               {formatKeySummary(loadedKeys, loadedAlgo)}
             </span>
+            {loadedAlgo === "drpe" && loadedKeys.ciphertextPackage && (
+              <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] text-[#065F46] dark:text-[#6EE7B7] font-semibold uppercase tracking-wider">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                Ciphertext Package Embedded
+              </span>
+            )}
           </div>
 
           {/* Algorithm Mismatch Action */}
@@ -203,14 +223,14 @@ export function KeyFileUpload({
             isDragOver
               ? "border-[#2563EB] bg-[#2563EB]/5"
               : "border-[#D7D7D1] dark:border-[#2E2E2E] hover:border-[#2563EB] dark:hover:border-[#5B8CFF] bg-[#FAFAF8] dark:bg-[#121212]"
-          }`}
+          } ${dropzoneClassName || ""}`}
         >
           <div className="flex items-center justify-center gap-2 text-xs font-medium text-[#181818] dark:text-[#F2F2F0]">
             <KeyRound className="h-3.5 w-3.5 text-[#2563EB] dark:text-[#5B8CFF]" />
-            <span>Upload Key File (.txt)</span>
+            <span>Upload Key File (.json)</span>
           </div>
           <div className="text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] mt-0.5">
-            Click or drag &amp; drop key `.txt` to auto-fill
+            Click or drag &amp; drop key `.json` to auto-fill
           </div>
         </div>
       )}

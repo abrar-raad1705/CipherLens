@@ -5,6 +5,9 @@ Delegates to batsignal.encryption and computes visual representations of optical
 
 from __future__ import annotations
 
+import base64
+import collections
+import hashlib
 import time
 
 import cv2
@@ -100,6 +103,12 @@ def run_drpe_encrypt(
     # Cache full complex optical field associated with this visual ciphertext
     _cache_wavefront(c_uri, ciphertext)
 
+    # Serialize complex ciphertext for JSON key package (float32 → base64)
+    real_bytes = ciphertext.real.astype(np.float32).tobytes()
+    imag_bytes = ciphertext.imag.astype(np.float32).tobytes()
+    cipher_real_b64 = base64.b64encode(real_bytes).decode("utf-8")
+    cipher_imag_b64 = base64.b64encode(imag_bytes).decode("utf-8")
+
     stages = {
         "original": array_to_data_uri(img),
         "r1_phase": phase_to_data_uri(r1_phase),
@@ -125,6 +134,9 @@ def run_drpe_encrypt(
         stages=stages,
         metadata=metadata,
         latency_ms=round(latency_ms, 2),
+        ciphertext_real=cipher_real_b64,
+        ciphertext_imag=cipher_imag_b64,
+        ciphertext_shape=list(ciphertext.shape),
     )
 
 
@@ -141,7 +153,15 @@ def run_drpe_decrypt(
     if cached_field is not None:
         cipher_input = cached_field
     else:
-        cipher_input = decode_image_payload(ciphertext_payload)
+        # DRPE ciphertext is a complex optical field — the PNG visualization is only the
+        # magnitude and cannot be used to reconstruct the phase needed for decryption.
+        # Decryption requires the original complex array from the same session.
+        raise ValueError(
+            "DRPE decryption requires the original complex ciphertext from the same session. "
+            "The uploaded PNG is a magnitude-only visualization and does not contain the "
+            "phase information needed for decryption. Please encrypt and decrypt within the "
+            "same browser session, or use the session handoff feature."
+        )
 
     # Re-generate phase masks for decryption
     key = drpe.DRPEKey(seed1=seed1, seed2=seed2)
@@ -203,6 +223,55 @@ def run_drpe_decrypt(
     )
 
 
+def run_drpe_preload(
+    ciphertext_real_b64: str,
+    ciphertext_imag_b64: str,
+    shape: list[int],
+    visual_uri: str,
+) -> dict:
+    """
+    Reconstruct the complex DRPE ciphertext from the JSON key package and load it
+    into the in-process cache, keyed by the visual PNG URI (same key the encrypt
+    step used). This warms the cache so the subsequent decrypt call succeeds without
+    requiring the original encryption session.
+    """
+    real_plane = np.frombuffer(
+        base64.b64decode(ciphertext_real_b64), dtype=np.float32
+    ).reshape(shape).astype(np.complex128)
+    imag_plane = np.frombuffer(
+        base64.b64decode(ciphertext_imag_b64), dtype=np.float32
+    ).reshape(shape).astype(np.float64)
+    complex_array = real_plane + 1j * imag_plane
+
+    # Validate that the uploaded visual PNG actually belongs to this exact complex wavefront.
+    # The visual URI is a magnitude-only 8-bit projection of the complex array.
+    try:
+        uploaded_vis = decode_image_payload(visual_uri)
+        expected_vis = cv2.normalize(
+            np.abs(complex_array), None, 0, 255, cv2.NORM_MINMAX
+        ).astype(np.uint8)
+        
+        if uploaded_vis.shape != expected_vis.shape:
+            raise ValueError(
+                "The uploaded JSON key file does not belong to this ciphertext image."
+            )
+            
+        # Allow a small tolerance (max difference of 2) due to float64 -> float32 
+        # quantization when serializing the complex array to JSON.
+        diff = np.abs(uploaded_vis.astype(np.int32) - expected_vis.astype(np.int32))
+        if np.max(diff) > 2:
+            raise ValueError(
+                "The uploaded JSON key file does not belong to this ciphertext image."
+            )
+    except Exception as e:
+        if isinstance(e, ValueError):
+            raise e
+        raise ValueError("Failed to validate ciphertext image against key package.")
+
+    _cache_wavefront(visual_uri, complex_array)
+    return {"status": "CACHED", "shape": shape, "message": "Complex ciphertext loaded into session cache."}
+
+
 def run_fourier(
     image_payload: str | bytes, seed: int = 100, action: str = "encrypt"
 ) -> FourierResponse:
@@ -225,13 +294,13 @@ def run_fourier(
         spec_uri = log_spectrum_to_data_uri(encrypted_coeffs)
 
         # 3. Inverse 2D Fourier transform to spatial ciphertext
-        result = np.asarray(np.fft.ifft2(encrypted_coeffs, norm="ortho"))
-        output_vis = cv2.normalize(
-            np.real(result), None, 0, 255, cv2.NORM_MINMAX
-        ).astype(np.uint8)
+        # Use clip (not normalize) so the stored PNG is numerically consistent
+        # with the raw spatial values and decryption works on fresh upload.
+        result = np.asarray(np.real(np.fft.ifft2(encrypted_coeffs, norm="ortho")))
+        output_vis = np.clip(np.round(result), 0, 255).astype(np.uint8)
         out_uri = array_to_data_uri(output_vis)
 
-        # Cache raw complex transform array
+        # Cache raw float array (cache hit gives exact lossless decryption)
         _cache_cipher_array(out_uri, result)
         shape_str = f"{img.shape[1]}×{img.shape[0]}"
 
@@ -242,12 +311,14 @@ def run_fourier(
             "ciphertext": out_uri,
         }
     else:
-        # Decrypt from exact cached complex array if available, or fallback to decoded payload
+        # Decrypt from exact cached float array if available, or fallback to decoded payload.
+        # Both paths are numerically consistent because encrypt now uses clip (not normalize),
+        # so the PNG ciphertext carries the same spatial values as the cached array (±0.5 LSB).
         cached_cipher = _get_cached_cipher_array(image_payload)
         if cached_cipher is not None:
-            cipher_input = cached_cipher
+            cipher_input = np.asarray(cached_cipher, dtype=np.float64)
         else:
-            cipher_input = decode_image_payload(image_payload)
+            cipher_input = decode_image_payload(image_payload).astype(np.float64)
 
         f_cipher = np.fft.fft2(cipher_input, norm="ortho")
         flat = f_cipher.flatten()
@@ -304,13 +375,13 @@ def run_dct(
         scrambled_dct_uri = dct_spectrum_to_data_uri(encrypted_coeffs)
 
         # 3. Inverse 2D DCT to spatial ciphertext
+        # Use clip (not normalize) so the stored PNG is numerically consistent
+        # with the raw spatial values and decryption works on fresh upload.
         result = np.asarray(dct.idctn(encrypted_coeffs, norm="ortho"))
-        output_vis = cv2.normalize(
-            np.real(result), None, 0, 255, cv2.NORM_MINMAX
-        ).astype(np.uint8)
+        output_vis = np.clip(np.round(result), 0, 255).astype(np.uint8)
         out_uri = array_to_data_uri(output_vis)
 
-        # Cache raw float DCT transform array
+        # Cache raw float array (cache hit gives exact lossless decryption)
         _cache_cipher_array(out_uri, result)
         shape_str = f"{img.shape[1]}×{img.shape[0]}"
 
@@ -321,12 +392,14 @@ def run_dct(
             "ciphertext": out_uri,
         }
     else:
-        # Decrypt from exact cached DCT array if available, or fallback to decoded payload
+        # Decrypt from exact cached float array if available, or fallback to decoded payload.
+        # Both paths are numerically consistent because encrypt now uses clip (not normalize),
+        # so the PNG ciphertext carries the same spatial values as the cached array (±0.5 LSB).
         cached_cipher = _get_cached_cipher_array(image_payload)
         if cached_cipher is not None:
-            cipher_input = cached_cipher
+            cipher_input = np.asarray(cached_cipher, dtype=np.float64)
         else:
-            cipher_input = decode_image_payload(image_payload)
+            cipher_input = decode_image_payload(image_payload).astype(np.float64)
 
         d_cipher = dct.dctn(cipher_input, norm="ortho")
         flat = d_cipher.flatten()

@@ -14,6 +14,10 @@ export interface DRPEEncryptResponse {
   stages: DRPEStages;
   metadata: Record<string, unknown>;
   latency_ms: number;
+  // Complex ciphertext package for JSON key file (cross-session decryption)
+  ciphertext_real?: string;
+  ciphertext_imag?: string;
+  ciphertext_shape?: number[];
 }
 
 export interface DRPEDecryptResponse {

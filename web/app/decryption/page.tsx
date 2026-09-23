@@ -34,6 +34,7 @@ import {
 } from "@/lib/encryption-session";
 import { downloadImage, ParsedKeyData } from "@/lib/key-file";
 import { runMetrics } from "@/lib/api/analysis";
+import { preloadDRPECiphertext } from "@/lib/api/encryption";
 
 interface AlgorithmMeta {
   id: EncryptionAlgorithm;
@@ -104,6 +105,14 @@ function DecryptionWorkbenchContent() {
   // Operation-Specific Upload State (Independent of centralized workspace image)
   const [uploadedImage, setUploadedImage] = useState<UploadedImageInfo | null>(null);
 
+  // Key JSON loaded state — required before showing algorithm controls
+  const [keyLoaded, setKeyLoaded] = useState<{
+    algorithm: EncryptionAlgorithm;
+    keys: ParsedKeyData;
+    fileName: string;
+    ciphertextPackage?: { real: string; imag: string; shape: number[] };
+  } | null>(null);
+
   // Optional session for reference comparison if image originated from the same session
   const [session, setSession] = useState(getEncryptionSession());
 
@@ -127,6 +136,9 @@ function DecryptionWorkbenchContent() {
 
   // In-flight state to prevent double clicks
   const [isDecrypting, setIsDecrypting] = useState<boolean>(false);
+
+  // Local error message for decryption failures (supplements hook-level error)
+  const [decryptError, setDecryptError] = useState<string | null>(null);
 
   // Quantitative Quality Metrics (SSIM, PSNR, MSE)
   const [qualityMetrics, setQualityMetrics] = useState<{
@@ -181,7 +193,41 @@ function DecryptionWorkbenchContent() {
     setPipelineStages(null);
     setActivePipelineStage("decrypted");
     setQualityMetrics({ ssim: null, psnr: null, mse: null });
-  }, [uploadedImage?.dataUri]);
+    setDecryptError(null);
+    // Also clear key if image changes (different ciphertext = need new key)
+    setKeyLoaded(null);
+
+    // Validate if the new image matches the current session
+    if (session) {
+      if (uploadedImage && uploadedImage.dataUri !== session.cipherImageUri) {
+        setReferenceSrc("");
+      } else {
+        setReferenceSrc(session.realImageUri);
+      }
+    } else {
+      setReferenceSrc("");
+    }
+  }, [uploadedImage?.dataUri, session]);
+
+  // Trigger DRPE preload whenever BOTH image and key are ready.
+  // This covers both orderings: key-first-then-image and image-first-then-key.
+  useEffect(() => {
+    if (
+      uploadedImage &&
+      keyLoaded?.algorithm === "drpe" &&
+      keyLoaded.ciphertextPackage
+    ) {
+      preloadDRPECiphertext(
+        keyLoaded.ciphertextPackage.real,
+        keyLoaded.ciphertextPackage.imag,
+        keyLoaded.ciphertextPackage.shape,
+        uploadedImage.dataUri
+      ).catch((e) => {
+        console.warn("DRPE preload failed:", e);
+        setDecryptError(e.message || "Failed to validate ciphertext image against key package. The uploaded image does not match this key.");
+      });
+    }
+  }, [uploadedImage?.dataUri, keyLoaded]);
 
   // Check if current keys match correct encryption keys
   const isExactKeyMatch = useMemo(() => {
@@ -231,6 +277,7 @@ function DecryptionWorkbenchContent() {
     if (!uploadedImage || isDecrypting) return;
 
     setIsDecrypting(true);
+    setDecryptError(null);
     try {
       let recoveredUri = "";
       let latency = 0;
@@ -299,6 +346,8 @@ function DecryptionWorkbenchContent() {
       }
     } catch (err) {
       console.error("Decryption failed:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setDecryptError(msg);
     } finally {
       setIsDecrypting(false);
     }
@@ -328,10 +377,11 @@ function DecryptionWorkbenchContent() {
   };
 
   // Handle Loaded Key File
-  const handleKeyLoaded = (params: {
+  const handleKeyLoaded = async (params: {
     algorithm: EncryptionAlgorithm;
     keys: ParsedKeyData;
     fileName: string;
+    ciphertextPackage?: { real: string; imag: string; shape: number[] };
   }) => {
     if (params.algorithm !== selectedAlgo) {
       handleAlgorithmChange(params.algorithm);
@@ -340,6 +390,20 @@ function DecryptionWorkbenchContent() {
     if (params.algorithm === "drpe") {
       if (params.keys.seed1 !== undefined) setDrpeSeed1(params.keys.seed1);
       if (params.keys.seed2 !== undefined) setDrpeSeed2(params.keys.seed2);
+
+      // Warm backend cache from embedded ciphertext package
+      if (params.ciphertextPackage && uploadedImage) {
+        try {
+          await preloadDRPECiphertext(
+            params.ciphertextPackage.real,
+            params.ciphertextPackage.imag,
+            params.ciphertextPackage.shape,
+            uploadedImage.dataUri
+          );
+        } catch (e) {
+          console.warn("DRPE preload failed:", e);
+        }
+      }
     } else if (params.algorithm === "fourier") {
       if (params.keys.fourierSeed !== undefined) setFourierSeed(params.keys.fourierSeed);
     } else if (params.algorithm === "dct") {
@@ -348,6 +412,8 @@ function DecryptionWorkbenchContent() {
       if (params.keys.iterations !== undefined) setArnoldItr(params.keys.iterations);
       if (params.keys.xorValue !== undefined) setArnoldXor(params.keys.xorValue);
     }
+
+    setKeyLoaded(params);
   };
 
   // Utility to match correct keys from session
@@ -470,7 +536,7 @@ function DecryptionWorkbenchContent() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setUploadedImage(null)}
+              onClick={() => { setUploadedImage(null); setKeyLoaded(null); }}
               className="text-xs h-8 px-3"
             >
               <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
@@ -502,14 +568,103 @@ function DecryptionWorkbenchContent() {
         </div>
       </div>
 
-      {/* Empty State: Focused Upload Card */}
-      {!uploadedImage ? (
-        <DriveDropzone
-          title="Drop ciphertext image here"
-          description="Maximum 25 MB"
-          actionLabel="Browse files"
-          onImageUploaded={(img) => setUploadedImage(img)}
-        />
+      {/* Empty State: Two-panel upload card — image + key JSON, equal height */}
+      {!uploadedImage || !keyLoaded ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
+
+            {/* Panel 1: Ciphertext Image */}
+            <div className="flex flex-col gap-2">
+              <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
+                Step 1 — Ciphertext Image
+              </div>
+              <div className="flex-1">
+                {uploadedImage ? (
+                  <div className="h-full rounded-lg border border-[#A7F3D0] dark:border-[#047857]/40 bg-[#ECFDF5] dark:bg-[#064E3B]/20 p-4 flex flex-col items-center justify-center gap-3 min-h-[260px]">
+                    <div className="w-24 h-24 rounded-lg overflow-hidden border-2 border-[#A7F3D0] dark:border-[#047857]/40 shadow-md">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={uploadedImage.dataUri} alt="cipher" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="text-center space-y-0.5">
+                      <div className="text-xs font-semibold text-[#065F46] dark:text-[#6EE7B7] truncate max-w-[180px]">{uploadedImage.name}</div>
+                      <div className="text-[10px] text-[#047857] dark:text-[#A7F3D0] font-mono">{uploadedImage.width}×{uploadedImage.height}px · Uploaded</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUploadedImage(null)}
+                      className="text-[11px] text-[#047857] dark:text-[#A7F3D0] hover:underline cursor-pointer font-medium"
+                    >
+                      Change image
+                    </button>
+                  </div>
+                ) : (
+                  <div className="min-h-[260px] [&>div]:h-full [&>div]:min-h-[260px]">
+                    <DriveDropzone
+                      title="Drop ciphertext image here"
+                      description="PNG · max 25 MB"
+                      actionLabel="Browse"
+                      onImageUploaded={(img) => setUploadedImage(img)}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Panel 2: Key JSON */}
+            <div className="flex flex-col gap-2">
+              <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
+                Step 2 — Key Package (.json)
+              </div>
+              <div className="flex-1 flex flex-col justify-center min-h-[260px]">
+                {keyLoaded ? (
+                  <div className="h-full rounded-lg border border-[#D7D7D1] dark:border-[#2E2E2E] bg-[#FAFAF8] dark:bg-[#121212] p-5 flex flex-col items-center justify-center gap-4 transition-all hover:border-[#2563EB] dark:hover:border-[#5B8CFF]">
+                    <div className="w-14 h-14 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 flex items-center justify-center">
+                      <CheckCircle2 className="h-7 w-7 text-emerald-500" />
+                    </div>
+                    <div className="text-center space-y-1">
+                      <div className="text-xs font-semibold text-[#181818] dark:text-[#F2F2F0] truncate max-w-[180px]">{keyLoaded.fileName}</div>
+                      <div className="text-[10px] font-mono text-[#6F6F6A] dark:text-[#A0A09B]">{keyLoaded.algorithm.toUpperCase()} · Key loaded</div>
+                      {keyLoaded.ciphertextPackage && (
+                        <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          Ciphertext package embedded
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <KeyFileUpload
+                    selectedAlgo={selectedAlgo}
+                    onKeyLoaded={handleKeyLoaded}
+                    onSwitchAlgorithm={handleAlgorithmChange}
+                    dropzoneClassName="h-full min-h-[260px] flex flex-col items-center justify-center gap-3 border-2"
+                  />
+                )}
+                {!keyLoaded && (
+                  <p className="text-[10px] text-[#999993] dark:text-[#6A6A6A] text-center px-2 mt-3">
+                    Download the key package (.json) from the Encryption page after encrypting.
+                  </p>
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          {/* Progress indicator */}
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full transition-colors ${uploadedImage ? "bg-emerald-500" : "bg-[#D0D0CA] dark:bg-[#3A3A3A]"}`} />
+            <div className={`h-2 w-2 rounded-full transition-colors ${keyLoaded ? "bg-emerald-500" : "bg-[#D0D0CA] dark:bg-[#3A3A3A]"}`} />
+            <span className="text-[11px] text-[#999993] dark:text-[#6A6A6A] font-mono">
+              {uploadedImage && keyLoaded
+                ? "Both ready — loading controls…"
+                : uploadedImage
+                ? "Image ready · Upload key JSON to continue →"
+                : keyLoaded
+                ? "← Key loaded · Upload ciphertext image to continue"
+                : "Upload both to begin decryption"}
+            </span>
+          </div>
+        </div>
       ) : (
         /* Image Uploaded: Reveal Decryption Workflow Controls */
         <div className="space-y-4 animate-in fade-in duration-300">
@@ -705,16 +860,34 @@ function DecryptionWorkbenchContent() {
                   </Badge>
                 </div>
 
-                {/* Option to Upload Key .txt File */}
+                {/* Loaded Key Summary (read-only — uploaded during setup step) */}
                 <div className="space-y-1.5 pb-2 border-b border-[#E8E8E3] dark:border-[#242424]">
                   <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                    IMPORT KEY SPECIFICATION
+                    KEY SPECIFICATION
                   </div>
-                  <KeyFileUpload
-                    selectedAlgo={selectedAlgo}
-                    onKeyLoaded={handleKeyLoaded}
-                    onSwitchAlgorithm={handleAlgorithmChange}
-                  />
+                  {keyLoaded && (
+                    <div className="rounded-lg border border-[#A7F3D0] dark:border-[#047857]/40 bg-[#ECFDF5] dark:bg-[#064E3B]/20 p-2.5 space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#065F46] dark:text-[#6EE7B7]">
+                        <CheckCircle2 className="h-4 w-4 text-[#059669] dark:text-[#34D399] shrink-0" />
+                        <span className="truncate max-w-[200px]" title={keyLoaded.fileName}>{keyLoaded.fileName}</span>
+                      </div>
+                      <div className="text-[11px] font-mono text-[#047857] dark:text-[#A7F3D0] flex flex-col gap-0.5">
+                        <span className="uppercase tracking-wider text-[10px] font-semibold">Loaded {keyLoaded.algorithm.toUpperCase()} Parameters:</span>
+                        <span className="font-medium bg-white/60 dark:bg-black/20 px-1.5 py-0.5 rounded">
+                          {keyLoaded.algorithm === "drpe" && `Seed1: ${drpeSeed1}, Seed2: ${drpeSeed2}`}
+                          {keyLoaded.algorithm === "fourier" && `Phase Seed: ${fourierSeed}`}
+                          {keyLoaded.algorithm === "dct" && `Basis Seed: ${dctSeed}`}
+                          {keyLoaded.algorithm === "arnold" && `Itr: ${arnoldItr}, XOR: 0x${arnoldXor.toString(16).toUpperCase()}`}
+                        </span>
+                        {keyLoaded.ciphertextPackage && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                            Ciphertext Package Embedded
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Dynamic Decryption Key Sliders per Algorithm (Manual tuning remains fully intact!) */}
@@ -880,9 +1053,10 @@ function DecryptionWorkbenchContent() {
                   </div>
                 )}
 
-                {error && (
-                  <div className="text-xs text-[#DC2626] font-mono py-1">
-                    Error: {error}
+                {(error || decryptError) && (
+                  <div className="text-xs text-[#DC2626] font-mono py-1 leading-relaxed">
+                    {error && <div>Error: {error}</div>}
+                    {decryptError && !error && <div>Error: {decryptError}</div>}
                   </div>
                 )}
               </Card>

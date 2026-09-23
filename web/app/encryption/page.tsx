@@ -35,7 +35,8 @@ import {
 import {
   downloadImage,
   downloadKeyFile,
-  generateKeyFileContent,
+  generateKeyFileJson,
+  downloadKeyJson,
 } from "@/lib/key-file";
 import { runCorrelation, runEntropy } from "@/lib/api/analysis";
 import { DRPEStages } from "@/types/encryption";
@@ -169,6 +170,13 @@ function EncryptionWorkbenchContent() {
   // Immediate synchronous encryption in-flight state (prevents double clicks instantly)
   const [isEncrypting, setIsEncrypting] = useState<boolean>(false);
 
+  // DRPE complex ciphertext package (for JSON key file with embedded ciphertext)
+  const [drpeComplexPackage, setDrpeComplexPackage] = useState<{
+    real: string;
+    imag: string;
+    shape: number[];
+  } | null>(null);
+
   // Download popup modal state
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState<boolean>(false);
   const [isMounted, setIsMounted] = useState<boolean>(false);
@@ -202,6 +210,7 @@ function EncryptionWorkbenchContent() {
     setCiphertextUri(null);
     setPipelineStages(null);
     setActivePipelineStage("ciphertext");
+    setDrpeComplexPackage(null);
     setComparisonStats({
       realEntropy: null,
       cipherEntropy: null,
@@ -226,6 +235,15 @@ function EncryptionWorkbenchContent() {
         latency = res.latency_ms;
         setPipelineStages(res.stages);
         setActivePipelineStage("ciphertext");
+
+        // Capture complex package for JSON key download
+        if (res.ciphertext_real && res.ciphertext_imag && res.ciphertext_shape) {
+          setDrpeComplexPackage({
+            real: res.ciphertext_real,
+            imag: res.ciphertext_imag,
+            shape: res.ciphertext_shape,
+          });
+        }
 
         saveEncryptionSession({
           algorithm: "drpe",
@@ -342,14 +360,22 @@ function EncryptionWorkbenchContent() {
         ? { dctSeed }
         : { iterations: arnoldItr, xorValue: arnoldXor };
 
-    const content = generateKeyFileContent({
+    const jsonStr = generateKeyFileJson({
       algorithm: selectedAlgo,
       keys,
       sourceImageName: uploadedImage.name,
       imageDimensions: { width: uploadedImage.width, height: uploadedImage.height },
+      // Embed DRPE complex ciphertext for cross-session decryption
+      ...(selectedAlgo === "drpe" && drpeComplexPackage
+        ? {
+            ciphertextReal: drpeComplexPackage.real,
+            ciphertextImag: drpeComplexPackage.imag,
+            ciphertextShape: drpeComplexPackage.shape,
+          }
+        : {}),
     });
 
-    downloadKeyFile(content, `${baseName}_${selectedAlgo}_key.txt`);
+    downloadKeyJson(jsonStr, `${baseName}_${selectedAlgo}_key.json`);
   };
 
   // Navigate to Decryption
@@ -850,10 +876,12 @@ function EncryptionWorkbenchContent() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA]">
-                    Download Key File (.txt)
+                    Download Key Package (.json)
                   </div>
                   <div className="text-[11px] text-[#71717A] dark:text-[#A1A1AA] truncate">
-                    Parameters &amp; seeds for decryption
+                    {selectedAlgo === "drpe"
+                      ? "Seeds + ciphertext (for cross-session DRPE)"
+                      : "Algorithm + seeds for decryption"}
                   </div>
                 </div>
                 <Download className="h-4 w-4 text-[#71717A] dark:text-[#A1A1AA] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] shrink-0" />
