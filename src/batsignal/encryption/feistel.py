@@ -46,7 +46,10 @@ def round_function(half_image: np.ndarray, sub_key: int) -> np.ndarray:
     scrambled_coeffs = scrambled_flat.reshape(coeffs.shape)
 
     idct_result = idctn(scrambled_coeffs, norm="ortho")
-    return np.clip(idct_result, 0, 255).astype(np.uint8)
+    # Use mod-256 instead of clipping: np.clip saturates ~54% of values to
+    # hard 0/255, destroying round-function randomness and leaking plaintext
+    # structure through XOR. Modular wrapping preserves uniform [0,255] variance.
+    return (np.mod(np.round(idct_result), 256)).astype(np.uint8)
 
 
 def encrypt(image: np.ndarray, key: FeistelKey | tuple | list | int | dict) -> np.ndarray:
