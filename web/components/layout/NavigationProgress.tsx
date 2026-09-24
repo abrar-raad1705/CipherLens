@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useTransition } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 export function NavigationProgress() {
@@ -9,26 +9,43 @@ export function NavigationProgress() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [progress, setProgress] = useState(0);
 
+  const prevLocationRef = useRef<string | null>(null);
+
   useEffect(() => {
-    // When route (pathname or searchParams) changes, initiate a brief smooth loading progress
+    const searchStr = searchParams ? searchParams.toString() : "";
+    const currentFullLocation = pathname + (searchStr ? `?${searchStr}` : "");
+
+    // On initial mount, record current location and skip triggering navigation progress
+    if (prevLocationRef.current === null) {
+      prevLocationRef.current = currentFullLocation;
+      return;
+    }
+
+    // Skip if location hasn't actually changed
+    if (prevLocationRef.current === currentFullLocation) {
+      return;
+    }
+
+    prevLocationRef.current = currentFullLocation;
     setIsNavigating(true);
     setProgress(15);
 
+    let t4: ReturnType<typeof setTimeout> | undefined;
     const t1 = setTimeout(() => setProgress(65), 60);
     const t2 = setTimeout(() => setProgress(90), 160);
     const t3 = setTimeout(() => {
       setProgress(100);
-      const t4 = setTimeout(() => {
+      t4 = setTimeout(() => {
         setIsNavigating(false);
         setProgress(0);
       }, 200);
-      return () => clearTimeout(t4);
     }, 280);
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      if (t4) clearTimeout(t4);
     };
   }, [pathname, searchParams]);
 
@@ -49,7 +66,6 @@ export function NavigationProgress() {
         !e.shiftKey &&
         !e.altKey
       ) {
-        // Only trigger if going to a different location
         const currentFull = window.location.pathname + window.location.search;
         if (href !== currentFull) {
           setIsNavigating(true);
