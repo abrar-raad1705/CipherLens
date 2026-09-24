@@ -10,6 +10,10 @@ from fastapi import APIRouter, HTTPException
 from api.schemas.encryption import (
     ArnoldXORRequest,
     ArnoldXORResponse,
+    ChaosRequest,
+    ChaosResponse,
+    DCTPreloadRequest,
+    DCTPreloadResponse,
     DCTRequest,
     DCTResponse,
     DRPEDecryptRequest,
@@ -18,12 +22,16 @@ from api.schemas.encryption import (
     DRPEEncryptResponse,
     DRPEPreloadRequest,
     DRPEPreloadResponse,
+    FeistelRequest,
+    FeistelResponse,
     FourierPreloadRequest,
     FourierPreloadResponse,
     FourierRequest,
     FourierResponse,
-    DCTPreloadRequest,
-    DCTPreloadResponse,
+    SpectralHybridPreloadRequest,
+    SpectralHybridPreloadResponse,
+    SpectralHybridRequest,
+    SpectralHybridResponse,
 )
 from api.services import encryption_service
 
@@ -135,3 +143,62 @@ async def post_arnold_xor(req: ArnoldXORRequest):
         raise HTTPException(
             status_code=500, detail=f"Arnold-XOR cipher failed: {str(e)}"
         )
+
+
+@router.post("/chaos", response_model=ChaosResponse)
+async def post_chaos(req: ChaosRequest):
+    try:
+        return encryption_service.run_chaos(
+            req.image, x0=req.x0, r=req.r, action=req.action
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chaos cipher failed: {str(e)}")
+
+
+@router.post("/spectral-hybrid", response_model=SpectralHybridResponse)
+async def post_spectral_hybrid(req: SpectralHybridRequest):
+    try:
+        return encryption_service.run_spectral_hybrid(
+            req.image,
+            scramble_seed=req.scramble_seed,
+            mask_seed=req.mask_seed,
+            kernel_seed=req.kernel_seed,
+            action=req.action,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Spectral Hybrid cipher failed: {str(e)}"
+        )
+
+
+@router.post("/spectral-hybrid/preload", response_model=SpectralHybridPreloadResponse)
+async def post_spectral_hybrid_preload(req: SpectralHybridPreloadRequest):
+    try:
+        result = encryption_service.run_spectral_hybrid_preload(
+            req.ciphertext_real,
+            req.ciphertext_imag,
+            req.ciphertext_shape,
+            req.visual_uri,
+        )
+        return SpectralHybridPreloadResponse(**result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Spectral Hybrid preload failed: {str(e)}"
+        )
+
+
+@router.post("/feistel", response_model=FeistelResponse)
+async def post_feistel(req: FeistelRequest):
+    try:
+        return encryption_service.run_feistel(
+            req.image, seed=req.seed, rounds=req.rounds, action=req.action
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Feistel cipher failed: {str(e)}")
+

@@ -15,10 +15,13 @@ import numpy as np
 
 from api.schemas.encryption import (
     ArnoldXORResponse,
+    ChaosResponse,
     DCTResponse,
     DRPEDecryptResponse,
     DRPEEncryptResponse,
+    FeistelResponse,
     FourierResponse,
+    SpectralHybridResponse,
 )
 from api.services.utils import (
     array_to_data_uri,
@@ -29,7 +32,7 @@ from api.services.utils import (
     phase_to_data_uri,
 )
 from batsignal.analysis import calculate_mse, calculate_psnr, calculate_ssim
-from batsignal.encryption import arnold_xor, dct, drpe, fourier
+from batsignal.encryption import arnold_xor, chaos, dct, drpe, feistel, fourier, spectral_hybrid
 
 
 import collections
@@ -532,6 +535,233 @@ def run_arnold_xor(
             "xor_value": xor_value,
             "shape": f"{output_vis.shape[1]}×{output_vis.shape[0]}",
             "square_cropped": cropped,
+        },
+        latency_ms=round(latency_ms, 2),
+    )
+
+
+def run_chaos(
+    image_payload: str | bytes, x0: float = 0.4, r: float = 3.99, action: str = "encrypt"
+) -> ChaosResponse:
+    t0 = time.perf_counter()
+    key = chaos.ChaosKey(x0=x0, r=r)
+    img = decode_image_payload(image_payload)
+
+    if action.lower() == "encrypt":
+        chaos.validate_key(key)
+
+        # 1. Generate chaotic sequence and scramble
+        seq1 = chaos.generate_chaotic_sequence(img.size, key.x0, key.r)
+        perm = np.argsort(seq1)
+        flat = img.flatten()
+        scrambled = flat[perm].reshape(img.shape)
+
+        # 2. Generate keystream and XOR
+        x0_2 = seq1[-1]
+        seq2 = chaos.generate_chaotic_sequence(img.size, x0_2, key.r)
+        keystream = chaos.generate_keystream(seq2).reshape(img.shape)
+        result = np.bitwise_xor(scrambled, keystream)
+
+        output_vis = np.clip(result, 0, 255).astype(np.uint8)
+        out_uri = array_to_data_uri(output_vis)
+
+        stages = {
+            "original": array_to_data_uri(img),
+            "chaotic_scramble": array_to_data_uri(scrambled),
+            "xor_diffusion": out_uri,
+            "ciphertext": out_uri,
+        }
+    else:
+        # Decrypt
+        seq1 = chaos.generate_chaotic_sequence(img.size, key.x0, key.r)
+        perm = np.argsort(seq1)
+        inv_perm = np.argsort(perm)
+
+        x0_2 = seq1[-1]
+        seq2 = chaos.generate_chaotic_sequence(img.size, x0_2, key.r)
+        keystream = chaos.generate_keystream(seq2).reshape(img.shape)
+
+        xored = np.bitwise_xor(img, keystream)
+        flat = xored.flatten()
+        result = flat[inv_perm].reshape(img.shape)
+
+        output_vis = np.clip(result, 0, 255).astype(np.uint8)
+        out_uri = array_to_data_uri(output_vis)
+
+        stages = {
+            "ciphertext": array_to_data_uri(img),
+            "xor_invert": array_to_data_uri(xored),
+            "inverse_scramble": out_uri,
+            "decrypted": out_uri,
+        }
+
+    latency_ms = (time.perf_counter() - t0) * 1000.0
+
+    return ChaosResponse(
+        action=action.lower(),
+        output_image=out_uri,
+        stages=stages,
+        metadata={"x0": x0, "r": r, "shape": f"{output_vis.shape[1]}×{output_vis.shape[0]}"},
+        latency_ms=round(latency_ms, 2),
+    )
+
+
+def run_spectral_hybrid(
+    image_payload: str | bytes,
+    scramble_seed: int = 42,
+    mask_seed: int = 99,
+    kernel_seed: int = 7,
+    action: str = "encrypt",
+) -> SpectralHybridResponse:
+    t0 = time.perf_counter()
+    key = spectral_hybrid.SpectralHybridKey(
+        scramble_seed=scramble_seed, mask_seed=mask_seed, kernel_seed=kernel_seed
+    )
+
+    if action.lower() == "encrypt":
+        img = decode_image_payload(image_payload)
+        spectral_hybrid.validate_key(key)
+
+        result = spectral_hybrid.encrypt(img, key)
+
+        # Visual ciphertext (normalized magnitude for display in UI, like DRPE)
+        output_vis = cv2.normalize(
+            np.abs(result), None, 0, 255, cv2.NORM_MINMAX
+        ).astype(np.uint8)
+        out_uri = array_to_data_uri(output_vis)
+
+        # Cache raw complex array for lossless decryption
+        _cache_cipher_array(out_uri, result)
+        shape_str = f"{img.shape[1]}×{img.shape[0]}"
+
+        # Serialize for cross-session
+        real_bytes = np.real(result).astype(np.float32).tobytes()
+        imag_bytes = np.imag(result).astype(np.float32).tobytes()
+        cipher_real_b64 = base64.b64encode(real_bytes).decode("utf-8")
+        cipher_imag_b64 = base64.b64encode(imag_bytes).decode("utf-8")
+
+        # Pipeline stages
+        perm = spectral_hybrid.generate_permutation(img.size, key.scramble_seed)
+        scrambled = img.flatten()[perm].reshape(img.shape)
+        fft_coeffs = np.fft.fft2(scrambled, norm="ortho")
+
+        stages = {
+            "original": array_to_data_uri(img),
+            "pixel_scramble": array_to_data_uri(scrambled),
+            "fft_spectrum": log_spectrum_to_data_uri(fft_coeffs),
+            "ciphertext": out_uri,
+        }
+
+        spec_uri = log_spectrum_to_data_uri(fft_coeffs)
+    else:
+        cached_cipher = _get_cached_cipher_array(image_payload)
+        if cached_cipher is not None:
+            cipher_input = np.asarray(cached_cipher)
+        else:
+            cipher_input = decode_image_payload(image_payload).astype(np.float64)
+
+        result_arr = spectral_hybrid.decrypt(cipher_input, key)
+        output_vis = np.clip(np.round(result_arr), 0, 255).astype(np.uint8)
+        out_uri = array_to_data_uri(output_vis)
+        shape_str = f"{output_vis.shape[1]}×{output_vis.shape[0]}"
+        spec_uri = None
+        cipher_real_b64 = None
+        cipher_imag_b64 = None
+
+        cipher_vis = cv2.normalize(
+            np.abs(cipher_input).astype(np.float64), None, 0, 255, cv2.NORM_MINMAX
+        ).astype(np.uint8)
+        stages = {
+            "ciphertext": array_to_data_uri(cipher_vis),
+            "decrypted": out_uri,
+        }
+
+    latency_ms = (time.perf_counter() - t0) * 1000.0
+
+    return SpectralHybridResponse(
+        action=action.lower(),
+        output_image=out_uri,
+        spectrum=spec_uri,
+        stages=stages,
+        metadata={
+            "scramble_seed": scramble_seed,
+            "mask_seed": mask_seed,
+            "kernel_seed": kernel_seed,
+            "shape": shape_str,
+        },
+        latency_ms=round(latency_ms, 2),
+        ciphertext_real=cipher_real_b64 if action.lower() == "encrypt" else None,
+        ciphertext_imag=cipher_imag_b64 if action.lower() == "encrypt" else None,
+        ciphertext_shape=list(result.shape) if action.lower() == "encrypt" else None,
+    )
+
+
+def run_spectral_hybrid_preload(
+    ciphertext_real_b64: str,
+    ciphertext_imag_b64: str,
+    shape: list[int],
+    visual_uri: str,
+) -> dict:
+    real_plane = np.frombuffer(
+        base64.b64decode(ciphertext_real_b64), dtype=np.float32
+    ).reshape(shape).astype(np.float64)
+    imag_plane = np.frombuffer(
+        base64.b64decode(ciphertext_imag_b64), dtype=np.float32
+    ).reshape(shape).astype(np.float64)
+    complex_array = real_plane + 1j * imag_plane
+
+    _cache_wavefront(visual_uri, complex_array)
+    return {"status": "CACHED", "shape": shape, "message": "Complex ciphertext loaded into session cache."}
+
+
+def run_feistel(
+    image_payload: str | bytes, seed: int = 42, rounds: int = 8, action: str = "encrypt"
+) -> FeistelResponse:
+    t0 = time.perf_counter()
+    key = feistel.FeistelKey(seed=seed, rounds=rounds)
+    img = decode_image_payload(image_payload)
+
+    if action.lower() == "encrypt":
+        feistel.validate_key(key)
+        result = feistel.encrypt(img, key)
+        output_vis = np.clip(result, 0, 255).astype(np.uint8)
+        out_uri = array_to_data_uri(output_vis)
+
+        # Show intermediate round stages
+        h = img.shape[0]
+        pad = h % 2
+        half = (h + pad) // 2
+        stages = {
+            "original": array_to_data_uri(img),
+            "left_half": array_to_data_uri(img[:half]),
+            "right_half": array_to_data_uri(img[half:half*2]),
+            "ciphertext": out_uri,
+        }
+    else:
+        result = feistel.decrypt(img, key)
+        output_vis = np.clip(result, 0, 255).astype(np.uint8)
+        out_uri = array_to_data_uri(output_vis)
+
+        h = img.shape[0]
+        pad = h % 2
+        half = (h + pad) // 2
+        stages = {
+            "ciphertext": array_to_data_uri(img),
+            "left_half": array_to_data_uri(img[:half]),
+            "right_half": array_to_data_uri(img[half:half*2]),
+            "decrypted": out_uri,
+        }
+
+    latency_ms = (time.perf_counter() - t0) * 1000.0
+
+    return FeistelResponse(
+        action=action.lower(),
+        output_image=out_uri,
+        stages=stages,
+        metadata={
+            "seed": seed,
+            "rounds": rounds,
+            "shape": f"{output_vis.shape[1]}×{output_vis.shape[0]}",
         },
         latency_ms=round(latency_ms, 2),
     )

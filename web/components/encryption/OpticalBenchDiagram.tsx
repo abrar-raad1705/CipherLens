@@ -139,6 +139,66 @@ export const PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
       type: "result",
     },
   ],
+  spectral_hybrid: [
+    {
+      id: "original",
+      tag: "SOURCE",
+      primary: "Original",
+      secondary: "f(x, y)",
+      type: "source",
+    },
+    {
+      id: "pixel_scramble",
+      tag: "SCRAMBLE",
+      primary: "π(k)",
+      secondary: "Pixel Permute",
+      type: "mask",
+    },
+    {
+      id: "fft_spectrum",
+      tag: "TRANSFORM",
+      primary: "FFT2",
+      secondary: "Frequency Plane",
+      type: "transform",
+    },
+    {
+      id: "ciphertext",
+      tag: "OUTPUT",
+      primary: "Ciphertext",
+      secondary: "g(x, y)",
+      type: "result",
+    },
+  ],
+  feistel: [
+    {
+      id: "original",
+      tag: "SOURCE",
+      primary: "Original",
+      secondary: "f(x, y)",
+      type: "source",
+    },
+    {
+      id: "left_half",
+      tag: "SPLIT L",
+      primary: "L₀",
+      secondary: "Top Half",
+      type: "mask",
+    },
+    {
+      id: "right_half",
+      tag: "SPLIT R",
+      primary: "R₀",
+      secondary: "Bottom Half",
+      type: "mask",
+    },
+    {
+      id: "ciphertext",
+      tag: "OUTPUT",
+      primary: "Ciphertext",
+      secondary: "g(x, y)",
+      type: "result",
+    },
+  ],
 };
 
 export const PIPELINE_CONNECTORS: Record<string, string[]> = {
@@ -146,6 +206,8 @@ export const PIPELINE_CONNECTORS: Record<string, string[]> = {
   fourier: ["FFT", "Permutation", "IFFT"],
   dct: ["DCT", "Permutation", "IDCT"],
   arnold: ["Pixel Scrambling", "Bit Mask", "XOR Diffusion"],
+  spectral_hybrid: ["Pixel Scramble", "FFT Spectrum", "Kernel Convolution"],
+  feistel: ["Block Splitting", "DCT Round F(R)", "Feistel Concatenation"],
 };
 
 export const DECRYPTION_PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
@@ -276,6 +338,38 @@ export const DECRYPTION_PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
       type: "result",
     },
   ],
+  spectral_hybrid: [
+    {
+      id: "ciphertext",
+      tag: "INPUT",
+      primary: "Cipher",
+      secondary: "g(x, y)",
+      type: "source",
+    },
+    {
+      id: "decrypted",
+      tag: "OUTPUT",
+      primary: "Decrypted",
+      secondary: "f'(x, y)",
+      type: "result",
+    },
+  ],
+  feistel: [
+    {
+      id: "ciphertext",
+      tag: "INPUT",
+      primary: "Cipher",
+      secondary: "g(x, y)",
+      type: "source",
+    },
+    {
+      id: "decrypted",
+      tag: "OUTPUT",
+      primary: "Decrypted",
+      secondary: "f'(x, y)",
+      type: "result",
+    },
+  ],
 };
 
 export const DECRYPTION_PIPELINE_CONNECTORS: Record<string, string[]> = {
@@ -283,6 +377,8 @@ export const DECRYPTION_PIPELINE_CONNECTORS: Record<string, string[]> = {
   fourier: ["FFT2", "Inverse Permute", "IFFT2"],
   dct: ["DCT2", "Inverse Permute", "IDCT2"],
   arnold: ["XOR Invert", "Toral Unshear", "Decrypted Output"],
+  spectral_hybrid: ["Wiener Deconv", "Conjugate Phase", "Inverse Permute"],
+  feistel: ["Reverse Rounds", "Inverse F(R)", "Decrypted Output"],
 };
 
 interface OpticalBenchDiagramProps {

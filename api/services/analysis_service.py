@@ -118,7 +118,7 @@ def run_histogram(image_payload: str | bytes) -> HistogramResponse:
 
 def run_full_analysis(
     plain_payload: str | bytes,
-    cipher_payload: str | bytes,
+    cipher_payload: str | bytes | None = None,
     recovered_payload: str | bytes | None = None,
     diff_x: int = 0,
     diff_y: int = 0,
@@ -127,32 +127,54 @@ def run_full_analysis(
 ) -> FullAnalysisResponse:
     t0 = time.perf_counter()
     plain = decode_image_payload(plain_payload)
-    cipher = decode_image_payload(cipher_payload)
+    cipher = decode_image_payload(cipher_payload) if cipher_payload else None
     recovered = decode_image_payload(recovered_payload) if recovered_payload else None
     key_params = key_params or {}
 
     # 1. Entropy
     ent_plain = calculate_entropy(plain)
-    ent_cipher = calculate_entropy(cipher)
+    ent_dict = {"plain": round(float(ent_plain), 4)}
 
     # 2. Correlation
     corr_plain = calculate_correlation(plain)
-    corr_cipher = calculate_correlation(cipher)
+    corr_dict = {"plain": {k: round(float(v), 4) for k, v in corr_plain.items()}}
 
     # 3. Scatter Samples
     scatter_plain = sample_correlation_points(plain, num_samples=1500)
-    scatter_cipher = sample_correlation_points(cipher, num_samples=1500)
+    scatter_dict = {"plain": scatter_plain}
 
     # 4. Histograms
     hist_plain = compute_histogram(plain)
-    hist_cipher = compute_histogram(cipher)
-    hists = {"plain": hist_plain, "cipher": hist_cipher}
-    if recovered is not None:
-        hists["recovered"] = compute_histogram(recovered)
+    hists = {"plain": hist_plain}
 
-    # 5. Quality (plain vs recovered, or plain vs cipher)
+    # Cipher metrics if cipher provided
+    if cipher is not None:
+        ent_cipher = calculate_entropy(cipher)
+        ent_dict["cipher"] = round(float(ent_cipher), 4)
+
+        corr_cipher = calculate_correlation(cipher)
+        corr_dict["cipher"] = {k: round(float(v), 4) for k, v in corr_cipher.items()}
+
+        scatter_cipher = sample_correlation_points(cipher, num_samples=1500)
+        scatter_dict["cipher"] = scatter_cipher
+
+        hist_cipher = compute_histogram(cipher)
+        hists["cipher"] = hist_cipher
+
+    # Recovered metrics if recovered provided
+    if recovered is not None:
+        ent_rec = calculate_entropy(recovered)
+        ent_dict["recovered"] = round(float(ent_rec), 4)
+
+        corr_rec = calculate_correlation(recovered)
+        corr_dict["recovered"] = {k: round(float(v), 4) for k, v in corr_rec.items()}
+
+        hist_rec = compute_histogram(recovered)
+        hists["recovered"] = hist_rec
+
+    # 5. Quality (plain vs recovered preferred, else plain vs cipher)
     eval_target = recovered if recovered is not None else cipher
-    if plain.shape == eval_target.shape:
+    if eval_target is not None and plain.shape == eval_target.shape:
         mse_val = round(float(calculate_mse(plain, eval_target)), 4)
         p_val = calculate_psnr(plain, eval_target)
         psnr_val = "inf" if np.isinf(p_val) else round(float(p_val), 2)
@@ -160,59 +182,62 @@ def run_full_analysis(
     else:
         mse_val = 0.0
         psnr_val = 0.0
-        ssim_val = 0.0
+        ssim_val = 1.0 if eval_target is None else 0.0
 
     quality = {"mse": mse_val, "psnr": psnr_val, "ssim": ssim_val}
 
-    # 6. Differential Attack Simulation (NPCR / UACI)
-    h, w = plain.shape
-    cy = max(0, min(h - 1, diff_y))
-    cx = max(0, min(w - 1, diff_x))
+    # 6. Differential Attack Simulation (NPCR / UACI) - requires cipher
+    if cipher is not None:
+        h, w = plain.shape
+        cy = max(0, min(h - 1, diff_y))
+        cx = max(0, min(w - 1, diff_x))
 
-    alt_plain = plain.copy()
-    alt_plain[cy, cx] = (int(alt_plain[cy, cx]) + 1) % 256
+        alt_plain = plain.copy()
+        alt_plain[cy, cx] = (int(alt_plain[cy, cx]) + 1) % 256
 
-    algo = algorithm.upper()
-    if algo == "DRPE":
-        s1 = int(key_params.get("seed1", 1234))
-        s2 = int(key_params.get("seed2", 5678))
-        alt_cipher = drpe.encrypt(alt_plain, drpe.DRPEKey(s1, s2))
-    elif algo == "FOURIER":
-        s = int(key_params.get("seed", 100))
-        alt_cipher = fourier.encrypt(alt_plain, fourier.FourierKey(s))
-    elif algo == "DCT":
-        s = int(key_params.get("seed", 42))
-        alt_cipher = dct.encrypt(alt_plain, dct.DCT_Key(s))
-    elif algo in ("ARNOLD_XOR", "ARNOLD-XOR"):
-        itr = int(key_params.get("itr", 10))
-        xor_v = int(key_params.get("xor_value", 170))
-        alt_cipher = arnold_xor.encrypt(alt_plain, arnold_xor.ArnoldXORKey(itr, xor_v))
+        algo = algorithm.upper()
+        if algo == "DRPE":
+            s1 = int(key_params.get("seed1", 1234))
+            s2 = int(key_params.get("seed2", 5678))
+            alt_cipher = drpe.encrypt(alt_plain, drpe.DRPEKey(s1, s2))
+        elif algo == "FOURIER":
+            s = int(key_params.get("seed", 100))
+            alt_cipher = fourier.encrypt(alt_plain, fourier.FourierKey(s))
+        elif algo == "DCT":
+            s = int(key_params.get("seed", 42))
+            alt_cipher = dct.encrypt(alt_plain, dct.DCT_Key(s))
+        elif algo in ("ARNOLD_XOR", "ARNOLD-XOR"):
+            itr = int(key_params.get("itr", 10))
+            xor_v = int(key_params.get("xor_value", 170))
+            alt_cipher = arnold_xor.encrypt(alt_plain, arnold_xor.ArnoldXORKey(itr, xor_v))
+        else:
+            alt_cipher = cipher
+
+        npcr_val = round(float(calculate_npcr(cipher, alt_cipher)), 2)
+        uaci_val = round(float(calculate_uaci(cipher, alt_cipher)), 2)
+
+        differential = {
+            "perturbed_pixel": f"({cx}, {cy})",
+            "npcr": npcr_val,
+            "uaci": uaci_val,
+            "npcr_expected": 99.6,
+            "uaci_expected": 33.4,
+        }
     else:
-        alt_cipher = cipher
-
-    npcr_val = round(float(calculate_npcr(cipher, alt_cipher)), 2)
-    uaci_val = round(float(calculate_uaci(cipher, alt_cipher)), 2)
-
-    differential = {
-        "perturbed_pixel": f"({cx}, {cy})",
-        "npcr": npcr_val,
-        "uaci": uaci_val,
-        "npcr_expected": 99.6,
-        "uaci_expected": 33.4,
-    }
+        differential = {
+            "perturbed_pixel": "N/A",
+            "npcr": 0.0,
+            "uaci": 0.0,
+            "npcr_expected": 99.6,
+            "uaci_expected": 33.4,
+        }
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
     return FullAnalysisResponse(
-        entropy={
-            "plain": round(float(ent_plain), 4),
-            "cipher": round(float(ent_cipher), 4),
-        },
-        correlation={
-            "plain": {k: round(float(v), 4) for k, v in corr_plain.items()},
-            "cipher": {k: round(float(v), 4) for k, v in corr_cipher.items()},
-        },
-        scatter={"plain": scatter_plain, "cipher": scatter_cipher},
+        entropy=ent_dict,
+        correlation=corr_dict,
+        scatter=scatter_dict,
         histograms=hists,
         quality=quality,
         differential=differential,

@@ -23,7 +23,7 @@ interface KeyFileUploadProps {
     fileName: string;
     ciphertextPackage?: {
       real: string;
-      imag: string;
+      imag?: string;
       shape: number[];
     };
   }) => void;
@@ -205,7 +205,6 @@ export function KeyFileUpload({
           )}
         </div>
       ) : (
-        /* Empty / Idle Dropzone for Key File */
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -219,18 +218,43 @@ export function KeyFileUpload({
           }}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`rounded-lg border border-dashed transition-all p-2.5 text-center cursor-pointer select-none ${
+          className={`relative group w-full h-full min-h-[340px] sm:min-h-[360px] rounded-2xl border-2 border-dashed transition-all duration-200 cursor-pointer overflow-hidden flex flex-col items-center justify-center p-8 sm:p-10 text-center select-none ${
             isDragOver
-              ? "border-[#2563EB] bg-[#2563EB]/5"
-              : "border-[#D7D7D1] dark:border-[#2E2E2E] hover:border-[#2563EB] dark:hover:border-[#5B8CFF] bg-[#FAFAF8] dark:bg-[#121212]"
+              ? "border-[#2563EB] dark:border-[#3B82F6] bg-blue-500/[0.05] dark:bg-blue-500/[0.09] ring-2 ring-blue-500/20 scale-[1.006]"
+              : "border-[#DCDCD6] dark:border-[#242424] hover:border-[#2563EB]/70 dark:hover:border-[#3B82F6]/70 bg-white/60 dark:bg-[#121212]/90 hover:bg-white dark:hover:bg-[#151515] shadow-2xs"
           } ${dropzoneClassName || ""}`}
         >
-          <div className="flex items-center justify-center gap-2 text-xs font-medium text-[#181818] dark:text-[#F2F2F0]">
-            <KeyRound className="h-3.5 w-3.5 text-[#2563EB] dark:text-[#5B8CFF]" />
-            <span>Upload Key File (.json)</span>
-          </div>
-          <div className="text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] mt-0.5">
-            Click or drag &amp; drop key `.json` to auto-fill
+          <div className="relative z-10 flex flex-col items-center justify-center max-w-md mx-auto pointer-events-none text-center">
+            <div
+              className={`w-16 h-16 sm:w-18 sm:h-18 rounded-2xl mx-auto flex items-center justify-center mb-4 transition-all duration-300 ${
+                isDragOver
+                  ? "bg-[#2563EB] text-white scale-110 shadow-lg shadow-blue-500/25"
+                  : "bg-blue-500/10 dark:bg-[#1E293B]/70 text-[#2563EB] dark:text-[#60A5FA] group-hover:scale-105 group-hover:bg-blue-500/15 dark:group-hover:bg-[#1E293B]"
+              }`}
+            >
+              <KeyRound className="h-8 w-8 sm:h-9 sm:w-9 stroke-[1.8]" />
+            </div>
+
+            <h2 className="text-lg font-semibold tracking-tight text-[#181818] dark:text-[#F4F4F5] mb-1.5">
+              {isDragOver ? "Release to upload" : "Drop key file (.json) here"}
+            </h2>
+
+            <div className="flex items-center gap-2 w-28 my-2">
+              <div className="h-px flex-1 bg-[#E4E4E7] dark:bg-[#27272A]/90" />
+              <span className="text-[10px] uppercase tracking-widest text-[#71717A] dark:text-[#71717A] font-medium">
+                or
+              </span>
+              <div className="h-px flex-1 bg-[#E4E4E7] dark:bg-[#27272A]/90" />
+            </div>
+
+            <div className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium shadow-xs group-hover:shadow-md transition-all active:scale-98 mb-2">
+              <Upload className="h-3.5 w-3.5 stroke-[2]" />
+              <span>Browse key file</span>
+            </div>
+
+            <p className="text-xs text-[#71717A] dark:text-[#8E8E93] font-normal tracking-normal">
+              JSON · max 1 MB
+            </p>
           </div>
         </div>
       )}

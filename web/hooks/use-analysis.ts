@@ -85,8 +85,8 @@ export function useAnalysis() {
 
   const executeFullAnalysis = async (
     plainUri: string,
-    cipherUri: string,
-    recoveredUri?: string,
+    cipherUri?: string | null,
+    recoveredUri?: string | null,
     diffX: number = 0,
     diffY: number = 0,
     algorithm: string = "DRPE",

@@ -92,7 +92,39 @@ const ALGORITHMS: AlgorithmMeta[] = [
     description:
       "Iterates chaotic area-preserving shearing in 2D coordinate space followed by grey-level bitwise XOR diffusion, providing high security and cryptographic sensitivity.",
   },
+  {
+    id: "spectral_hybrid",
+    name: "Spectral Hybrid",
+    tag: "MULTI-DOMAIN",
+    icon: ShieldCheck,
+    iconColor: "text-violet-600 dark:text-violet-400",
+    iconBg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+    description: "Five-layer hybrid cipher combining spatial pixel scramble, FFT frequency permutation, complex phase mask modulation, IFFT reconstruction, and key-derived kernel convolution.",
+  },
+  {
+    id: "feistel",
+    name: "Feistel Cipher",
+    tag: "BLOCK CIPHER",
+    icon: Lock,
+    iconColor: "text-pink-600 dark:text-pink-400",
+    iconBg: "bg-pink-500/10 text-pink-600 dark:text-pink-400",
+    description: "Iterative Feistel block cipher with DCT-based round function. Splits the image into halves and applies N rounds of keyed confusion-diffusion, cascading entropy across the entire image.",
+  },
 ];
+
+function generate3x3KernelFromSeed(seed: number): number[][] {
+  let state = Math.abs(seed) || 1;
+  const matrix: number[][] = [];
+  for (let r = 0; r < 3; r++) {
+    const row: number[] = [];
+    for (let c = 0; c < 3; c++) {
+      state = (state * 1664525 + 1013904223) % 4294967296;
+      row.push((Math.abs(state) % 9) + 1);
+    }
+    matrix.push(row);
+  }
+  return matrix;
+}
 
 function EncryptionWorkbenchContent() {
   const router = useRouter();
@@ -105,6 +137,8 @@ function EncryptionWorkbenchContent() {
     executeFourier,
     executeDCT,
     executeArnoldXOR,
+    executeSpectralHybrid,
+    executeFeistel,
   } = useEncryption();
 
   // Operation-Specific Upload State (Starts as null so user sees the upload intro on enter)
@@ -149,6 +183,12 @@ function EncryptionWorkbenchContent() {
   const [arnoldItr, setArnoldItr] = useState<number>(10);
   const [arnoldXor, setArnoldXor] = useState<number>(170);
   const [arnoldCropped, setArnoldCropped] = useState<boolean>(false);
+  const [scrambleSeed, setScrambleSeed] = useState<number>(42);
+  const [maskSeed, setMaskSeed] = useState<number>(99);
+  const [kernelSeed, setKernelSeed] = useState<number>(7);
+  const [kernelMatrix, setKernelMatrix] = useState<number[][]>(() => generate3x3KernelFromSeed(7));
+  const [feistelSeed, setFeistelSeed] = useState<number>(42);
+  const [feistelRounds, setFeistelRounds] = useState<number>(8);
 
   // Encryption Output State
   const [ciphertextUri, setCiphertextUri] = useState<string | null>(null);
@@ -244,16 +284,6 @@ function EncryptionWorkbenchContent() {
             shape: res.ciphertext_shape,
           });
         }
-
-        saveEncryptionSession({
-          algorithm: "drpe",
-          realImageUri: uploadedImage.dataUri,
-          realImageName: uploadedImage.name,
-          cipherImageUri: res.ciphertext,
-          keys: { seed1: drpeSeed1, seed2: drpeSeed2 },
-          metadata: res.metadata,
-          timestamp: Date.now(),
-        });
       } else if (selectedAlgo === "fourier") {
         const res = await executeFourier(uploadedImage.dataUri, fourierSeed, "encrypt");
         outputUri = res.output_image;
@@ -270,16 +300,6 @@ function EncryptionWorkbenchContent() {
             shape: res.ciphertext_shape,
           });
         }
-
-        saveEncryptionSession({
-          algorithm: "fourier",
-          realImageUri: uploadedImage.dataUri,
-          realImageName: uploadedImage.name,
-          cipherImageUri: res.output_image,
-          keys: { fourierSeed },
-          metadata: res.metadata,
-          timestamp: Date.now(),
-        });
       } else if (selectedAlgo === "dct") {
         const res = await executeDCT(uploadedImage.dataUri, dctSeed, "encrypt");
         outputUri = res.output_image;
@@ -295,16 +315,6 @@ function EncryptionWorkbenchContent() {
             shape: res.ciphertext_shape,
           });
         }
-
-        saveEncryptionSession({
-          algorithm: "dct",
-          realImageUri: uploadedImage.dataUri,
-          realImageName: uploadedImage.name,
-          cipherImageUri: res.output_image,
-          keys: { dctSeed },
-          metadata: res.metadata,
-          timestamp: Date.now(),
-        });
       } else if (selectedAlgo === "arnold") {
         const res = await executeArnoldXOR(uploadedImage.dataUri, arnoldItr, arnoldXor, "encrypt");
         outputUri = res.output_image;
@@ -314,16 +324,30 @@ function EncryptionWorkbenchContent() {
           setPipelineStages(res.stages);
         }
         setActivePipelineStage("ciphertext");
+      } else if (selectedAlgo === "spectral_hybrid") {
+        const res = await executeSpectralHybrid(uploadedImage.dataUri, scrambleSeed, maskSeed, kernelSeed, "encrypt");
+        outputUri = res.output_image;
+        latency = res.latency_ms;
+        if (res.stages) {
+          setPipelineStages(res.stages);
+        }
+        setActivePipelineStage("ciphertext");
 
-        saveEncryptionSession({
-          algorithm: "arnold",
-          realImageUri: uploadedImage.dataUri,
-          realImageName: uploadedImage.name,
-          cipherImageUri: res.output_image,
-          keys: { iterations: arnoldItr, xorValue: arnoldXor },
-          metadata: res.metadata,
-          timestamp: Date.now(),
-        });
+        if (res.ciphertext_real && res.ciphertext_imag && res.ciphertext_shape) {
+          setCiphertextPackage({
+            real: res.ciphertext_real,
+            imag: res.ciphertext_imag,
+            shape: res.ciphertext_shape,
+          });
+        }
+      } else if (selectedAlgo === "feistel") {
+        const res = await executeFeistel(uploadedImage.dataUri, feistelSeed, feistelRounds, "encrypt");
+        outputUri = res.output_image;
+        latency = res.latency_ms;
+        if (res.stages) {
+          setPipelineStages(res.stages);
+        }
+        setActivePipelineStage("ciphertext");
       }
 
       setCiphertextUri(outputUri);
@@ -356,6 +380,45 @@ function EncryptionWorkbenchContent() {
     }
   };
 
+  const handleNavigateToAnalysis = () => {
+    if (!uploadedImage || !ciphertextUri) return;
+    const baseName = uploadedImage.name.replace(/\.[^/.]+$/, "");
+    const cipherName = `${baseName}_${selectedAlgo}_ciphertext.png`;
+
+    const plainObj = {
+      name: uploadedImage.name,
+      dataUri: uploadedImage.dataUri,
+      width: uploadedImage.width,
+      height: uploadedImage.height,
+    };
+    const cipherObj = {
+      name: cipherName,
+      dataUri: ciphertextUri,
+      width: uploadedImage.width,
+      height: uploadedImage.height,
+    };
+
+    try {
+      sessionStorage.setItem("analysis_plain", JSON.stringify(plainObj));
+      sessionStorage.setItem("analysis_cipher", JSON.stringify(cipherObj));
+      sessionStorage.removeItem("analysis_recovered");
+      sessionStorage.setItem("analysis_autorun", "true");
+    } catch (e) {
+      console.error("Failed to store analysis images in sessionStorage:", e);
+    }
+
+    addArtifact({
+      name: cipherName,
+      dataUri: ciphertextUri,
+      width: uploadedImage.width,
+      height: uploadedImage.height,
+      sourceBench: "encryption",
+      metadata: { algorithm: selectedAlgo },
+    });
+
+    router.push(`/analysis?autorun=1&algo=${selectedAlgo}`);
+  };
+
   // Download Handlers
   const handleDownloadCiphertext = () => {
     if (!ciphertextUri || !uploadedImage) return;
@@ -373,7 +436,11 @@ function EncryptionWorkbenchContent() {
         ? { fourierSeed }
         : selectedAlgo === "dct"
         ? { dctSeed }
-        : { iterations: arnoldItr, xorValue: arnoldXor };
+        : selectedAlgo === "arnold"
+        ? { iterations: arnoldItr, xorValue: arnoldXor }
+        : selectedAlgo === "spectral_hybrid"
+        ? { scrambleSeed, maskSeed, kernelSeed }
+        : { feistelSeed, feistelRounds };
 
     const jsonStr = generateKeyFileJson({
       algorithm: selectedAlgo,
@@ -391,62 +458,6 @@ function EncryptionWorkbenchContent() {
     });
 
     downloadKeyJson(jsonStr, `${baseName}_${selectedAlgo}_key.json`);
-  };
-
-  // Navigate to Decryption
-  const handleProceedToDecryption = () => {
-    router.push(`/decryption?algo=${selectedAlgo}`);
-  };
-
-  // Promote ciphertext to Workspace artifacts for further analysis
-  const handlePromoteToAnalysis = () => {
-    if (!ciphertextUri || !uploadedImage) return;
-
-    const currentKeys: Record<string, number> = {};
-    if (selectedAlgo === "drpe") {
-      currentKeys.seed1 = drpeSeed1;
-      currentKeys.seed2 = drpeSeed2;
-    } else if (selectedAlgo === "fourier") {
-      currentKeys.fourierSeed = fourierSeed;
-    } else if (selectedAlgo === "dct") {
-      currentKeys.dctSeed = dctSeed;
-    } else if (selectedAlgo === "arnold") {
-      currentKeys.iterations = arnoldItr;
-      currentKeys.xorValue = arnoldXor;
-    }
-
-    saveEncryptionSession({
-      algorithm: selectedAlgo,
-      realImageUri: uploadedImage.dataUri,
-      realImageName: uploadedImage.name,
-      cipherImageUri: ciphertextUri,
-      keys: currentKeys,
-      metadata: { latency_ms: lastLatency },
-      timestamp: Date.now(),
-    });
-
-    const plainArtifact = addArtifact({
-      name: uploadedImage.name,
-      dataUri: uploadedImage.dataUri,
-      width: uploadedImage.width,
-      height: uploadedImage.height,
-      sourceBench: "upload",
-    });
-
-    const cipherArtifact = addArtifact(
-      {
-        name: `${uploadedImage.name} [${selectedAlgo.toUpperCase()} Cipher]`,
-        dataUri: ciphertextUri,
-        width: uploadedImage.width,
-        height: uploadedImage.height,
-        sourceBench: "encryption",
-      },
-      false
-    );
-
-    router.push(
-      `/analysis?plainId=${encodeURIComponent(plainArtifact.id)}&cipherId=${encodeURIComponent(cipherArtifact.id)}&auto=true&algo=${encodeURIComponent(selectedAlgo)}`
-    );
   };
 
   const activeMeta = ALGORITHMS.find((a) => a.id === selectedAlgo) || ALGORITHMS[0];
@@ -491,7 +502,7 @@ function EncryptionWorkbenchContent() {
               SELECT ENCRYPTION ALGORITHM
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3">
               {ALGORITHMS.map((algo) => {
                 const isSelected = selectedAlgo === algo.id;
                 const Icon = algo.icon;
@@ -761,11 +772,105 @@ function EncryptionWorkbenchContent() {
                       )}
                     </div>
                   )}
+
+                  {/* 5. Spectral Hybrid Settings */}
+                  {selectedAlgo === "spectral_hybrid" && (
+                    <div className="space-y-4">
+                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                        HYBRID KEY SEEDS & KERNEL
+                      </div>
+                      <Slider
+                        label="Scramble Seed"
+                        valueDisplay={scrambleSeed}
+                        min={1}
+                        max={9999}
+                        step={1}
+                        value={scrambleSeed}
+                        onChange={(e) => setScrambleSeed(Number(e.target.value))}
+                      />
+                      <Slider
+                        label="Mask Seed"
+                        valueDisplay={maskSeed}
+                        min={1}
+                        max={9999}
+                        step={1}
+                        value={maskSeed}
+                        onChange={(e) => setMaskSeed(Number(e.target.value))}
+                      />
+                      <Slider
+                        label="Kernel Seed"
+                        valueDisplay={kernelSeed}
+                        min={1}
+                        max={9999}
+                        step={1}
+                        value={kernelSeed}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setKernelSeed(val);
+                          setKernelMatrix(generate3x3KernelFromSeed(val));
+                        }}
+                      />
+
+                      {/* 3x3 Kernel Matrix Display and Direct Keyboard Editor */}
+                      <div className="space-y-2 pt-2 border-t border-[#E8E8E3] dark:border-[#292929]">
+                        <div className="flex items-center justify-between text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                          <span>3 × 3 CONVOLUTION KERNEL</span>
+                          <span className="text-[10px] text-[#2563EB] dark:text-[#60A5FA] font-bold">
+                            Sum = {kernelMatrix.flat().reduce((a, b) => a + b, 0)}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-[#F5F5F0] dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2A2A2A]">
+                          {kernelMatrix.map((row, rIdx) =>
+                            row.map((val, cIdx) => (
+                              <input
+                                key={`k-${rIdx}-${cIdx}`}
+                                type="number"
+                                value={val}
+                                onChange={(e) => {
+                                  const newMatrix = kernelMatrix.map((r) => [...r]);
+                                  newMatrix[rIdx][cIdx] = parseInt(e.target.value) || 0;
+                                  setKernelMatrix(newMatrix);
+                                }}
+                                className="w-full h-11 text-center font-mono text-sm font-semibold rounded-md border border-[#D0D0CB] dark:border-[#383838] bg-white dark:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] focus:outline-none focus:border-[#2563EB] dark:focus:border-[#3B82F6] focus:ring-1 focus:ring-[#2563EB] transition-all"
+                              />
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 7. Feistel Cipher Settings */}
+                  {selectedAlgo === "feistel" && (
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                        FEISTEL PARAMETERS
+                      </div>
+                      <Slider
+                        label="Block Seed"
+                        valueDisplay={feistelSeed}
+                        min={1}
+                        max={9999}
+                        step={1}
+                        value={feistelSeed}
+                        onChange={(e) => setFeistelSeed(Number(e.target.value))}
+                      />
+                      <Slider
+                        label="Rounds"
+                        valueDisplay={feistelRounds}
+                        min={4}
+                        max={16}
+                        step={1}
+                        value={feistelRounds}
+                        onChange={(e) => setFeistelRounds(Number(e.target.value))}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Action Buttons */}
-                {!ciphertextUri ? (
-                  /* Initial State: Encrypt Button */
+                <div className="space-y-2 pt-2">
                   <Button
                     type="button"
                     onClick={handleExecuteEncrypt}
@@ -773,46 +878,33 @@ function EncryptionWorkbenchContent() {
                     className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB] dark:border-[#3B82F6] ring-1 ring-[#2563EB]/40 dark:ring-[#3B82F6]/50 shadow-[0_0_10px_rgba(37,99,235,0.25)] hover:shadow-[0_0_14px_rgba(37,99,235,0.4)] flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     <Lock className="h-3.5 w-3.5 text-white shrink-0" />
-                    <span>{isEncrypting ? "Encrypting..." : "Encrypt"}</span>
+                    <span>{isEncrypting ? "Encrypting..." : ciphertextUri ? "Re-Encrypt Image" : "Encrypt"}</span>
                   </Button>
-                ) : (
-                  /* Post-encryption State: Download button in place of Encrypt, with Analyze & Decryption side-by-side */
-                  <div className="space-y-2 animate-in fade-in duration-200">
-                    {/* Full-width Download Button (replaces Encrypt) */}
-                    <Button
-                      type="button"
-                      onClick={() => setIsDownloadModalOpen(true)}
-                      className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB] dark:border-[#3B82F6] ring-1 ring-[#2563EB]/40 dark:ring-[#3B82F6]/50 shadow-[0_0_10px_rgba(37,99,235,0.25)] hover:shadow-[0_0_14px_rgba(37,99,235,0.4)] flex items-center justify-center gap-1.5"
-                      title="Download Encrypted Image or Key File"
-                    >
-                      <Download className="h-3.5 w-3.5 text-white shrink-0" />
-                      <span>Download</span>
-                    </Button>
 
-                    {/* Side-by-side Analyze and Decryption Buttons */}
-                    <div className="grid grid-cols-2 gap-2">
+                  {ciphertextUri && (
+                    <>
                       <Button
-                        variant="outline"
-                        onClick={handlePromoteToAnalysis}
-                        className="w-full h-8.5 text-xs font-medium cursor-pointer shadow-2xs hover:shadow-xs transition-all active:scale-[0.99]"
-                        title="Analyze diffusion, entropy, and correlation"
+                        type="button"
+                        onClick={() => setIsDownloadModalOpen(true)}
+                        className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-[#2563EB] hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 animate-in fade-in duration-150"
+                        title="Download Encrypted Image or Key Package"
                       >
-                        <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
-                        <span>Analyze</span>
+                        <Download className="h-3.5 w-3.5 text-white shrink-0" />
+                        <span>Download Package</span>
                       </Button>
 
                       <Button
-                        variant="outline"
-                        onClick={handleProceedToDecryption}
-                        className="w-full h-8.5 text-xs font-medium cursor-pointer shadow-2xs hover:shadow-xs transition-all active:scale-[0.99]"
-                        title="Proceed to Decryption Bench"
+                        type="button"
+                        onClick={handleNavigateToAnalysis}
+                        className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 animate-in fade-in duration-150 shadow-xs"
+                        title="Direct Analysis Report (Original vs Ciphertext)"
                       >
-                        <Unlock className="h-3.5 w-3.5 mr-1.5" />
-                        <span>Decryption</span>
+                        <BarChart3 className="h-3.5 w-3.5 text-white shrink-0" />
+                        <span>Analysis Report</span>
                       </Button>
-                    </div>
-                  </div>
-                )}
+                    </>
+                  )}
+                </div>
 
                 {error && (
                   <div className="text-xs text-[#DC2626] font-mono py-1">

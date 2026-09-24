@@ -36,19 +36,21 @@ export interface HistogramData {
 export interface FullAnalysisData {
   entropy: {
     plain: number;
-    cipher: number;
+    cipher?: number;
+    recovered?: number;
   };
   correlation: {
     plain: { horizontal: number; vertical: number; diagonal: number };
-    cipher: { horizontal: number; vertical: number; diagonal: number };
+    cipher?: { horizontal: number; vertical: number; diagonal: number };
+    recovered?: { horizontal: number; vertical: number; diagonal: number };
   };
   scatter: {
     plain: { horizontal: ScatterPoint[]; vertical: ScatterPoint[]; diagonal: ScatterPoint[] };
-    cipher: { horizontal: ScatterPoint[]; vertical: ScatterPoint[]; diagonal: ScatterPoint[] };
+    cipher?: { horizontal: ScatterPoint[]; vertical: ScatterPoint[]; diagonal: ScatterPoint[] };
   };
   histograms: {
     plain: number[];
-    cipher: number[];
+    cipher?: number[];
     recovered?: number[];
   };
   quality: {

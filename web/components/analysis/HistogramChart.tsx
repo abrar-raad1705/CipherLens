@@ -4,18 +4,26 @@ import React from "react";
 import ReactECharts from "echarts-for-react";
 import { useTheme } from "@/hooks/use-theme";
 
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+
 interface HistogramChartProps {
   plainBins?: number[];
   cipherBins?: number[];
+  recoveredBins?: number[];
   title?: string;
   className?: string;
+  chartHeight?: string;
+  useCardLayout?: boolean;
 }
 
 export function HistogramChart({
   plainBins,
   cipherBins,
+  recoveredBins,
   title = "Intensity Distribution",
   className = "",
+  chartHeight = "360px",
+  useCardLayout = false,
 }: HistogramChartProps) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -42,6 +50,17 @@ export function HistogramChart({
       smooth: true,
       lineStyle: { width: 1.5, color: isDark ? "#A0A09B" : "#6F6F6A" },
       data: cipherBins,
+    });
+  }
+
+  if (recoveredBins && recoveredBins.length === 256) {
+    series.push({
+      name: "Reconstructed",
+      type: "line",
+      showSymbol: false,
+      smooth: true,
+      lineStyle: { width: 1.5, color: isDark ? "#34D399" : "#059669" },
+      data: recoveredBins,
     });
   }
 
@@ -80,6 +99,24 @@ export function HistogramChart({
     series,
   };
 
+  if (useCardLayout) {
+    return (
+      <Card className={`overflow-hidden flex flex-col ${className}`}>
+        <CardHeader className="py-2.5 px-4 border-b flex flex-row items-center justify-between">
+          <span className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+            {title}
+          </span>
+          <span className="text-xs font-mono text-[#999993] dark:text-[#6A6A6A]">
+            256 Bins
+          </span>
+        </CardHeader>
+        <CardContent className="p-3 sm:p-4 flex-1 flex flex-col justify-center">
+          <ReactECharts option={option} style={{ height: chartHeight, width: "100%" }} />
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className={`space-y-2 ${className}`}>
       <div className="flex items-baseline justify-between">
@@ -91,7 +128,7 @@ export function HistogramChart({
         </span>
       </div>
       <div className="border border-[#E8E8E3] dark:border-[#292929] rounded-md bg-white dark:bg-[#171717] p-3">
-        <ReactECharts option={option} style={{ height: "230px", width: "100%" }} />
+        <ReactECharts option={option} style={{ height: chartHeight, width: "100%" }} />
       </div>
     </div>
   );

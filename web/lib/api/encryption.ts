@@ -92,3 +92,52 @@ export async function preloadDCTCiphertext(
     body: JSON.stringify({ ciphertext_real, ciphertext_shape, visual_uri }),
   });
 }
+
+export async function runChaos(
+  image: string,
+  x0: number = 0.4,
+  r: number = 3.99,
+  action: "encrypt" | "decrypt" = "encrypt"
+): Promise<TransformResponse> {
+  return apiClient<TransformResponse>("/api/encryption/chaos", {
+    method: "POST",
+    body: JSON.stringify({ image, x0, r, action }),
+  });
+}
+
+export async function runSpectralHybrid(
+  image: string,
+  scramble_seed: number = 42,
+  mask_seed: number = 99,
+  kernel_seed: number = 7,
+  action: "encrypt" | "decrypt" = "encrypt"
+): Promise<TransformResponse> {
+  return apiClient<TransformResponse>("/api/encryption/spectral-hybrid", {
+    method: "POST",
+    body: JSON.stringify({ image, scramble_seed, mask_seed, kernel_seed, action }),
+  });
+}
+
+export async function preloadSpectralHybridCiphertext(
+  ciphertext_real: string,
+  ciphertext_imag: string,
+  ciphertext_shape: number[],
+  visual_uri: string
+): Promise<{ status: string; shape: number[]; message: string }> {
+  return apiClient("/api/encryption/spectral-hybrid/preload", {
+    method: "POST",
+    body: JSON.stringify({ ciphertext_real, ciphertext_imag, ciphertext_shape, visual_uri }),
+  });
+}
+
+export async function runFeistel(
+  image: string,
+  seed: number = 42,
+  rounds: number = 8,
+  action: "encrypt" | "decrypt" = "encrypt"
+): Promise<TransformResponse> {
+  return apiClient<TransformResponse>("/api/encryption/feistel", {
+    method: "POST",
+    body: JSON.stringify({ image, seed, rounds, action }),
+  });
+}

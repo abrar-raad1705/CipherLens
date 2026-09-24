@@ -15,6 +15,9 @@ import {
   ArrowsRightLeftIcon as Shuffle,
   LockOpenIcon as Unlock,
   SignalIcon as Waves,
+  SparklesIcon as Sparkles,
+  KeyIcon as KeyRound,
+  XMarkIcon as X,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,7 +37,8 @@ import {
 } from "@/lib/encryption-session";
 import { downloadImage, ParsedKeyData } from "@/lib/key-file";
 import { runMetrics } from "@/lib/api/analysis";
-import { preloadDRPECiphertext, preloadFourierCiphertext, preloadDCTCiphertext } from "@/lib/api/encryption";
+import { preloadDRPECiphertext, preloadFourierCiphertext, preloadDCTCiphertext, preloadSpectralHybridCiphertext } from "@/lib/api/encryption";
+import { cn } from "@/lib/utils/cn";
 
 interface AlgorithmMeta {
   id: EncryptionAlgorithm;
@@ -87,6 +91,24 @@ const ALGORITHMS: AlgorithmMeta[] = [
     description:
       "Applies bitwise XOR inversion followed by inverse toral shearing: [x, y]ᵀ = [2 -1; -1 1][x', y']ᵀ mod N.",
   },
+  {
+    id: "spectral_hybrid",
+    name: "Spectral Hybrid",
+    tag: "MULTI-DOMAIN",
+    icon: ShieldCheck,
+    iconColor: "text-violet-600 dark:text-violet-400",
+    iconBg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+    description: "Applies Wiener deconvolution, conjugate phase mask removal, inverse FFT, and inverse pixel unscramble to recover the original image.",
+  },
+  {
+    id: "feistel",
+    name: "Feistel Cipher",
+    tag: "BLOCK CIPHER",
+    icon: Lock,
+    iconColor: "text-pink-600 dark:text-pink-400",
+    iconBg: "bg-pink-500/10 text-pink-600 dark:text-pink-400",
+    description: "Runs the Feistel network in reverse with sub-keys applied in reverse order to undo the DCT-based confusion-diffusion rounds.",
+  },
 ];
 
 function DecryptionWorkbenchContent() {
@@ -100,6 +122,8 @@ function DecryptionWorkbenchContent() {
     executeFourier,
     executeDCT,
     executeArnoldXOR,
+    executeSpectralHybrid,
+    executeFeistel,
   } = useEncryption();
 
   // Operation-Specific Upload State (Independent of centralized workspace image)
@@ -165,6 +189,62 @@ function DecryptionWorkbenchContent() {
   // 4. Arnold Cat Map
   const [arnoldItr, setArnoldItr] = useState<number>(session?.keys.iterations ?? 10);
   const [arnoldXor, setArnoldXor] = useState<number>(session?.keys.xorValue ?? 170);
+
+  const [scrambleSeed, setScrambleSeed] = useState<number>(session?.keys.scrambleSeed ?? 42);
+  const [maskSeed, setMaskSeed] = useState<number>(session?.keys.maskSeed ?? 99);
+  const [kernelSeed, setKernelSeed] = useState<number>(session?.keys.kernelSeed ?? 7);
+  const [feistelSeed, setFeistelSeed] = useState<number>(session?.keys.feistelSeed ?? 42);
+  const [feistelRounds, setFeistelRounds] = useState<number>(session?.keys.feistelRounds ?? 8);
+
+  const [isRandomKeyModalOpen, setIsRandomKeyModalOpen] = useState<boolean>(false);
+
+  const handleGenerateRandomKey = (algo: EncryptionAlgorithm) => {
+    setSelectedAlgo(algo);
+
+    let keys: ParsedKeyData = {};
+    if (algo === "drpe") {
+      const seed1 = Math.floor(Math.random() * 8999) + 1000;
+      const seed2 = Math.floor(Math.random() * 8999) + 1000;
+      setDrpeSeed1(seed1);
+      setDrpeSeed2(seed2);
+      keys = { seed1, seed2 };
+    } else if (algo === "fourier") {
+      const fSeed = Math.floor(Math.random() * 999) + 1;
+      setFourierSeed(fSeed);
+      keys = { fourierSeed: fSeed };
+    } else if (algo === "dct") {
+      const dSeed = Math.floor(Math.random() * 999) + 1;
+      setDctSeed(dSeed);
+      keys = { dctSeed: dSeed };
+    } else if (algo === "arnold") {
+      const itr = Math.floor(Math.random() * 15) + 1;
+      const xor = Math.floor(Math.random() * 255) + 1;
+      setArnoldItr(itr);
+      setArnoldXor(xor);
+      keys = { iterations: itr, xorValue: xor };
+    } else if (algo === "spectral_hybrid") {
+      const sSeed = Math.floor(Math.random() * 999) + 1;
+      const mSeed = Math.floor(Math.random() * 999) + 1;
+      const kSeed = Math.floor(Math.random() * 999) + 1;
+      setScrambleSeed(sSeed);
+      setMaskSeed(mSeed);
+      setKernelSeed(kSeed);
+      keys = { scrambleSeed: sSeed, maskSeed: mSeed, kernelSeed: kSeed };
+    } else if (algo === "feistel") {
+      const fSeed = Math.floor(Math.random() * 999) + 1;
+      const fRounds = Math.floor(Math.random() * 8) + 4;
+      setFeistelSeed(fSeed);
+      setFeistelRounds(fRounds);
+      keys = { feistelSeed: fSeed, feistelRounds: fRounds };
+    }
+
+    handleKeyLoaded({
+      algorithm: algo,
+      keys,
+      fileName: `random_${algo}_key.json`,
+    });
+    setIsRandomKeyModalOpen(false);
+  };
 
   // Subscribe to encryption session in background for optional reference comparison
   useEffect(() => {
@@ -242,42 +322,21 @@ function DecryptionWorkbenchContent() {
           console.warn("DCT preload failed:", e);
           setDecryptError(e.message || "Failed to validate ciphertext image against key package.");
         });
+      } else if (keyLoaded.algorithm === "spectral_hybrid" && keyLoaded.ciphertextPackage.imag) {
+        preloadSpectralHybridCiphertext(
+          keyLoaded.ciphertextPackage.real,
+          keyLoaded.ciphertextPackage.imag,
+          keyLoaded.ciphertextPackage.shape,
+          uploadedImage.dataUri
+        ).catch((e) => {
+          console.warn("Spectral Hybrid preload failed:", e);
+          setDecryptError(e.message || "Failed to validate ciphertext image against key package.");
+        });
       }
     }
   }, [uploadedImage?.dataUri, keyLoaded]);
 
-  // Check if current keys match correct encryption keys
-  const isExactKeyMatch = useMemo(() => {
-    if (!session || session.algorithm !== selectedAlgo) return true;
-    if (selectedAlgo === "drpe") {
-      return (
-        drpeSeed1 === (session.keys.seed1 ?? 1234) &&
-        drpeSeed2 === (session.keys.seed2 ?? 5678)
-      );
-    }
-    if (selectedAlgo === "fourier") {
-      return fourierSeed === (session.keys.fourierSeed ?? 100);
-    }
-    if (selectedAlgo === "dct") {
-      return dctSeed === (session.keys.dctSeed ?? 42);
-    }
-    if (selectedAlgo === "arnold") {
-      return (
-        arnoldItr === (session.keys.iterations ?? 10) &&
-        arnoldXor === (session.keys.xorValue ?? 170)
-      );
-    }
-    return true;
-  }, [
-    session,
-    selectedAlgo,
-    drpeSeed1,
-    drpeSeed2,
-    fourierSeed,
-    dctSeed,
-    arnoldItr,
-    arnoldXor,
-  ]);
+
 
   // Core Decryption Execution helper
   const executeDecryptionWithParams = async (
@@ -289,6 +348,11 @@ function DecryptionWorkbenchContent() {
       dctSeed?: number;
       arnoldItr?: number;
       arnoldXor?: number;
+      scrambleSeed?: number;
+      maskSeed?: number;
+      kernelSeed?: number;
+      feistelSeed?: number;
+      feistelRounds?: number;
     }
   ) => {
     if (!uploadedImage || isDecrypting) return;
@@ -339,6 +403,21 @@ function DecryptionWorkbenchContent() {
         recoveredUri = res.output_image;
         latency = res.latency_ms;
         returnedStages = res.stages;
+      } else if (algo === "spectral_hybrid") {
+        const ss = params.scrambleSeed ?? scrambleSeed;
+        const ms = params.maskSeed ?? maskSeed;
+        const ks = params.kernelSeed ?? kernelSeed;
+        const res = await executeSpectralHybrid(uploadedImage.dataUri, ss, ms, ks, "decrypt");
+        recoveredUri = res.output_image;
+        latency = res.latency_ms;
+        returnedStages = res.stages;
+      } else if (algo === "feistel") {
+        const s = params.feistelSeed ?? feistelSeed;
+        const r = params.feistelRounds ?? feistelRounds;
+        const res = await executeFeistel(uploadedImage.dataUri, s, r, "decrypt");
+        recoveredUri = res.output_image;
+        latency = res.latency_ms;
+        returnedStages = res.stages;
       }
 
       setDecryptedSrc(recoveredUri);
@@ -378,6 +457,11 @@ function DecryptionWorkbenchContent() {
       dctSeed,
       arnoldItr,
       arnoldXor,
+      scrambleSeed,
+      maskSeed,
+      kernelSeed,
+      feistelSeed,
+      feistelRounds,
     });
   };
 
@@ -453,56 +537,29 @@ function DecryptionWorkbenchContent() {
     } else if (params.algorithm === "arnold") {
       if (params.keys.iterations !== undefined) setArnoldItr(params.keys.iterations);
       if (params.keys.xorValue !== undefined) setArnoldXor(params.keys.xorValue);
+    } else if (params.algorithm === "spectral_hybrid") {
+      if (params.keys.scrambleSeed !== undefined) setScrambleSeed(params.keys.scrambleSeed);
+      if (params.keys.maskSeed !== undefined) setMaskSeed(params.keys.maskSeed);
+      if (params.keys.kernelSeed !== undefined) setKernelSeed(params.keys.kernelSeed);
+
+      if (params.ciphertextPackage && params.ciphertextPackage.imag && uploadedImage) {
+        try {
+          await preloadSpectralHybridCiphertext(
+            params.ciphertextPackage.real,
+            params.ciphertextPackage.imag,
+            params.ciphertextPackage.shape,
+            uploadedImage.dataUri
+          );
+        } catch (e) {
+          console.warn("Spectral Hybrid preload failed:", e);
+        }
+      }
+    } else if (params.algorithm === "feistel") {
+      if (params.keys.feistelSeed !== undefined) setFeistelSeed(params.keys.feistelSeed);
+      if (params.keys.feistelRounds !== undefined) setFeistelRounds(params.keys.feistelRounds);
     }
 
     setKeyLoaded(params);
-  };
-
-  // Utility to match correct keys from session
-  const handleMatchCorrectKeys = () => {
-    if (!session) return;
-    if (selectedAlgo === "drpe") {
-      const s1 = session.keys.seed1 ?? 1234;
-      const s2 = session.keys.seed2 ?? 5678;
-      setDrpeSeed1(s1);
-      setDrpeSeed2(s2);
-      executeDecryptionWithParams("drpe", { seed1: s1, seed2: s2 });
-    } else if (selectedAlgo === "fourier") {
-      const seed = session.keys.fourierSeed ?? 100;
-      setFourierSeed(seed);
-      executeDecryptionWithParams("fourier", { fourierSeed: seed });
-    } else if (selectedAlgo === "dct") {
-      const seed = session.keys.dctSeed ?? 42;
-      setDctSeed(seed);
-      executeDecryptionWithParams("dct", { dctSeed: seed });
-    } else if (selectedAlgo === "arnold") {
-      const itr = session.keys.iterations ?? 10;
-      const xor = session.keys.xorValue ?? 170;
-      setArnoldItr(itr);
-      setArnoldXor(xor);
-      executeDecryptionWithParams("arnold", { arnoldItr: itr, arnoldXor: xor });
-    }
-  };
-
-  // Utility to perturb keys by +1 to test sensitivity and auto-execute
-  const handlePerturbKeys = () => {
-    if (selectedAlgo === "drpe") {
-      const s1 = drpeSeed1 + 1;
-      setDrpeSeed1(s1);
-      executeDecryptionWithParams("drpe", { seed1: s1, seed2: drpeSeed2 });
-    } else if (selectedAlgo === "fourier") {
-      const seed = fourierSeed + 1;
-      setFourierSeed(seed);
-      executeDecryptionWithParams("fourier", { fourierSeed: seed });
-    } else if (selectedAlgo === "dct") {
-      const seed = dctSeed + 1;
-      setDctSeed(seed);
-      executeDecryptionWithParams("dct", { dctSeed: seed });
-    } else if (selectedAlgo === "arnold") {
-      const itr = arnoldItr + 1;
-      setArnoldItr(itr);
-      executeDecryptionWithParams("arnold", { arnoldItr: itr, arnoldXor });
-    }
   };
 
   // Download recovered image
@@ -510,38 +567,6 @@ function DecryptionWorkbenchContent() {
     if (!decryptedSrc || !uploadedImage) return;
     const baseName = uploadedImage.name.replace(/\.[^/.]+$/, "");
     downloadImage(decryptedSrc, `${baseName}_${selectedAlgo}_decrypted.png`);
-  };
-
-  // Promote recovered image to workspace
-  const handlePromoteToWorkspace = () => {
-    if (!decryptedSrc || !uploadedImage) return;
-    addArtifact(
-      {
-        name: `Decrypted [${selectedAlgo.toUpperCase()} ${isExactKeyMatch ? "Exact" : "Perturbed"}]`,
-        dataUri: decryptedSrc,
-        width: uploadedImage.width || 512,
-        height: uploadedImage.height || 512,
-        sourceBench: "decryption",
-      },
-      true
-    );
-    router.push("/workspace");
-  };
-
-  // Promote recovered image to analysis
-  const handlePromoteToAnalysis = () => {
-    if (!decryptedSrc || !uploadedImage) return;
-    addArtifact(
-      {
-        name: `Decrypted [${selectedAlgo.toUpperCase()}]`,
-        dataUri: decryptedSrc,
-        width: uploadedImage.width || 512,
-        height: uploadedImage.height || 512,
-        sourceBench: "decryption",
-      },
-      true
-    );
-    router.push("/analysis");
   };
 
   const activeMeta = ALGORITHMS.find((a) => a.id === selectedAlgo) || ALGORITHMS[0];
@@ -585,28 +610,6 @@ function DecryptionWorkbenchContent() {
               <span>Change Ciphertext</span>
             </Button>
           )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push("/encryption")}
-            className="text-xs h-8 px-3"
-          >
-            <Lock className="h-3.5 w-3.5 mr-1.5" />
-            <span>Go to Encryption</span>
-          </Button>
-
-          {decryptedSrc && (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handlePromoteToWorkspace}
-              className="text-xs font-medium h-8 px-3"
-            >
-              <span>Save to Workspace</span>
-              <ArrowRight className="h-3.5 w-3.5 ml-1" />
-            </Button>
-          )}
         </div>
       </div>
 
@@ -617,12 +620,12 @@ function DecryptionWorkbenchContent() {
 
             {/* Panel 1: Ciphertext Image */}
             <div className="flex flex-col gap-2">
-              <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
+              <div className="text-xs sm:text-sm font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-semibold text-center py-1">
                 Step 1 — Ciphertext Image
               </div>
               <div className="flex-1">
                 {uploadedImage ? (
-                  <div className="h-full rounded-lg border border-[#A7F3D0] dark:border-[#047857]/40 bg-[#ECFDF5] dark:bg-[#064E3B]/20 p-4 flex flex-col items-center justify-center gap-3 min-h-[260px]">
+                  <div className="h-full rounded-lg border border-[#A7F3D0] dark:border-[#047857]/40 bg-[#ECFDF5] dark:bg-[#064E3B]/20 p-4 flex flex-col items-center justify-center gap-3 min-h-[340px] sm:min-h-[360px]">
                     <div className="w-24 h-24 rounded-lg overflow-hidden border-2 border-[#A7F3D0] dark:border-[#047857]/40 shadow-md">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={uploadedImage.dataUri} alt="cipher" className="w-full h-full object-cover" />
@@ -640,11 +643,12 @@ function DecryptionWorkbenchContent() {
                     </button>
                   </div>
                 ) : (
-                  <div className="min-h-[260px] [&>div]:h-full [&>div]:min-h-[260px]">
+                  <div className="min-h-[340px] sm:min-h-[360px] [&>div]:h-full [&>div]:min-h-[340px] sm:[&>div]:min-h-[360px]">
                     <DriveDropzone
                       title="Drop ciphertext image here"
                       description="PNG · max 25 MB"
                       actionLabel="Browse"
+                      compact={true}
                       onImageUploaded={(img) => setUploadedImage(img)}
                     />
                   </div>
@@ -654,12 +658,12 @@ function DecryptionWorkbenchContent() {
 
             {/* Panel 2: Key JSON */}
             <div className="flex flex-col gap-2">
-              <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
+              <div className="text-xs sm:text-sm font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-semibold text-center py-1">
                 Step 2 — Key Package (.json)
               </div>
-              <div className="flex-1 flex flex-col justify-center min-h-[260px]">
+              <div className="flex-1 flex flex-col justify-center min-h-[340px] sm:min-h-[360px]">
                 {keyLoaded ? (
-                  <div className="h-full rounded-lg border border-[#D7D7D1] dark:border-[#2E2E2E] bg-[#FAFAF8] dark:bg-[#121212] p-5 flex flex-col items-center justify-center gap-4 transition-all hover:border-[#2563EB] dark:hover:border-[#5B8CFF]">
+                  <div className="h-full rounded-lg border border-[#D7D7D1] dark:border-[#2E2E2E] bg-[#FAFAF8] dark:bg-[#121212] p-5 flex flex-col items-center justify-center gap-4 transition-all hover:border-[#2563EB] dark:hover:border-[#5B8CFF] min-h-[340px] sm:min-h-[360px]">
                     <div className="w-14 h-14 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 flex items-center justify-center">
                       <CheckCircle2 className="h-7 w-7 text-emerald-500" />
                     </div>
@@ -679,32 +683,24 @@ function DecryptionWorkbenchContent() {
                     selectedAlgo={selectedAlgo}
                     onKeyLoaded={handleKeyLoaded}
                     onSwitchAlgorithm={handleAlgorithmChange}
-                    dropzoneClassName="h-full min-h-[260px] flex flex-col items-center justify-center gap-3 border-2"
+                    dropzoneClassName="h-full min-h-[340px] sm:min-h-[360px] flex flex-col items-center justify-center gap-3 border-2"
                   />
-                )}
-                {!keyLoaded && (
-                  <p className="text-[10px] text-[#999993] dark:text-[#6A6A6A] text-center px-2 mt-3">
-                    Download the key package (.json) from the Encryption page after encrypting.
-                  </p>
                 )}
               </div>
             </div>
 
           </div>
 
-          {/* Progress indicator */}
-          <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full transition-colors ${uploadedImage ? "bg-emerald-500" : "bg-[#D0D0CA] dark:bg-[#3A3A3A]"}`} />
-            <div className={`h-2 w-2 rounded-full transition-colors ${keyLoaded ? "bg-emerald-500" : "bg-[#D0D0CA] dark:bg-[#3A3A3A]"}`} />
-            <span className="text-[11px] text-[#999993] dark:text-[#6A6A6A] font-mono">
-              {uploadedImage && keyLoaded
-                ? "Both ready — loading controls…"
-                : uploadedImage
-                ? "Image ready · Upload key JSON to continue →"
-                : keyLoaded
-                ? "← Key loaded · Upload ciphertext image to continue"
-                : "Upload both to begin decryption"}
-            </span>
+          {/* Centered Random Key Package Action */}
+          <div className="flex justify-center pt-2">
+            <button
+              type="button"
+              onClick={() => setIsRandomKeyModalOpen(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2E2E2E] text-[#181818] dark:text-[#F2F2F0] hover:border-[#2563EB] dark:hover:border-[#5B8CFF] hover:text-[#2563EB] dark:hover:text-[#5B8CFF] text-xs font-medium shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-98"
+            >
+              <Sparkles className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF]" />
+              <span>Generate Random Key Package</span>
+            </button>
           </div>
         </div>
       ) : (
@@ -723,7 +719,7 @@ function DecryptionWorkbenchContent() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {ALGORITHMS.map((algo) => {
                 const isSelected = selectedAlgo === algo.id;
                 const Icon = algo.icon;
@@ -897,42 +893,9 @@ function DecryptionWorkbenchContent() {
                   <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
                     DECRYPTION KEY CONTROLS
                   </div>
-                  <Badge variant={isExactKeyMatch ? "emerald" : "rose"} dot className="text-[10px] font-mono">
-                    {isExactKeyMatch ? "Exact Match" : "Perturbed"}
-                  </Badge>
                 </div>
 
-                {/* Loaded Key Summary (read-only — uploaded during setup step) */}
-                <div className="space-y-1.5 pb-2 border-b border-[#E8E8E3] dark:border-[#242424]">
-                  <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                    KEY SPECIFICATION
-                  </div>
-                  {keyLoaded && (
-                    <div className="rounded-lg border border-[#A7F3D0] dark:border-[#047857]/40 bg-[#ECFDF5] dark:bg-[#064E3B]/20 p-2.5 space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#065F46] dark:text-[#6EE7B7]">
-                        <CheckCircle2 className="h-4 w-4 text-[#059669] dark:text-[#34D399] shrink-0" />
-                        <span className="truncate max-w-[200px]" title={keyLoaded.fileName}>{keyLoaded.fileName}</span>
-                      </div>
-                      <div className="text-[11px] font-mono text-[#047857] dark:text-[#A7F3D0] flex flex-col gap-0.5">
-                        <span className="uppercase tracking-wider text-[10px] font-semibold">Loaded {keyLoaded.algorithm.toUpperCase()} Parameters:</span>
-                        <span className="font-medium bg-white/60 dark:bg-black/20 px-1.5 py-0.5 rounded">
-                          {keyLoaded.algorithm === "drpe" && `Seed1: ${drpeSeed1}, Seed2: ${drpeSeed2}`}
-                          {keyLoaded.algorithm === "fourier" && `Phase Seed: ${fourierSeed}`}
-                          {keyLoaded.algorithm === "dct" && `Basis Seed: ${dctSeed}`}
-                          {keyLoaded.algorithm === "arnold" && `Itr: ${arnoldItr}, XOR: 0x${arnoldXor.toString(16).toUpperCase()}`}
-                        </span>
-                        {keyLoaded.ciphertextPackage && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                            Ciphertext Package Embedded
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Dynamic Decryption Key Sliders per Algorithm (Manual tuning remains fully intact!) */}
+                {/* Dynamic Decryption Key Sliders per Algorithm */}
                 <div key={selectedAlgo} className="space-y-3 animate-option-switch">
                   {/* 1. DRPE Decrypt Controls */}
                   {selectedAlgo === "drpe" && (
@@ -1023,32 +986,69 @@ function DecryptionWorkbenchContent() {
                       />
                     </div>
                   )}
-                </div>
 
-                {/* Key Sensitivity Preset Action Buttons */}
-                <div className="flex gap-2 pt-0.5">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 h-7.5 text-[11px]"
-                    onClick={handleMatchCorrectKeys}
-                    disabled={!session}
-                    title="Restore exact encryption keys from session"
-                  >
-                    <RotateCcw className="h-3 w-3 mr-1" />
-                    <span>Match Keys</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 h-7.5 text-[11px]"
-                    onClick={handlePerturbKeys}
-                    disabled={!uploadedImage}
-                    title="Perturb key parameter by +1 to test avalanche sensitivity"
-                  >
-                    <Shuffle className="h-3 w-3 mr-1" />
-                    <span>Perturb (+1)</span>
-                  </Button>
+                  {/* 5. Spectral Hybrid Decrypt Controls */}
+                  {selectedAlgo === "spectral_hybrid" && (
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                        INVERSE HYBRID PARAMETERS
+                      </div>
+                      <Slider
+                        label="Scramble Seed"
+                        valueDisplay={scrambleSeed}
+                        min={1}
+                        max={9999}
+                        step={1}
+                        value={scrambleSeed}
+                        onChange={(e) => setScrambleSeed(Number(e.target.value))}
+                      />
+                      <Slider
+                        label="Mask Seed"
+                        valueDisplay={maskSeed}
+                        min={1}
+                        max={9999}
+                        step={1}
+                        value={maskSeed}
+                        onChange={(e) => setMaskSeed(Number(e.target.value))}
+                      />
+                      <Slider
+                        label="Kernel Seed"
+                        valueDisplay={kernelSeed}
+                        min={1}
+                        max={9999}
+                        step={1}
+                        value={kernelSeed}
+                        onChange={(e) => setKernelSeed(Number(e.target.value))}
+                      />
+                    </div>
+                  )}
+
+                  {/* 7. Feistel Cipher Decrypt Controls */}
+                  {selectedAlgo === "feistel" && (
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                        INVERSE NETWORK PARAMETERS
+                      </div>
+                      <Slider
+                        label="Seed"
+                        valueDisplay={feistelSeed}
+                        min={1}
+                        max={9999}
+                        step={1}
+                        value={feistelSeed}
+                        onChange={(e) => setFeistelSeed(Number(e.target.value))}
+                      />
+                      <Slider
+                        label="Rounds"
+                        valueDisplay={feistelRounds}
+                        min={4}
+                        max={16}
+                        step={2}
+                        value={feistelRounds}
+                        onChange={(e) => setFeistelRounds(Number(e.target.value))}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Execute Decryption Button */}
@@ -1062,7 +1062,7 @@ function DecryptionWorkbenchContent() {
                   <span>Execute {activeMeta.name} Decryption</span>
                 </Button>
 
-                {/* Post-decryption Action Buttons */}
+                {/* Post-decryption Action Button */}
                 {decryptedSrc && (
                   <div className="space-y-1.5 pt-1 border-t border-[#E8E8E3] dark:border-[#242424]">
                     <Button
@@ -1073,25 +1073,6 @@ function DecryptionWorkbenchContent() {
                       <Download className="h-3 w-3 mr-1.5" />
                       <span>Download Decrypted Image</span>
                     </Button>
-
-                    <div className="flex items-center gap-2 pt-0.5">
-                      <Button
-                        variant="secondary"
-                        onClick={handlePromoteToAnalysis}
-                        className="flex-1 h-7.5 text-xs"
-                      >
-                        <BarChart3 className="h-3 w-3 mr-1 text-[#6F6F6A] dark:text-[#A0A09B]" />
-                        <span>Analyze</span>
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={handlePromoteToWorkspace}
-                        className="flex-1 h-7.5 text-xs"
-                      >
-                        <ArrowRight className="h-3 w-3 mr-1" />
-                        <span>Workspace</span>
-                      </Button>
-                    </div>
                   </div>
                 )}
 
@@ -1102,6 +1083,68 @@ function DecryptionWorkbenchContent() {
                   </div>
                 )}
               </Card>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Random Key Package Selection Modal */}
+      {isRandomKeyModalOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-150 select-none"
+          onClick={() => setIsRandomKeyModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] shadow-2xl overflow-hidden flex flex-col p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
+              <div className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5 text-[#2563EB] dark:text-[#5B8CFF]" />
+                <h2 className="text-base font-semibold text-[#181818] dark:text-[#F2F2F0]">
+                  Generate Random Key Package
+                </h2>
+              </div>
+              <button
+                onClick={() => setIsRandomKeyModalOpen(false)}
+                className="p-1 rounded text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[#71717A] dark:text-[#8E8E93]">
+              Select an encryption method below to auto-generate a cryptographically valid random key package:
+            </p>
+
+            <div className="grid grid-cols-1 gap-2 max-h-[380px] overflow-y-auto pr-1">
+              {ALGORITHMS.map((algo) => {
+                const Icon = algo.icon;
+                return (
+                  <button
+                    key={algo.id}
+                    type="button"
+                    onClick={() => handleGenerateRandomKey(algo.id)}
+                    className="flex items-center justify-between p-3.5 rounded-xl border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#141414] hover:border-[#2563EB] dark:hover:border-[#5B8CFF] hover:bg-white dark:hover:bg-[#1C1C1C] transition-all text-left group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", algo.iconBg)}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-[#181818] dark:text-[#F2F2F0] group-hover:text-[#2563EB] dark:group-hover:text-[#5B8CFF] transition-colors">
+                          {algo.name}
+                        </div>
+                        <div className="text-[10px] text-[#71717A] dark:text-[#8E8E93] font-mono mt-0.5">
+                          {algo.tag}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="px-3 py-1 rounded-lg bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 text-[#2563EB] dark:text-[#5B8CFF] text-xs font-medium group-hover:bg-[#2563EB] group-hover:text-white dark:group-hover:bg-[#5B8CFF] dark:group-hover:text-black transition-all">
+                      Generate Key →
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

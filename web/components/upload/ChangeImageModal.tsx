@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/hooks/use-image";
 import { cn } from "@/lib/utils/cn";
+import { convertToGrayscaleDataUri } from "@/lib/utils";
 
 export interface SelectedImagePayload {
   name: string;
@@ -73,7 +74,7 @@ export function ChangeImageModal({
     w: 240,
     h: 240,
   });
-  const [aspectRatio, setAspectRatio] = useState<"1:1" | "free">("1:1");
+  const [aspectRatio, setAspectRatio] = useState<"1:1">("1:1");
   const [dragOver, setDragOver] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -226,9 +227,10 @@ export function ChangeImageModal({
   const handleFile = (file: File) => {
     if (!file || !file.type.startsWith("image/")) return;
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const src = e.target?.result as string;
-      setRawImageSrc(src);
+      const graySrc = await convertToGrayscaleDataUri(src);
+      setRawImageSrc(graySrc);
       setRawFileName(file.name);
       setMode("crop");
     };
@@ -283,86 +285,50 @@ export function ChangeImageModal({
       return;
     }
 
-    if (aspectRatio === "1:1") {
-      // 1:1 Square resizing with bounds clamping
-      if (ds.handle === "se") {
-        const delta = Math.round((dx + dy) / 2);
-        const maxDelta = Math.min(imgDim.w - (startBox.x + startBox.w), imgDim.h - (startBox.y + startBox.h));
-        const maxShrink = startBox.w - minSize;
-        const clampedDelta = Math.max(-maxShrink, Math.min(maxDelta, delta));
-        const newSide = startBox.w + clampedDelta;
-        setCropBox({ x: startBox.x, y: startBox.y, w: newSide, h: newSide });
-      } else if (ds.handle === "nw") {
-        const delta = Math.round((-dx - dy) / 2);
-        const maxExpansion = Math.min(startBox.x, startBox.y);
-        const maxShrink = startBox.w - minSize;
-        const clampedDelta = Math.max(-maxShrink, Math.min(maxExpansion, delta));
-        const newSide = startBox.w + clampedDelta;
-        setCropBox({
-          x: startBox.x - clampedDelta,
-          y: startBox.y - clampedDelta,
-          w: newSide,
-          h: newSide,
-        });
-      } else if (ds.handle === "ne") {
-        const delta = Math.round((dx - dy) / 2);
-        const maxExpansion = Math.min(imgDim.w - (startBox.x + startBox.w), startBox.y);
-        const maxShrink = startBox.w - minSize;
-        const clampedDelta = Math.max(-maxShrink, Math.min(maxExpansion, delta));
-        const newSide = startBox.w + clampedDelta;
-        setCropBox({
-          x: startBox.x,
-          y: startBox.y - clampedDelta,
-          w: newSide,
-          h: newSide,
-        });
-      } else if (ds.handle === "sw") {
-        const delta = Math.round((-dx + dy) / 2);
-        const maxExpansion = Math.min(startBox.x, imgDim.h - (startBox.y + startBox.h));
-        const maxShrink = startBox.w - minSize;
-        const clampedDelta = Math.max(-maxShrink, Math.min(maxExpansion, delta));
-        const newSide = startBox.w + clampedDelta;
-        setCropBox({
-          x: startBox.x - clampedDelta,
-          y: startBox.y,
-          w: newSide,
-          h: newSide,
-        });
-      }
-    } else {
-      // Free form resizing
-      let newX = startBox.x;
-      let newY = startBox.y;
-      let newW = startBox.w;
-      let newH = startBox.h;
-
-      if (ds.handle === "se") {
-        newW = Math.max(minSize, Math.min(imgDim.w - startBox.x, startBox.w + dx));
-        newH = Math.max(minSize, Math.min(imgDim.h - startBox.y, startBox.h + dy));
-      } else if (ds.handle === "sw") {
-        const maxDx = startBox.w - minSize;
-        const clampedDx = Math.max(-startBox.x, Math.min(maxDx, dx));
-        newX = startBox.x + clampedDx;
-        newW = startBox.w - clampedDx;
-        newH = Math.max(minSize, Math.min(imgDim.h - startBox.y, startBox.h + dy));
-      } else if (ds.handle === "ne") {
-        newW = Math.max(minSize, Math.min(imgDim.w - startBox.x, startBox.w + dx));
-        const maxDy = startBox.h - minSize;
-        const clampedDy = Math.max(-startBox.y, Math.min(maxDy, dy));
-        newY = startBox.y + clampedDy;
-        newH = startBox.h - clampedDy;
-      } else if (ds.handle === "nw") {
-        const maxDx = startBox.w - minSize;
-        const clampedDx = Math.max(-startBox.x, Math.min(maxDx, dx));
-        newX = startBox.x + clampedDx;
-        newW = startBox.w - clampedDx;
-        const maxDy = startBox.h - minSize;
-        const clampedDy = Math.max(-startBox.y, Math.min(maxDy, dy));
-        newY = startBox.y + clampedDy;
-        newH = startBox.h - clampedDy;
-      }
-
-      setCropBox({ x: newX, y: newY, w: newW, h: newH });
+    // 1:1 Square resizing with bounds clamping
+    if (ds.handle === "se") {
+      const delta = Math.round((dx + dy) / 2);
+      const maxDelta = Math.min(imgDim.w - (startBox.x + startBox.w), imgDim.h - (startBox.y + startBox.h));
+      const maxShrink = startBox.w - minSize;
+      const clampedDelta = Math.max(-maxShrink, Math.min(maxDelta, delta));
+      const newSide = startBox.w + clampedDelta;
+      setCropBox({ x: startBox.x, y: startBox.y, w: newSide, h: newSide });
+    } else if (ds.handle === "nw") {
+      const delta = Math.round((-dx - dy) / 2);
+      const maxExpansion = Math.min(startBox.x, startBox.y);
+      const maxShrink = startBox.w - minSize;
+      const clampedDelta = Math.max(-maxShrink, Math.min(maxExpansion, delta));
+      const newSide = startBox.w + clampedDelta;
+      setCropBox({
+        x: startBox.x - clampedDelta,
+        y: startBox.y - clampedDelta,
+        w: newSide,
+        h: newSide,
+      });
+    } else if (ds.handle === "ne") {
+      const delta = Math.round((dx - dy) / 2);
+      const maxExpansion = Math.min(imgDim.w - (startBox.x + startBox.w), startBox.y);
+      const maxShrink = startBox.w - minSize;
+      const clampedDelta = Math.max(-maxShrink, Math.min(maxExpansion, delta));
+      const newSide = startBox.w + clampedDelta;
+      setCropBox({
+        x: startBox.x,
+        y: startBox.y - clampedDelta,
+        w: newSide,
+        h: newSide,
+      });
+    } else if (ds.handle === "sw") {
+      const delta = Math.round((-dx + dy) / 2);
+      const maxExpansion = Math.min(startBox.x, imgDim.h - (startBox.y + startBox.h));
+      const maxShrink = startBox.w - minSize;
+      const clampedDelta = Math.max(-maxShrink, Math.min(maxExpansion, delta));
+      const newSide = startBox.w + clampedDelta;
+      setCropBox({
+        x: startBox.x - clampedDelta,
+        y: startBox.y,
+        w: newSide,
+        h: newSide,
+      });
     }
   };
 
@@ -399,6 +365,17 @@ export function ChangeImageModal({
     ctx.imageSmoothingQuality = "high";
 
     ctx.drawImage(img, sourceX, sourceY, sourceW, sourceH, 0, 0, outW, outH);
+
+    // Apply 2D luminance grayscale pixel transformation
+    const imgData = ctx.getImageData(0, 0, outW, outH);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      data[i] = gray;
+      data[i + 1] = gray;
+      data[i + 2] = gray;
+    }
+    ctx.putImageData(imgData, 0, 0);
 
     const croppedDataUri = outputCanvas.toDataURL("image/png");
 
@@ -806,31 +783,6 @@ export function ChangeImageModal({
 
             {/* Selection Toolbar */}
             <div className="flex items-center justify-between pt-1">
-              {/* Aspect Ratio Mode */}
-              <div className="flex items-center gap-1.5">
-                <Button
-                  variant={aspectRatio === "1:1" ? "primary" : "outline"}
-                  size="sm"
-                  className="h-7 text-xs px-2.5 font-medium"
-                  onClick={() => {
-                    setAspectRatio("1:1");
-                    const side = Math.min(cropBox.w, cropBox.h);
-                    setCropBox({ ...cropBox, w: side, h: side });
-                  }}
-                >
-                  1:1 Square
-                </Button>
-                <Button
-                  variant={aspectRatio === "free" ? "primary" : "outline"}
-                  size="sm"
-                  className="h-7 text-xs px-2.5 font-medium"
-                  onClick={() => setAspectRatio("free")}
-                >
-                  Free Form
-                </Button>
-              </div>
-
-              {/* Quick Actions */}
               <div className="flex items-center gap-2">
                 {naturalDim.w >= 512 && naturalDim.h >= 512 && (
                   <Button
@@ -856,10 +808,13 @@ export function ChangeImageModal({
                   size="sm"
                   className="h-7 text-xs px-2 font-medium text-[#6F6F6A] dark:text-[#A0A09B]"
                   onClick={() => {
-                    setAspectRatio("free");
-                    setCropBox({ x: 0, y: 0, w: imgDim.w, h: imgDim.h });
+                    setAspectRatio("1:1");
+                    const side = Math.min(imgDim.w, imgDim.h);
+                    const boxX = Math.round((imgDim.w - side) / 2);
+                    const boxY = Math.round((imgDim.h - side) / 2);
+                    setCropBox({ x: boxX, y: boxY, w: side, h: side });
                   }}
-                  title="Select entire image"
+                  title="Select square image area"
                 >
                   Full image
                 </Button>

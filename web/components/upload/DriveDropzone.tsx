@@ -7,6 +7,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { ChangeImageModal } from "./ChangeImageModal";
 import { cn } from "@/lib/utils/cn";
+import { convertToGrayscaleDataUri } from "@/lib/utils";
 
 export interface UploadedImageInfo {
   name: string;
@@ -20,6 +21,9 @@ interface DriveDropzoneProps {
   title?: string;
   description?: string;
   actionLabel?: string;
+  compact?: boolean;
+  dropzoneClassName?: string;
+  containerClassName?: string;
   onImageUploaded: (image: UploadedImageInfo) => void;
 }
 
@@ -27,6 +31,9 @@ export function DriveDropzone({
   title = "Drop your image here",
   description = "Maximum 25 MB",
   actionLabel = "Browse files",
+  compact = false,
+  dropzoneClassName,
+  containerClassName,
   onImageUploaded,
 }: DriveDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -77,15 +84,17 @@ export function DriveDropzone({
       setErrorMessage("Failed to read image file. Please try another image.");
     };
 
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const dataUri = e.target?.result as string;
       if (!dataUri) {
         setErrorMessage("Empty image file received. Please try again.");
         return;
       }
 
-      // Open the Edit Image Dialogue with the selected image
-      setModalImageSrc(dataUri);
+      const grayUri = await convertToGrayscaleDataUri(dataUri);
+
+      // Open the Edit Image Dialogue with the selected grayscale image
+      setModalImageSrc(grayUri);
       setModalFileName(file.name);
       setIsModalOpen(true);
 
@@ -132,7 +141,7 @@ export function DriveDropzone({
   };
 
   return (
-    <div className="w-full max-w-[920px] mx-auto py-6 sm:py-8 animate-in fade-in duration-200">
+    <div className={containerClassName || (compact ? "w-full h-full animate-in fade-in duration-200" : "w-full max-w-[920px] mx-auto py-6 sm:py-8 animate-in fade-in duration-200")}>
       {/* Upload Dropzone Hero Area with subtle dashed border */}
       <div
         onDragEnter={handleDragEnter}
@@ -140,7 +149,9 @@ export function DriveDropzone({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "relative group w-full min-h-[410px] sm:min-h-[440px] rounded-2xl border-2 border-dashed transition-all duration-200 cursor-pointer overflow-hidden flex flex-col items-center justify-center p-8 sm:p-12 text-center select-none",
+          dropzoneClassName || (compact
+            ? "relative group w-full h-full min-h-[340px] sm:min-h-[360px] rounded-2xl border-2 border-dashed transition-all duration-200 cursor-pointer overflow-hidden flex flex-col items-center justify-center p-8 sm:p-10 text-center select-none"
+            : "relative group w-full min-h-[410px] sm:min-h-[440px] rounded-2xl border-2 border-dashed transition-all duration-200 cursor-pointer overflow-hidden flex flex-col items-center justify-center p-8 sm:p-12 text-center select-none"),
           isDragOver
             ? "border-[#2563EB] dark:border-[#3B82F6] bg-blue-500/[0.05] dark:bg-blue-500/[0.09] ring-2 ring-blue-500/20 scale-[1.006]"
             : "border-[#DCDCD6] dark:border-[#242424] hover:border-[#2563EB]/70 dark:hover:border-[#3B82F6]/70 bg-white/60 dark:bg-[#121212]/90 hover:bg-white dark:hover:bg-[#151515] shadow-2xs"
@@ -167,24 +178,24 @@ export function DriveDropzone({
           {/* Large Blue Upload Icon in Dark-Blue Container */}
           <div
             className={cn(
-              "w-18 h-18 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl mx-auto flex items-center justify-center mb-5 transition-all duration-300",
+              compact ? "w-16 h-16 sm:w-18 sm:h-18 rounded-2xl mx-auto flex items-center justify-center mb-4 transition-all duration-300" : "w-18 h-18 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl mx-auto flex items-center justify-center mb-5 transition-all duration-300",
               isDragOver
                 ? "bg-[#2563EB] text-white scale-110 shadow-lg shadow-blue-500/25"
                 : "bg-blue-500/10 dark:bg-[#1E293B]/70 text-[#2563EB] dark:text-[#60A5FA] group-hover:scale-105 group-hover:bg-blue-500/15 dark:group-hover:bg-[#1E293B]"
             )}
           >
-            <Upload className="h-9 w-9 sm:h-10 sm:w-10 stroke-[1.8]" />
+            <Upload className={compact ? "h-8 w-8 sm:h-9 sm:w-9 stroke-[1.8]" : "h-9 w-9 sm:h-10 sm:w-10 stroke-[1.8]"} />
           </div>
 
           {/* Heading */}
-          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-[#181818] dark:text-[#F4F4F5] mb-2">
+          <h2 className={compact ? "text-lg font-semibold tracking-tight text-[#181818] dark:text-[#F4F4F5] mb-1.5" : "text-2xl sm:text-3xl font-semibold tracking-tight text-[#181818] dark:text-[#F4F4F5] mb-2"}>
             {isDragOver ? "Release to upload" : title}
           </h2>
 
           {/* Secondary Divider: "or" */}
-          <div className="flex items-center gap-2.5 w-32 my-2.5">
+          <div className={compact ? "flex items-center gap-2 w-28 my-2" : "flex items-center gap-2.5 w-32 my-2.5"}>
             <div className="h-px flex-1 bg-[#E4E4E7] dark:bg-[#27272A]/90" />
-            <span className="text-[11px] uppercase tracking-widest text-[#71717A] dark:text-[#71717A] font-medium">
+            <span className="text-[10px] uppercase tracking-widest text-[#71717A] dark:text-[#71717A] font-medium">
               or
             </span>
             <div className="h-px flex-1 bg-[#E4E4E7] dark:bg-[#27272A]/90" />
@@ -192,13 +203,15 @@ export function DriveDropzone({
 
           {/* Dedicated Blue "Browse files" Button */}
           <div
-            className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-sm font-medium shadow-xs group-hover:shadow-md transition-all active:scale-98 mb-3"
+            className={compact
+              ? "inline-flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium shadow-xs group-hover:shadow-md transition-all active:scale-98 mb-2"
+              : "inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-sm font-medium shadow-xs group-hover:shadow-md transition-all active:scale-98 mb-3"}
           >
-            <Upload className="h-4 w-4 stroke-[2]" />
+            <Upload className={compact ? "h-3.5 w-3.5 stroke-[2]" : "h-4 w-4 stroke-[2]"} />
             <span>{actionLabel}</span>
           </div>
 
-          {/* Small Supporting Text - Modern Sans-Serif font, clean muted hierarchy */}
+          {/* Small Supporting Text */}
           <p className="text-xs text-[#71717A] dark:text-[#8E8E93] font-normal tracking-normal">
             {description}
           </p>

@@ -1,4 +1,4 @@
-export type EncryptionAlgorithm = "drpe" | "fourier" | "dct" | "arnold";
+export type EncryptionAlgorithm = "drpe" | "fourier" | "dct" | "arnold" | "spectral_hybrid" | "feistel";
 
 export interface DRPEKeys {
   seed1: number;
@@ -29,6 +29,16 @@ export interface EncryptionSessionKeys {
   // Arnold
   iterations?: number;
   xorValue?: number;
+  // Chaos
+  chaosX0?: number;
+  chaosR?: number;
+  // Spectral Hybrid
+  scrambleSeed?: number;
+  maskSeed?: number;
+  kernelSeed?: number;
+  // Feistel
+  feistelSeed?: number;
+  feistelRounds?: number;
 }
 
 export interface EncryptionSession {

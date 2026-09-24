@@ -19,6 +19,16 @@ export interface ParsedKeyData {
   // Arnold
   iterations?: number;
   xorValue?: number;
+  // Chaos
+  chaosX0?: number;
+  chaosR?: number;
+  // Spectral Hybrid
+  scrambleSeed?: number;
+  maskSeed?: number;
+  kernelSeed?: number;
+  // Feistel
+  feistelSeed?: number;
+  feistelRounds?: number;
   // Cross-session ciphertext package (from JSON key file)
   ciphertextPackage?: {
     real: string;
@@ -46,6 +56,8 @@ export function normalizeAlgorithmName(raw: string): EncryptionAlgorithm | null 
   if (clean.includes("fourier") || clean === "fft") return "fourier";
   if (clean.includes("dct") || clean === "cosine") return "dct";
   if (clean.includes("arnold") || clean.includes("catmap") || clean.includes("torus")) return "arnold";
+  if (clean.includes("spectral") || clean.includes("hybrid")) return "spectral_hybrid";
+  if (clean.includes("feistel")) return "feistel";
   return null;
 }
 
@@ -104,6 +116,18 @@ export function generateKeyFileJson(options: KeyPackageOptions): string {
   } else if (algorithm === "arnold") {
     obj.iterations = keys.iterations ?? 10;
     obj.xor_value = keys.xorValue ?? 170;
+  } else if (algorithm === "spectral_hybrid") {
+    obj.scramble_seed = keys.scrambleSeed ?? 42;
+    obj.mask_seed = keys.maskSeed ?? 99;
+    obj.kernel_seed = keys.kernelSeed ?? 7;
+    if (options.ciphertextReal && options.ciphertextImag && options.ciphertextShape) {
+      obj.ciphertext_real = options.ciphertextReal;
+      obj.ciphertext_imag = options.ciphertextImag;
+      obj.ciphertext_shape = options.ciphertextShape;
+    }
+  } else if (algorithm === "feistel") {
+    obj.seed = keys.feistelSeed ?? 42;
+    obj.rounds = keys.feistelRounds ?? 8;
   }
 
   return JSON.stringify(obj, null, 2);
@@ -160,7 +184,7 @@ export function parseAndValidateKeyFile(
       if (!algo) {
         return {
           valid: false,
-          error: `Unrecognized algorithm '${rawAlgo}' in JSON key file. Supported: DRPE, Fourier, DCT, Arnold.`,
+          error: `Unrecognized algorithm '${rawAlgo}' in JSON key file. Supported: DRPE, Fourier, DCT, Arnold, Chaos, Spectral Hybrid, Feistel.`,
         };
       }
 
@@ -171,6 +195,13 @@ export function parseAndValidateKeyFile(
         dctSeed: json.dctSeed ?? json.dct_seed ?? json.seed,
         iterations: json.iterations ?? json.itr ?? json.iteration,
         xorValue: json.xorValue ?? json.xor_value ?? json.xor,
+        chaosX0: json.x0 ?? json.chaos_x0,
+        chaosR: json.r ?? json.chaos_r,
+        scrambleSeed: json.scramble_seed ?? json.scrambleSeed,
+        maskSeed: json.mask_seed ?? json.maskSeed,
+        kernelSeed: json.kernel_seed ?? json.kernelSeed,
+        feistelSeed: json.feistelSeed ?? json.feistel_seed ?? json.seed,
+        feistelRounds: json.rounds ?? json.feistelRounds ?? json.feistel_rounds,
       };
 
       // Extract complex/real ciphertext package if present (DRPE, Fourier, DCT)
@@ -445,6 +476,57 @@ function validateParsedKeys(
       valid: true,
       algorithm: algo,
       keys: { iterations: keys.iterations, xorValue: keys.xorValue },
+      metadata,
+      algorithmMismatch: isMismatch,
+    };
+  }
+
+  if (algo === "spectral_hybrid") {
+    const ss = keys.scrambleSeed;
+    const ms = keys.maskSeed;
+    const ks = keys.kernelSeed;
+    if (ss === undefined || ms === undefined || ks === undefined) {
+      return {
+        valid: false,
+        algorithm: algo,
+        error: "Invalid Spectral Hybrid key file: Missing required parameters 'scramble_seed', 'mask_seed', and 'kernel_seed'.",
+      };
+    }
+    return {
+      valid: true,
+      algorithm: algo,
+      keys: {
+        scrambleSeed: ss,
+        maskSeed: ms,
+        kernelSeed: ks,
+        ...(keys.ciphertextPackage ? { ciphertextPackage: keys.ciphertextPackage } : {}),
+      },
+      metadata,
+      algorithmMismatch: isMismatch,
+    };
+  }
+
+  if (algo === "feistel") {
+    const seed = keys.feistelSeed ?? keys.seed1;
+    const rounds = keys.feistelRounds;
+    if (seed === undefined) {
+      return {
+        valid: false,
+        algorithm: algo,
+        error: "Invalid Feistel key file: Missing required parameter 'seed'.",
+      };
+    }
+    if (rounds !== undefined && (rounds < 4 || rounds > 16)) {
+      return {
+        valid: false,
+        algorithm: algo,
+        error: "Feistel 'rounds' must be between 4 and 16.",
+      };
+    }
+    return {
+      valid: true,
+      algorithm: algo,
+      keys: { feistelSeed: seed, feistelRounds: rounds ?? 8 },
       metadata,
       algorithmMismatch: isMismatch,
     };

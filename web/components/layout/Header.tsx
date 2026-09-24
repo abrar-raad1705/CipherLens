@@ -7,12 +7,10 @@ import {
   AdjustmentsHorizontalIcon as Sliders,
   ArrowPathIcon as RefreshCw,
   Bars3Icon as Menu,
-  ChartBarIcon as BarChart3,
   GlobeAltIcon as Compass,
   LockClosedIcon as Lock,
   LockOpenIcon as Unlock,
   MoonIcon as Moon,
-  SparklesIcon as Sparkles,
   SunIcon as Sun,
   XMarkIcon as X,
 } from "@heroicons/react/24/outline";
@@ -36,8 +34,6 @@ export function Header() {
     { label: "Image Processing", href: "/processing/convolution", icon: Sliders },
     { label: "Encryption", href: "/encryption", icon: Lock },
     { label: "Decryption", href: "/decryption", icon: Unlock },
-    { label: "Quantitative Analysis", href: "/analysis", icon: BarChart3 },
-    { label: "Playground", href: "/playground", icon: Sparkles },
   ];
 
   return (
@@ -143,17 +139,6 @@ export function Header() {
                 )}
               </div>
             ) : null}
-
-
-
-            {/* Theme Switcher Button */}
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
-              aria-label="Toggle theme"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
           </div>
         </div>
 

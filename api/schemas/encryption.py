@@ -199,3 +199,93 @@ class ArnoldXORResponse(BaseModel):
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float
+
+
+# ── Chaos Cipher ──────────────────────────────────────────────────
+
+class ChaosRequest(BaseModel):
+    image: str = Field(..., description="Base64 encoded image or data URI")
+    x0: float = Field(0.4, description="Logistic map initial condition x0 ∈ (0, 1)")
+    r: float = Field(3.99, description="Logistic map parameter r ∈ [3.5, 4.0]")
+    action: str = Field("encrypt", description="encrypt or decrypt")
+
+
+class ChaosResponse(BaseModel):
+    status: str = "COMPLETE"
+    algorithm: str = "Chaos"
+    action: str
+    output_image: str = Field(..., description="Base64 PNG data URI of resulting image")
+    stages: dict[str, str] = Field(
+        default_factory=dict,
+        description="Base64 data URIs for pipeline stages",
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    latency_ms: float
+
+
+# ── Spectral Hybrid Cipher ───────────────────────────────────────
+
+class SpectralHybridRequest(BaseModel):
+    image: str = Field(..., description="Base64 encoded image or data URI")
+    scramble_seed: int = Field(42, description="Pixel scrambling seed")
+    mask_seed: int = Field(99, description="Frequency phase mask seed")
+    kernel_seed: int = Field(7, description="Convolution kernel seed")
+    action: str = Field("encrypt", description="encrypt or decrypt")
+
+
+class SpectralHybridResponse(BaseModel):
+    status: str = "COMPLETE"
+    algorithm: str = "Spectral-Hybrid"
+    action: str
+    output_image: str = Field(..., description="Base64 PNG data URI of resulting image")
+    spectrum: str | None = Field(None, description="Base64 Fourier log magnitude spectrum")
+    stages: dict[str, str] = Field(
+        default_factory=dict,
+        description="Base64 data URIs for pipeline stages",
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    latency_ms: float
+    ciphertext_real: str | None = Field(
+        None, description="Base64-encoded float32 real plane of the ciphertext array"
+    )
+    ciphertext_imag: str | None = Field(
+        None, description="Base64-encoded float32 imaginary plane of the ciphertext array"
+    )
+    ciphertext_shape: list[int] | None = Field(
+        None, description="Shape of the ciphertext array [height, width]"
+    )
+
+
+class SpectralHybridPreloadRequest(BaseModel):
+    ciphertext_real: str = Field(..., description="Base64 float32 real plane")
+    ciphertext_imag: str = Field(..., description="Base64 float32 imaginary plane")
+    ciphertext_shape: list[int] = Field(..., description="[height, width]")
+    visual_uri: str = Field(..., description="The ciphertext PNG data URI (used as cache key)")
+
+
+class SpectralHybridPreloadResponse(BaseModel):
+    status: str = "CACHED"
+    shape: list[int]
+    message: str = "Complex ciphertext loaded into session cache."
+
+
+# ── Feistel Block Cipher ─────────────────────────────────────────
+
+class FeistelRequest(BaseModel):
+    image: str = Field(..., description="Base64 encoded image or data URI")
+    seed: int = Field(42, description="Master seed for round sub-key generation")
+    rounds: int = Field(8, description="Number of Feistel rounds [4..16]")
+    action: str = Field("encrypt", description="encrypt or decrypt")
+
+
+class FeistelResponse(BaseModel):
+    status: str = "COMPLETE"
+    algorithm: str = "Feistel"
+    action: str
+    output_image: str = Field(..., description="Base64 PNG data URI of resulting image")
+    stages: dict[str, str] = Field(
+        default_factory=dict,
+        description="Base64 data URIs for pipeline stages",
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    latency_ms: float

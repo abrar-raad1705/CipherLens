@@ -3,16 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import {
-  GlobeAltIcon as Globe,
-  ArrowPathIcon as RefreshCw,
-  ArrowPathIcon as RotateCw,
-  BoltIcon as Zap,
-} from "@heroicons/react/24/outline";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/hooks/use-theme";
 
 interface Correlation3DViewerProps {
@@ -40,7 +31,7 @@ export function Correlation3DViewer({
   );
   const [viewMode, setViewMode] = useState<Mode3D>("correlation-scatter");
   const [pointCount, setPointCount] = useState<number>(4000);
-  const [pointSize, setPointSize] = useState<number>(2.0);
+  const pointSize = 1.5;
   const [autoRotate, setAutoRotate] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
   const [corrMetric, setCorrMetric] = useState<{
@@ -377,12 +368,6 @@ export function Correlation3DViewer({
           <span className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
             {title}
           </span>
-          <Badge
-            variant={activeTarget === "ciphertext" ? "rose" : "emerald"}
-            className="font-mono text-[10px]"
-          >
-            {activeTarget === "ciphertext" ? "Ciphertext Disintegration" : "Plaintext Ridge"}
-          </Badge>
         </div>
 
         {/* Controls */}
@@ -422,17 +407,6 @@ export function Correlation3DViewer({
             <option value="correlation-scatter">3D Correlation (xi, yi, zi)</option>
             <option value="phase-sphere">3D Phase-Mag Sphere</option>
           </select>
-
-          {/* Auto Rotate */}
-          <Button
-            size="sm"
-            variant={autoRotate ? "primary" : "outline"}
-            className="h-7 w-7 p-0"
-            onClick={() => setAutoRotate(!autoRotate)}
-            title="Toggle Orbit Rotation"
-          >
-            <Zap className="h-3.5 w-3.5" />
-          </Button>
         </div>
       </CardHeader>
 
@@ -451,21 +425,6 @@ export function Correlation3DViewer({
             {activeTarget === "plaintext"
               ? "Diagonal Ridge: Adjacent pixels are highly correlated (xi ≈ yi ≈ zi)"
               : "Chaotic Sphere: Encryption disintegrates correlation into 3D white noise"}
-          </div>
-
-          {/* Point Controls */}
-          <div className="absolute bottom-3 right-3 w-44 bg-white/90 dark:bg-[#171717]/90 p-2 rounded border border-[#E8E8E3] dark:border-[#292929] shadow-xs space-y-1">
-            <div className="flex justify-between text-[10px] font-mono text-[#6F6F6A] dark:text-[#A0A09B]">
-              <span>Point Size</span>
-              <span>{pointSize.toFixed(1)}px</span>
-            </div>
-            <Slider
-              min={1}
-              max={5}
-              step={0.5}
-              value={pointSize}
-              onChange={(e) => setPointSize(Number(e.target.value))}
-            />
           </div>
         </div>
       </CardContent>

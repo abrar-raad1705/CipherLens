@@ -43,8 +43,8 @@ export async function runHistogram(image: string): Promise<HistogramData> {
 
 export async function runFullAnalysis(
   plain_image: string,
-  cipher_image: string,
-  recovered_image?: string,
+  cipher_image?: string | null,
+  recovered_image?: string | null,
   diff_x: number = 0,
   diff_y: number = 0,
   algorithm: string = "DRPE",
@@ -54,8 +54,8 @@ export async function runFullAnalysis(
     method: "POST",
     body: JSON.stringify({
       plain_image,
-      cipher_image,
-      recovered_image,
+      cipher_image: cipher_image || undefined,
+      recovered_image: recovered_image || undefined,
       diff_x,
       diff_y,
       algorithm,

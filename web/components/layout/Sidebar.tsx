@@ -5,11 +5,10 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   AdjustmentsHorizontalIcon as Sliders,
-  ChartBarIcon as BarChart3,
+  ChartBarIcon as Chart,
   GlobeAltIcon as Compass,
   LockClosedIcon as Lock,
   LockOpenIcon as Unlock,
-  SparklesIcon as Sparkles,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/utils/cn";
 
@@ -28,7 +27,7 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    section: "LABORATORY",
+    section: "HOME",
     items: [
       { label: "Overview", href: "/", icon: Compass },
     ],
@@ -61,13 +60,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     section: "ANALYSIS",
     items: [
-      { label: "Quantitative Metrics", href: "/analysis", icon: BarChart3 },
-    ],
-  },
-  {
-    section: "EXPERIMENTAL",
-    items: [
-      { label: "Playground", href: "/playground", icon: Sparkles },
+      {
+        label: "Cryptanalysis",
+        href: "/analysis",
+        icon: Chart,
+      },
     ],
   },
 ];

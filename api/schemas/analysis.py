@@ -72,7 +72,7 @@ class HistogramResponse(BaseModel):
 
 class FullAnalysisRequest(BaseModel):
     plain_image: str = Field(..., description="Base64 original or processed image")
-    cipher_image: str = Field(..., description="Base64 encrypted ciphertext")
+    cipher_image: str | None = Field(None, description="Optional base64 encrypted ciphertext")
     recovered_image: str | None = Field(None, description="Optional decrypted image")
     diff_x: int = Field(0, description="Perturbation pixel x coordinate")
     diff_y: int = Field(0, description="Perturbation pixel y coordinate")

@@ -3,10 +3,13 @@
 import { useState } from "react";
 import {
   runArnoldXOR,
+  runChaos,
   runDCT,
   runDRPEDecrypt,
   runDRPEEncrypt,
+  runFeistel,
   runFourier,
+  runSpectralHybrid,
 } from "@/lib/api/encryption";
 import { DRPEEncryptResponse, DRPEDecryptResponse, TransformResponse } from "@/types/encryption";
 
@@ -106,6 +109,67 @@ export function useEncryption() {
     }
   };
 
+  const executeChaos = async (
+    imageUri: string,
+    x0: number,
+    r: number,
+    action: "encrypt" | "decrypt"
+  ) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await runChaos(imageUri, x0, r, action);
+      setTransformResult(res);
+      return res;
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Chaos cipher operation failed"));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const executeSpectralHybrid = async (
+    imageUri: string,
+    scrambleSeed: number,
+    maskSeed: number,
+    kernelSeed: number,
+    action: "encrypt" | "decrypt"
+  ) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await runSpectralHybrid(imageUri, scrambleSeed, maskSeed, kernelSeed, action);
+      setTransformResult(res);
+      return res;
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Spectral Hybrid operation failed"));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const executeFeistel = async (
+    imageUri: string,
+    seed: number,
+    rounds: number,
+    action: "encrypt" | "decrypt"
+  ) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await runFeistel(imageUri, seed, rounds, action);
+      setTransformResult(res);
+      return res;
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Feistel cipher operation failed"));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     loading,
     error,
@@ -117,6 +181,9 @@ export function useEncryption() {
     executeFourier,
     executeDCT,
     executeArnoldXOR,
+    executeChaos,
+    executeSpectralHybrid,
+    executeFeistel,
     clearResults: () => {
       setDrpeEncryptResult(null);
       setDrpeDecryptResult(null);
