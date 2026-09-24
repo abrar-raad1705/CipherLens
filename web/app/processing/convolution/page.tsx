@@ -1,250 +1,360 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import React, { useState, useEffect, useCallback, Suspense, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
-  ArrowRightIcon as ArrowRight,
-  CheckIcon as Check,
-  PlayIcon as Play,
+  ArrowDownTrayIcon as Download,
   ArrowPathIcon as RotateCcw,
-  BookmarkIcon as Save,
-  AdjustmentsHorizontalIcon as SlidersIcon,
-  SunIcon as Sun,
+  ChevronDownIcon as ChevronDown,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
-import { CustomKernelInput } from "@/components/processing/CustomKernelInput";
+import { KernelGrid } from "@/components/processing/KernelGrid";
+import { DriveDropzone, UploadedImageInfo } from "@/components/upload/DriveDropzone";
 import { useWorkspace } from "@/hooks/use-image";
 import { useProcessing } from "@/hooks/use-processing";
-import { formatMs } from "@/lib/utils/format";
 
-type FilterMode = "gaussian" | "median" | "sobel" | "custom";
+// ─── Types ─────────────────────────────────────────────────────────────────────
+type FilterMode = "presets" | "custom" | "brightness_contrast" | "heatmap" | "invert" | null;
 
-// Base 3x3 Kernels for live modulation
-const BASE_KERNELS: Record<string, number[][]> = {
-  identity: [
-    [0, 0, 0],
-    [0, 1, 0],
-    [0, 0, 0],
-  ],
-  gaussian: [
-    [0.0625, 0.125, 0.0625],
-    [0.125, 0.25, 0.125],
-    [0.0625, 0.125, 0.0625],
-  ],
-  sobel: [
-    [-1, 0, 1],
-    [-2, 0, 2],
-    [-1, 0, 1],
-  ],
-};
+// ─── Jet Heatmap Palette Lookup Table (256 entries) ──────────────────────────
+const HEATMAP_LUT = Array.from({ length: 256 }, (_, i) => {
+  const t = i / 255;
+  const r = Math.min(255, Math.max(0, Math.round(255 * Math.min(Math.max(1.5 - Math.abs(6 * t - 4.5), 0), 1))));
+  const g = Math.min(255, Math.max(0, Math.round(255 * Math.min(Math.max(1.5 - Math.abs(6 * t - 3.0), 0), 1))));
+  const b = Math.min(255, Math.max(0, Math.round(255 * Math.min(Math.max(1.5 - Math.abs(6 * t - 1.5), 0), 1))));
+  return [r, g, b];
+});
 
+interface PresetEntry {
+  id: string;
+  label: string;
+  tag: string;
+  /** Integer kernel values — server normalises by sum when needed */
+  matrix: number[][];
+  serverOp?: "gaussian" | "median" | "sobel" | "custom";
+}
+
+// ─── Preset catalogue (integer kernels) ───────────────────────────────────────
+const PRESET_CATALOGUE: PresetEntry[] = [
+  {
+    id: "gaussian",
+    label: "Gaussian Blur",
+    tag: "LOW-PASS",
+    serverOp: "gaussian",
+    matrix: [[1, 2, 1], [2, 4, 2], [1, 2, 1]],
+  },
+  {
+    id: "median",
+    label: "Median Filter",
+    tag: "NOISE REDUCTION",
+    serverOp: "median",
+    matrix: [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+  },
+  {
+    id: "sobel",
+    label: "Sobel Edge",
+    tag: "GRADIENT",
+    serverOp: "sobel",
+    matrix: [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],
+  },
+  {
+    id: "sharpen",
+    label: "Sharpen",
+    tag: "HIGH-PASS",
+    serverOp: "custom",
+    matrix: [[0, -1, 0], [-1, 5, -1], [0, -1, 0]],
+  },
+  {
+    id: "laplacian",
+    label: "Laplacian",
+    tag: "2nd DERIVATIVE",
+    serverOp: "custom",
+    matrix: [[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]],
+  },
+  {
+    id: "emboss",
+    label: "Emboss",
+    tag: "RELIEF",
+    serverOp: "custom",
+    matrix: [[-2, -1, 0], [-1, 1, 1], [0, 1, 2]],
+  },
+  {
+    id: "box_blur",
+    label: "Box Blur",
+    tag: "AVERAGING",
+    serverOp: "custom",
+    matrix: [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+  },
+  {
+    id: "edge_detect",
+    label: "Edge Detection",
+    tag: "CONTOUR",
+    serverOp: "custom",
+    matrix: [[0, 1, 0], [1, -4, 1], [0, 1, 0]],
+  },
+  {
+    id: "high_pass",
+    label: "High Pass",
+    tag: "FREQUENCY",
+    serverOp: "custom",
+    matrix: [[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]],
+  },
+  {
+    id: "low_pass",
+    label: "Low Pass",
+    tag: "SMOOTHING",
+    serverOp: "custom",
+    matrix: [[1, 2, 1], [2, 4, 2], [1, 2, 1]],
+  },
+];
+
+const DEFAULT_CUSTOM_MATRIX: number[][] = [
+  [0, 0, 0],
+  [0, 1, 0],
+  [0, 0, 0],
+];
+
+const IDENTITY_MATRIX: number[][] = [
+  [0, 0, 0],
+  [0, 1, 0],
+  [0, 0, 0],
+];
+
+// ─── Normalise an integer kernel by its sum for canvas convolution ─────────────
+function normaliseKernel(matrix: number[][]): number[][] {
+  const sum = matrix.reduce((a, row) => a + row.reduce((b, v) => b + v, 0), 0);
+  if (Math.abs(sum) < 0.0001) return matrix; // zero-sum kernel (edge detect) — leave unchanged
+  return matrix.map((row) => row.map((v) => v / sum));
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
 function ConvolutionBenchContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const { activeArtifact, presets, loadPresetById, addArtifact } = useWorkspace();
+  const { activeArtifact, addArtifact } = useWorkspace();
+
+  const [uploadedImage, setUploadedImage] = useState<UploadedImageInfo | null>(null);
+
   const {
     loading,
     error,
     result,
-    executeGaussian,
-    executeMedian,
-    executeSobel,
-    executeConvolution,
   } = useProcessing();
 
-  const urlMode = searchParams.get("mode") as FilterMode | null;
-  const validModes: FilterMode[] = ["gaussian", "median", "sobel", "custom"];
-  const [modeOverride, setModeOverride] = useState<FilterMode | null>(null);
-  const mode: FilterMode =
-    modeOverride ?? (urlMode && validModes.includes(urlMode) ? urlMode : "gaussian");
-  const setMode = (m: FilterMode) => setModeOverride(m);
+  // ── Mode (none selected initially)
+  const [filterMode, setFilterMode] = useState<FilterMode>(null);
 
-  const [kernelSize, setKernelSize] = useState<number>(5);
-  const [sigma, setSigma] = useState<number>(1.5);
-  const [customKernelStr, setCustomKernelStr] = useState<string>(
-    "[[0, -1, 0], [-1, 5, -1], [0, -1, 0]]"
-  );
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  // ── Preset selection (none selected initially)
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Brightness (-100 to 100) & Contrast (0.2 to 2.5) Sliders State
+  const selectedPreset = selectedPresetId
+    ? PRESET_CATALOGUE.find((p) => p.id === selectedPresetId) ?? null
+    : null;
+
+  // ── Kernel matrices (integers)
+  const [presetMatrix, setPresetMatrix] = useState<number[][]>(PRESET_CATALOGUE[0].matrix);
+  const [customMatrix, setCustomMatrix] = useState<number[][]>(DEFAULT_CUSTOM_MATRIX);
+
+  // ── Brightness: -50 to +50, center 0
   const [brightness, setBrightness] = useState<number>(0);
-  const [contrast, setContrast] = useState<number>(1.0);
+  // ── Contrast offset: -0.5 to +0.5, center 0 → actual multiplier = 1 + contrast
+  const [contrast, setContrast] = useState<number>(0);
 
-  // Real-time client-side canvas render state
+  // ── Live canvas result
   const [liveCanvasResult, setLiveCanvasResult] = useState<string | null>(null);
 
-  // Compute live modulated 3x3 kernel matrix from base kernel + contrast + brightness
-  const getDynamicKernel = useCallback(() => {
-    let base: number[][];
-    if (mode === "gaussian") {
-      base = BASE_KERNELS.gaussian;
-    } else if (mode === "sobel") {
-      base = BASE_KERNELS.sobel;
-    } else if (mode === "custom") {
-      try {
-        const parsed = JSON.parse(customKernelStr);
-        if (Array.isArray(parsed) && parsed.length === 3 && Array.isArray(parsed[0])) {
-          base = parsed;
-        } else {
-          base = BASE_KERNELS.identity;
-        }
-      } catch {
-        base = BASE_KERNELS.identity;
+  const activeMatrix =
+    filterMode === "presets" && selectedPreset
+      ? presetMatrix
+      : filterMode === "custom"
+      ? customMatrix
+      : IDENTITY_MATRIX;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
       }
-    } else {
-      base = BASE_KERNELS.identity;
-    }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
-    const bOffset = brightness / 100;
-    return base.map((row, r) =>
-      row.map((val, c) => {
-        const isCenter = r === 1 && c === 1;
-        const scaled = val * contrast;
-        const finalVal = isCenter ? scaled + bOffset : scaled;
-        return Number(finalVal.toFixed(3));
-      })
+  const handleSelectPreset = (id: string) => {
+    setSelectedPresetId(id);
+    const p = PRESET_CATALOGUE.find((x) => x.id === id);
+    if (p) setPresetMatrix(p.matrix);
+    setIsDropdownOpen(false);
+  };
+
+  const handleResetFilter = () => {
+    setFilterMode(null);
+    setSelectedPresetId(null);
+    setPresetMatrix(PRESET_CATALOGUE[0].matrix);
+    setCustomMatrix(DEFAULT_CUSTOM_MATRIX);
+  };
+
+  const handleResetBC = () => {
+    setBrightness(0);
+    setContrast(0);
+  };
+
+  const handleResetAll = () => {
+    setFilterMode(null);
+    setSelectedPresetId(null);
+    setPresetMatrix(PRESET_CATALOGUE[0].matrix);
+    setCustomMatrix(DEFAULT_CUSTOM_MATRIX);
+    setBrightness(0);
+    setContrast(0);
+  };
+
+  // ── Build effective float kernel (contrast multiplier applied to spatial weights)
+  const buildEffectiveKernel = useCallback((): number[][] => {
+    const contrastMult = 1 + contrast;
+    const norm = normaliseKernel(activeMatrix);
+    return norm.map((row) =>
+      row.map((val) => Number((val * contrastMult).toFixed(4)))
     );
-  }, [mode, customKernelStr, brightness, contrast]);
+  }, [activeMatrix, contrast]);
 
-  const dynamicKernel = getDynamicKernel();
+  const effectiveKernel = buildEffectiveKernel();
+  // DC Pixel Bias Offset: Brightness offset - mid-gray contrast pivot (128 * contrast)
+  const effectiveBiasOffset = brightness - 128 * contrast;
 
-  // Perform fast real-time HTML5 Canvas convolution whenever brightness/contrast/mode changes
+  // ── Source image pixel data cache for instant lag-free canvas preview
+  const srcCanvasRef = useRef<{
+    width: number;
+    height: number;
+    data: Uint8ClampedArray;
+  } | null>(null);
+
+  // ── Live canvas convolution using cached source pixels
   const updateRealtimeCanvas = useCallback(() => {
-    if (!activeArtifact || !activeArtifact.dataUri) return;
+    const cached = srcCanvasRef.current;
+    if (!cached) return;
 
+    const { width, height, data: src } = cached;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dstData = ctx.createImageData(width, height);
+    const dst = dstData.data;
+    const kernel = effectiveKernel;
+    const biasOffset = effectiveBiasOffset;
+    const kLen = kernel.length;
+    const half = Math.floor(kLen / 2);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let r = 0, g = 0, b = 0;
+        for (let ky = 0; ky < kLen; ky++) {
+          const iy = Math.min(Math.max(y + ky - half, 0), height - 1);
+          for (let kx = 0; kx < kLen; kx++) {
+            const ix = Math.min(Math.max(x + kx - half, 0), width - 1);
+            const w = kernel[ky][kx];
+            const idx = (iy * width + ix) * 4;
+            r += src[idx] * w;
+            g += src[idx + 1] * w;
+            b += src[idx + 2] * w;
+          }
+        }
+        const outIdx = (y * width + x) * 4;
+        const pr = Math.min(255, Math.max(0, r + biasOffset));
+        const pg = Math.min(255, Math.max(0, g + biasOffset));
+        const pb = Math.min(255, Math.max(0, b + biasOffset));
+
+        if (filterMode === "heatmap") {
+          const gray = Math.min(255, Math.max(0, Math.round(0.299 * pr + 0.587 * pg + 0.114 * pb)));
+          const [hr, hg, hb] = HEATMAP_LUT[gray];
+          dst[outIdx] = hr;
+          dst[outIdx + 1] = hg;
+          dst[outIdx + 2] = hb;
+        } else if (filterMode === "invert") {
+          dst[outIdx] = 255 - pr;
+          dst[outIdx + 1] = 255 - pg;
+          dst[outIdx + 2] = 255 - pb;
+        } else {
+          dst[outIdx] = pr;
+          dst[outIdx + 1] = pg;
+          dst[outIdx + 2] = pb;
+        }
+        dst[outIdx + 3] = 255;
+      }
+    }
+    ctx.putImageData(dstData, 0, 0);
+    setLiveCanvasResult(canvas.toDataURL("image/png"));
+  }, [effectiveKernel, effectiveBiasOffset, filterMode]);
+
+  // Pre-decode & cache image pixels whenever activeArtifact changes
+  useEffect(() => {
+    if (!activeArtifact?.dataUri) {
+      srcCanvasRef.current = null;
+      setLiveCanvasResult(null);
+      return;
+    }
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.src = activeArtifact.dataUri;
     img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      ctx.drawImage(img, 0, 0);
-      const srcData = ctx.getImageData(0, 0, img.width, img.height);
-      const dstData = ctx.createImageData(img.width, img.height);
-      const src = srcData.data;
-      const dst = dstData.data;
-
-      const kernel = dynamicKernel;
-      const kLen = kernel.length;
-      const half = Math.floor(kLen / 2);
-      const width = img.width;
-      const height = img.height;
-
-      // Brightness bias pixel offset
-      const bPixelBias = brightness * 1.25;
-
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          let r = 0, g = 0, b = 0;
-
-          for (let ky = 0; ky < kLen; ky++) {
-            const iy = Math.min(Math.max(y + ky - half, 0), height - 1);
-            for (let kx = 0; kx < kLen; kx++) {
-              const ix = Math.min(Math.max(x + kx - half, 0), width - 1);
-              const weight = kernel[ky][kx];
-              const idx = (iy * width + ix) * 4;
-              r += src[idx] * weight;
-              g += src[idx + 1] * weight;
-              b += src[idx + 2] * weight;
-            }
-          }
-
-          const outIdx = (y * width + x) * 4;
-          // Apply contrast curve and brightness bias
-          const finalR = (r - 128) * contrast + 128 + bPixelBias;
-          const finalG = (g - 128) * contrast + 128 + bPixelBias;
-          const finalB = (b - 128) * contrast + 128 + bPixelBias;
-
-          dst[outIdx] = Math.min(255, Math.max(0, finalR));
-          dst[outIdx + 1] = Math.min(255, Math.max(0, finalG));
-          dst[outIdx + 2] = Math.min(255, Math.max(0, finalB));
-          dst[outIdx + 3] = 255;
+      const maxDim = 800; // max preview resolution for ultra-fast response
+      let w = img.width;
+      let h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
         }
       }
-
-      ctx.putImageData(dstData, 0, 0);
-      setLiveCanvasResult(canvas.toDataURL("image/png"));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      srcCanvasRef.current = { width: w, height: h, data: imgData.data };
+      updateRealtimeCanvas();
     };
-  }, [activeArtifact, dynamicKernel, brightness, contrast]);
+  }, [activeArtifact?.dataUri, updateRealtimeCanvas]);
 
-  // Re-run real-time render whenever sliders or image changes
+  // Ultra-responsive 50ms debounced update
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    updateRealtimeCanvas();
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      updateRealtimeCanvas();
+    }, 50);
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
   }, [updateRealtimeCanvas]);
 
-  const handleApply = async () => {
-    if (!activeArtifact) return;
-    setSavedSuccess(false);
-
-    try {
-      if (mode === "gaussian") {
-        await executeGaussian(activeArtifact.dataUri, kernelSize, sigma);
-      } else if (mode === "median") {
-        await executeMedian(activeArtifact.dataUri, kernelSize);
-      } else if (mode === "sobel") {
-        await executeSobel(activeArtifact.dataUri);
-      } else if (mode === "custom") {
-        await executeConvolution(activeArtifact.dataUri, dynamicKernel, false);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  // ── Download
+  const handleDownload = () => {
+    const outputImg = liveCanvasResult || (result ? result.output_image : null) || activeArtifact?.dataUri;
+    if (!outputImg) return;
+    const a = document.createElement("a");
+    a.href = outputImg;
+    a.download = `processed_${uploadedImage?.name ?? "image"}.png`;
+    a.click();
   };
 
-  const handleSaveArtifact = (andNavigateToEncryption: boolean = false) => {
-    const outputImg = liveCanvasResult || (result ? result.output_image : activeArtifact?.dataUri);
-    if (!outputImg || !activeArtifact) return;
+  const currentOutputImage = liveCanvasResult || (result ? result.output_image : activeArtifact?.dataUri);
 
-    addArtifact(
-      {
-        name: `${activeArtifact.name} [Brightness ${brightness > 0 ? `+${brightness}` : brightness} | Contrast ${contrast.toFixed(2)}x]`,
-        dataUri: outputImg,
-        width: activeArtifact.width,
-        height: activeArtifact.height,
-        sourceBench: "processing",
-        metadata: {
-          filter: mode,
-          brightness,
-          contrast,
-          dynamic_kernel: dynamicKernel,
-        },
-      },
-      false
-    );
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
-
-    if (andNavigateToEncryption) {
-      router.push("/encryption");
-    }
-  };
-
-  const resetSliders = () => {
-    setBrightness(0);
-    setContrast(1.0);
-  };
-
-  const methods: { id: FilterMode; label: string }[] = [
-    { id: "gaussian", label: "Gaussian" },
-    { id: "median", label: "Median" },
-    { id: "sobel", label: "Sobel" },
-    { id: "custom", label: "Custom 2D" },
-  ];
-
-  const currentOutputImage =
-    liveCanvasResult || (result ? result.output_image : activeArtifact?.dataUri);
-
+  // ─── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 max-w-7xl py-2">
-      {/* Header */}
       <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
         <div>
           <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
@@ -254,245 +364,324 @@ function ConvolutionBenchContent() {
             Spatial Image Processing
           </h1>
         </div>
-
-        {currentOutputImage && activeArtifact && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleSaveArtifact(false)}
-            >
-              {savedSuccess ? (
-                <Check className="h-3.5 w-3.5 text-[#059669]" />
-              ) : (
-                <Save className="h-3.5 w-3.5 text-[#6F6F6A]" />
-              )}
-              <span>{savedSuccess ? "Saved" : "Save Artifact"}</span>
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => handleSaveArtifact(true)}
-            >
-              <span>Promote to DRPE</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
       </div>
 
-      {/* Main Operation Area: Left = Visualization Canvas, Right = User Inputs/Controls */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Visual Viewfield (8 cols on desktop) */}
-        <div className="lg:col-span-8 space-y-3">
-          {activeArtifact && activeArtifact.dataUri ? (
-            <SplitCompareCanvas
-              beforeSrc={activeArtifact.dataUri}
-              afterSrc={currentOutputImage || activeArtifact.dataUri}
-              beforeLabel="ORIGINAL"
-              afterLabel={`PROCESSED [B:${brightness > 0 ? `+${brightness}` : brightness} C:${contrast.toFixed(2)}x]`}
-            />
-          ) : (
-            <div className="h-[400px] flex flex-col items-center justify-center rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-sm gap-3 p-6 text-center">
-              <span className="font-medium text-[#181818] dark:text-[#F2F2F0]">
-                No Target Selected
-              </span>
-              <p className="text-[#6F6F6A] dark:text-[#A0A09B] max-w-sm text-xs">
-                Select an optical calibration preset or upload an image in Workspace to execute spatial operations.
-              </p>
-              {presets.length > 0 && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => loadPresetById(presets[0].id)}
-                >
-                  Load {presets[0].name}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Right Column: User Inputs & Controls Panel (4 cols on desktop) */}
-        <Card className="lg:col-span-4 p-5 space-y-6">
-          {/* Method Selector */}
-          <div className="space-y-2.5">
-            <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-              FILTER METHOD
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {methods.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => setMode(m.id)}
-                  className={`px-3 py-2 text-xs rounded transition-colors cursor-pointer border text-left ${
-                    mode === m.id
-                      ? "border-[#2563EB] text-[#2563EB] dark:border-[#5B8CFF] dark:text-[#5B8CFF] font-medium bg-[#2563EB]/5"
-                      : "border-[#E8E8E3] dark:border-[#292929] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] bg-transparent"
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
+      {!uploadedImage ? (
+        <DriveDropzone
+          title="Drop your image here"
+          description="Maximum 25 MB · PNG, JPG, WEBP, BMP supported"
+          actionLabel="Browse files"
+          onImageUploaded={(img) => {
+            setUploadedImage(img);
+            addArtifact({ name: img.name, dataUri: img.dataUri, width: img.width, height: img.height, sourceBench: "processing" });
+          }}
+        />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start animate-in fade-in duration-300">
+          {/* Canvas */}
+          <div className="lg:col-span-8 space-y-3">
+            {activeArtifact?.dataUri ? (
+              <SplitCompareCanvas
+                beforeSrc={activeArtifact.dataUri}
+                afterSrc={currentOutputImage || activeArtifact.dataUri}
+                beforeLabel="ORIGINAL"
+                afterLabel="PROCESSED"
+              />
+            ) : (
+              <div className="h-[400px] flex items-center justify-center rounded-md border border-[#E8E8E3] dark:border-[#292929] text-sm text-[#6F6F6A]">
+                Loading image...
+              </div>
+            )}
           </div>
 
-          {/* Dynamic Brightness & Contrast Bars */}
-          <div className="space-y-4 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                <Sun className="h-3.5 w-3.5 text-[#2563EB] dark:text-[#5B8CFF]" />
-                <span>BRIGHTNESS &amp; CONTRAST</span>
-              </div>
-              {(brightness !== 0 || contrast !== 1.0) && (
-                <button
-                  type="button"
-                  onClick={resetSliders}
-                  className="inline-flex items-center gap-1 text-[11px] font-mono text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#2563EB] dark:hover:text-[#5B8CFF] transition-colors cursor-pointer"
-                  title="Reset Brightness & Contrast"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  <span>Reset</span>
-                </button>
-              )}
-            </div>
+          {/* Controls */}
+          <Card className="lg:col-span-4 p-5 space-y-5 overflow-visible">
 
-            {/* Brightness Slider */}
-            <Slider
-              label="Brightness Offset"
-              hint="Shift DC luminance bias"
-              valueDisplay={`${brightness > 0 ? `+${brightness}` : brightness}`}
-              min={-100}
-              max={100}
-              step={1}
-              value={brightness}
-              onChange={(e) => setBrightness(Number(e.target.value))}
-            />
-
-            {/* Contrast Slider */}
-            <Slider
-              label="Contrast Gain"
-              hint="Multiply matrix weight scaling"
-              valueDisplay={`${contrast.toFixed(2)}×`}
-              min={0.2}
-              max={2.5}
-              step={0.05}
-              value={contrast}
-              onChange={(e) => setContrast(Number(e.target.value))}
-            />
-
-            {/* Live 3x3 Dynamic Kernel Matrix Visualizer */}
-            <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#121212] space-y-2">
-              <div className="flex items-center justify-between text-[11px] font-mono text-[#999993] dark:text-[#6A6A6A]">
-                <span>DYNAMIC 3×3 KERNEL</span>
-                <span className="text-[#2563EB] dark:text-[#5B8CFF]">LIVE UPDATE</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1.5 w-full">
-                {dynamicKernel.map((row, r) =>
-                  row.map((cell, c) => {
-                    const isCenter = r === 1 && c === 1;
-                    return (
-                      <div
-                        key={`dyn-${r}-${c}`}
-                        className={`text-center py-1.5 px-0.5 text-xs font-mono rounded border transition-all ${
-                          isCenter
-                            ? "bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 border-[#2563EB]/40 dark:border-[#5B8CFF]/40 text-[#2563EB] dark:text-[#5B8CFF] font-semibold shadow-2xs"
-                            : "bg-white dark:bg-[#181818] border-[#E8E8E3] dark:border-[#2D2D2D] text-[#181818] dark:text-[#F2F2F0]"
-                        }`}
-                        title={`Row ${r + 1}, Col ${c + 1}${isCenter ? " (Center DC Weight)" : ""}`}
-                      >
-                        {cell > 0 ? `+${cell}` : cell}
-                      </div>
-                    );
-                  })
+            {/* ── FILTER METHOD ── */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                <span>FILTER METHOD</span>
+                {(filterMode !== null || selectedPresetId !== null || brightness !== 0 || contrast !== 0) && (
+                  <button
+                    type="button"
+                    onClick={handleResetAll}
+                    className="flex items-center gap-1 text-[10px] text-[#6F6F6A] hover:text-[#DC2626] dark:hover:text-[#EF4444] transition-colors cursor-pointer capitalize font-sans"
+                    title="Reset all filters, brightness, contrast, and matrices"
+                  >
+                    <RotateCcw className="h-2.5 w-2.5" />
+                    <span>Reset All</span>
+                  </button>
                 )}
               </div>
+
+              {/* Stacked filter method buttons */}
+              <div className="flex flex-col gap-2">
+                {[
+                  { id: "presets", label: "Convolution Presets" },
+                  { id: "custom", label: "Custom 2D Convolution" },
+                  { id: "brightness_contrast", label: "Brightness & Contrast" },
+                  { id: "heatmap", label: "Heatmap / Pseudo-Color" },
+                  { id: "invert", label: "Invert Colors" },
+                ].map(({ id, label }) => {
+                  const isActive = filterMode === id;
+
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setFilterMode((prev) => (prev === id ? null : id as FilterMode))}
+                      className={[
+                        "w-full py-3 px-4 rounded-lg border transition-all duration-150 cursor-pointer text-center font-medium text-sm sm:text-base flex items-center justify-center gap-2",
+                        isActive
+                          ? "border-[#2563EB] dark:border-[#5B8CFF] bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 text-[#2563EB] dark:text-[#5B8CFF] font-semibold shadow-sm hover:bg-[#2563EB]/15 dark:hover:bg-[#5B8CFF]/20"
+                          : "border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#141414] text-[#6F6F6A] dark:text-[#A0A09B] hover:border-[#2563EB]/60 dark:hover:border-[#5B8CFF]/60 hover:bg-[#2563EB]/5 dark:hover:bg-[#5B8CFF]/10 hover:text-[#2563EB] dark:hover:text-[#5B8CFF]",
+                      ].join(" ")}
+                    >
+                      <span>{label}</span>
+                      {isActive && (
+                        <span className="h-2 w-2 rounded-full bg-[#2563EB] dark:bg-[#5B8CFF] shrink-0 ring-2 ring-[#2563EB]/30 dark:ring-[#5B8CFF]/30" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
-          {/* Mode-Specific Parameters */}
-          <div className="space-y-4 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                BASE OPERATOR
-              </span>
-              <Badge variant="signal">{mode}</Badge>
-            </div>
-
-            {(mode === "gaussian" || mode === "median") && (
-              <Slider
-                label="Kernel Size"
-                hint="Odd matrix size"
-                valueDisplay={`${kernelSize} × ${kernelSize}`}
-                min={3}
-                max={15}
-                step={2}
-                value={kernelSize}
-                onChange={(e) => setKernelSize(Number(e.target.value))}
-              />
-            )}
-
-            {mode === "gaussian" && (
-              <Slider
-                label="Gaussian Spread (σ)"
-                hint="Standard deviation"
-                valueDisplay={sigma.toFixed(1)}
-                min={0.5}
-                max={5.0}
-                step={0.1}
-                value={sigma}
-                onChange={(e) => setSigma(Number(e.target.value))}
-              />
-            )}
-
-            {mode === "custom" && (
-              <CustomKernelInput
-                kernelStr={customKernelStr}
-                onChange={setCustomKernelStr}
-              />
-            )}
-          </div>
-
-          {error && (
-            <div className="text-xs text-[#DC2626] font-mono py-1">
-              Error: {error}
-            </div>
-          )}
-
-          {/* Action Button & Telemetry */}
-          <div className="pt-2 space-y-3">
-            <Button
-              variant="primary"
-              onClick={handleApply}
-              disabled={loading || !activeArtifact}
-              className="w-full h-9"
-            >
-              <Play className="h-3.5 w-3.5 fill-current mr-1" />
-              <span>{loading ? "Computing via FastAPI..." : "Apply Server Filter"}</span>
-            </Button>
-
-            {result && (
-              <div className="p-2.5 rounded border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#101010] text-xs font-mono text-[#6F6F6A] dark:text-[#A0A09B] space-y-1">
-                <div className="flex justify-between">
-                  <span>Operator:</span>
-                  <span className="text-[#181818] dark:text-[#F2F2F0]">{result.filter}</span>
+            {/* ── PRESETS ── */}
+            {filterMode === "presets" && (
+              <div className="space-y-3 animate-in fade-in duration-200">
+                <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase text-center">
+                  Select Preset
                 </div>
-                <div className="flex justify-between">
-                  <span>Latency:</span>
-                  <span className="text-[#181818] dark:text-[#F2F2F0]">{formatMs(result.latency_ms)}</span>
+
+                {/* Dropdown */}
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsDropdownOpen((v) => !v)}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#141414] hover:border-[#B0B0A8] dark:hover:border-[#484848] text-sm text-[#181818] dark:text-[#F2F2F0] transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-medium truncate">
+                        {selectedPreset ? selectedPreset.label : "Select a Preset..."}
+                      </span>
+                      {selectedPreset && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#222] text-[#999993] dark:text-[#6A6A6A] shrink-0">
+                          {selectedPreset.tag}
+                        </span>
+                      )}
+                    </div>
+                    <ChevronDown className={`h-3.5 w-3.5 text-[#6F6F6A] shrink-0 transition-transform duration-150 ${isDropdownOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {isDropdownOpen && (
+                    <div className="absolute z-50 left-0 right-0 top-[calc(100%+4px)] rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#161616] shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+                      {PRESET_CATALOGUE.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleSelectPreset(p.id)}
+                          className={[
+                            "w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left transition-colors cursor-pointer",
+                            p.id === selectedPresetId
+                              ? "bg-[#2563EB]/5 dark:bg-[#5B8CFF]/8 text-[#2563EB] dark:text-[#5B8CFF]"
+                              : "hover:bg-[#F4F4F1] dark:hover:bg-[#1E1E1E] text-[#181818] dark:text-[#F2F2F0]",
+                          ].join(" ")}
+                        >
+                          <span className="font-medium truncate">{p.label}</span>
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#222] text-[#999993] dark:text-[#6A6A6A] shrink-0">
+                            {p.tag}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Always show kernel matrix when a preset is selected */}
+                {selectedPreset && (
+                  <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center justify-between text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
+                      <span>Kernel Matrix (integers)</span>
+                      <button
+                        type="button"
+                        onClick={() => setPresetMatrix(selectedPreset.matrix)}
+                        className="flex items-center gap-0.5 hover:text-[#2563EB] dark:hover:text-[#5B8CFF] transition-colors cursor-pointer"
+                      >
+                        <RotateCcw className="h-2.5 w-2.5" />
+                        <span>Reset</span>
+                      </button>
+                    </div>
+                    <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#111]">
+                      <KernelGrid matrix={presetMatrix} onChange={setPresetMatrix} />
+                    </div>
+                    <p className="text-[10px] text-[#999993] dark:text-[#6A6A6A] text-center">
+                      ↑↓ or scroll ±1 · Shift+↑↓ ±5 · ←→ navigate
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── CUSTOM MODE ── */}
+            {filterMode === "custom" && (
+              <div className="space-y-2 animate-in fade-in duration-200">
+                <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase text-center">
+                  Custom Kernel Matrix
+                </div>
+                <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#111]">
+                  <KernelGrid matrix={customMatrix} onChange={setCustomMatrix} />
+                </div>
+                <p className="text-[10px] text-[#999993] dark:text-[#6A6A6A] text-center">
+                  Click & type · ↑↓ ±1 · Shift+↑↓ ±5 · scroll ±1
+                </p>
+              </div>
+            )}
+
+            {/* ── BRIGHTNESS & CONTRAST MODE ── */}
+            {filterMode === "brightness_contrast" && (
+              <div className="space-y-4 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                  <span>BRIGHTNESS &amp; CONTRAST</span>
+                  {(brightness !== 0 || contrast !== 0) && (
+                    <button
+                      type="button"
+                      onClick={handleResetBC}
+                      className="flex items-center gap-1 text-[10px] text-[#6F6F6A] hover:text-[#2563EB] dark:hover:text-[#5B8CFF] transition-colors cursor-pointer capitalize font-sans"
+                      title="Reset brightness and contrast to 0"
+                    >
+                      <RotateCcw className="h-2.5 w-2.5" />
+                      <span>Reset B&amp;C</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Brightness: −50 to +50, centre 0 */}
+                <Slider
+                  label="Brightness"
+                  hint="−50   0   +50"
+                  value={brightness}
+                  valueDisplay={brightness > 0 ? `+${brightness}` : String(brightness)}
+                  min={-50}
+                  max={50}
+                  step={1}
+                  onChange={(e) => setBrightness(Number(e.target.value))}
+                />
+
+                {/* Contrast: −0.5 to +0.5, centre 0 (multiplier = 1 + value) */}
+                <Slider
+                  label="Contrast"
+                  hint="−0.5   0   +0.5"
+                  value={contrast}
+                  valueDisplay={contrast > 0 ? `+${contrast.toFixed(2)}` : contrast.toFixed(2)}
+                  min={-0.5}
+                  max={0.5}
+                  step={0.05}
+                  onChange={(e) => setContrast(Number(e.target.value))}
+                />
+
+                {/* Effective Kernel Weights & Pixel Bias */}
+                <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#0F0F0F] space-y-2.5">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-[#999993] dark:text-[#6A6A6A] uppercase tracking-wider">
+                    <span>Effective Kernel Weights</span>
+                    <span className="text-[#2563EB] dark:text-[#5B8CFF]">Scale: ×{(1 + contrast).toFixed(2)}</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1">
+                    {effectiveKernel.map((row, r) =>
+                      row.map((cell, c) => {
+                        const sz = effectiveKernel.length;
+                        const isCenter = r === Math.floor(sz / 2) && c === Math.floor(sz / 2);
+                        return (
+                          <div
+                            key={`ek-${r}-${c}`}
+                            className={[
+                              "text-center py-1.5 text-[11px] font-mono rounded border",
+                              isCenter
+                                ? "bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 border-[#2563EB]/40 dark:border-[#5B8CFF]/40 text-[#2563EB] dark:text-[#5B8CFF] font-semibold"
+                                : "bg-white dark:bg-[#181818] border-[#E8E8E3] dark:border-[#2D2D2D] text-[#181818] dark:text-[#F2F2F0]",
+                            ].join(" ")}
+                          >
+                            {parseFloat(cell.toFixed(3))}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] font-mono pt-1.5 border-t border-[#E8E8E3]/60 dark:border-[#292929]/60">
+                    <span className="text-[#6F6F6A] dark:text-[#A0A09B]">Brightness Pixel Bias:</span>
+                    <span className="font-semibold text-[#181818] dark:text-[#F2F2F0]">
+                      {effectiveBiasOffset >= 0 ? `+${effectiveBiasOffset.toFixed(1)}` : effectiveBiasOffset.toFixed(1)} px
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
-          </div>
-        </Card>
-      </div>
+
+            {/* ── HEATMAP MODE ── */}
+            {filterMode === "heatmap" && (
+              <div className="space-y-3 animate-in fade-in duration-200">
+                <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase text-center">
+                  HEATMAP / PSEUDO-COLOR MAP
+                </div>
+                <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#0F0F0F] space-y-2 text-center">
+                  <div className="h-4 w-full rounded bg-gradient-to-r from-blue-700 via-green-500 via-yellow-400 to-red-600 shadow-inner" />
+                  <div className="flex justify-between text-[10px] font-mono text-[#999993] dark:text-[#6A6A6A] px-1">
+                    <span>0 (Dark)</span>
+                    <span>128</span>
+                    <span>255 (Bright)</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── INVERT MODE ── */}
+            {filterMode === "invert" && (
+              <div className="space-y-3 animate-in fade-in duration-200">
+                <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase text-center">
+                  COLOR INVERSION
+                </div>
+                <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#0F0F0F] text-center space-y-1">
+                  <p className="text-xs font-mono text-[#2563EB] dark:text-[#5B8CFF] font-semibold">
+                    RGB<sub>out</sub> = 255 − RGB<sub>in</sub>
+                  </p>
+                  <p className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
+                    Reverses color channel values to produce a photographic negative preview.
+                  </p>
+                </div>
+              </div>
+            )}
+
+
+
+            {/* ── ERRORS ── */}
+            {error && (
+              <div className="text-xs text-[#DC2626] font-mono text-center py-1">Error: {error}</div>
+            )}
+
+            {/* ── ACTIONS ── */}
+            <div className="pt-2 border-t border-[#E8E8E3] dark:border-[#292929]">
+              <Button
+                variant="primary"
+                onClick={handleDownload}
+                disabled={!currentOutputImage}
+                className="w-full h-9"
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                <span>Download Image</span>
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function ConvolutionBenchPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-[#6F6F6A]">Loading image processing bench...</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-[#6F6F6A]">Loading...</div>}>
       <ConvolutionBenchContent />
     </Suspense>
   );

@@ -353,3 +353,20 @@ input[type="range"]::-moz-range-thumb {
 .animate-pipeline-beam-continuous {
   animation: pipelineBeamContinuous 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
 }
+
+.font-doodle {
+  font-family: var(--font-doodle), "Caveat", cursive, sans-serif;
+}
+
+@keyframes floatLevitate {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+.animate-float-levitate {
+  animation: floatLevitate 2.2s ease-in-out infinite;
+}

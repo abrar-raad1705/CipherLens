@@ -97,11 +97,63 @@ export function DoodleUnderline({ className }: { className?: string }) {
  * Hand-drawn research notebook annotation arrow with natural wobble and curvature.
  */
 interface DoodleArrowProps {
-  direction?: "top-left" | "top-right" | "bottom-up";
+  direction?: "top-left" | "top-right" | "bottom-up" | "side-left" | "side-right";
   className?: string;
 }
 
 export function DoodleArrow({ direction = "top-right", className }: DoodleArrowProps) {
+  if (direction === "side-left") {
+    // Curving from left side text to the right into image edge
+    return (
+      <svg
+        className={cn("w-14 h-10 text-[#6F6F6A] dark:text-[#A0A09B] overflow-visible", className)}
+        viewBox="0 0 56 40"
+        fill="none"
+      >
+        <path
+          d="M 4,12 C 16,8 28,14 36,22 C 40,26 46,28 50,28"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M 43,23 L 50,28 L 44,32"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  if (direction === "side-right") {
+    // Curving from right side text to the left into image edge
+    return (
+      <svg
+        className={cn("w-14 h-10 text-[#6F6F6A] dark:text-[#A0A09B] overflow-visible", className)}
+        viewBox="0 0 56 40"
+        fill="none"
+      >
+        <path
+          d="M 52,12 C 40,8 28,14 20,22 C 16,26 10,28 6,28"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M 13,23 L 6,28 L 12,32"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
   if (direction === "top-left") {
     // Rounder path with inside loop-de-loop curving from top-left text down to the corner
     return (
