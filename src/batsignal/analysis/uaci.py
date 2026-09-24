@@ -9,6 +9,11 @@ def calculate_uaci(ciphertext1: np.ndarray, ciphertext2: np.ndarray) -> float:
     if ciphertext1.shape != ciphertext2.shape:
         raise ValueError("Inputs must have identical shapes.")
 
+    if np.iscomplexobj(ciphertext1):
+        ciphertext1 = np.abs(ciphertext1)
+    if np.iscomplexobj(ciphertext2):
+        ciphertext2 = np.abs(ciphertext2)
+
     c1 = ciphertext1.astype(np.float64)
     c2 = ciphertext2.astype(np.float64)
 

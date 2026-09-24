@@ -2,6 +2,8 @@ import numpy as np
 
 
 def calculate_entropy(image: np.ndarray):
+    if np.iscomplexobj(image):
+        image = np.abs(image)
 
     _, counts = np.unique(image, return_counts=True)
 

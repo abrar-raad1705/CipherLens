@@ -6,6 +6,9 @@ def calculate_correlation(image: np.ndarray) -> dict[str, float]:
     Calculate Pearson correlation coefficients between adjacent pixels
     in horizontal, vertical, and diagonal directions.
     """
+    # If image is complex, take magnitude
+    if np.iscomplexobj(image):
+        image = np.abs(image)
     # If image is multichannel/color, compute on 2D grayscale or flatten channels
     img = image.astype(np.float64)
     if img.ndim == 3:

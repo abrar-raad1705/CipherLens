@@ -5,8 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   AdjustmentsHorizontalIcon as Sliders,
-  ArrowPathIcon as RefreshCw,
   Bars3Icon as Menu,
+  ChartBarIcon as Chart,
   GlobeAltIcon as Compass,
   LockClosedIcon as Lock,
   LockOpenIcon as Unlock,
@@ -14,26 +14,20 @@ import {
   SunIcon as Sun,
   XMarkIcon as X,
 } from "@heroicons/react/24/outline";
-import { useWorkspace } from "@/hooks/use-image";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils/cn";
-import { ChangeImageModal } from "@/components/upload/ChangeImageModal";
-import { ImageInspectionModal } from "@/components/image/ImageInspectionModal";
 
 export function Header() {
   const pathname = usePathname();
-  const { activeArtifact, isMounted } = useWorkspace();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, isMounted } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
-  const [isInspectModalOpen, setIsInspectModalOpen] = useState(false);
-  const [isThumbnailHovered, setIsThumbnailHovered] = useState(false);
 
   const navLinks = [
     { label: "Overview", href: "/", icon: Compass },
     { label: "Image Processing", href: "/processing/convolution", icon: Sliders },
     { label: "Encryption", href: "/encryption", icon: Lock },
     { label: "Decryption", href: "/decryption", icon: Unlock },
+    { label: "Cryptanalysis", href: "/analysis", icon: Chart },
   ];
 
   return (
@@ -62,6 +56,20 @@ export function Header() {
 
           {/* Right: Theme Switcher */}
           <div className="flex items-center gap-3">
+            <button
+              onClick={toggleTheme}
+              className="p-1.5 text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label="Toggle theme"
+            >
+              {!isMounted ? (
+                <div className="h-4 w-4" />
+              ) : theme === "dark" ? (
+                <Sun className="h-4 w-4 text-[#FFAB5E]" />
+              ) : (
+                <Moon className="h-4 w-4 text-[#4B5563]" />
+              )}
+            </button>
           </div>
         </div>
 
@@ -96,24 +104,6 @@ export function Header() {
           </div>
         )}
       </header>
-
-      {/* Change Image Modal with Artifact Gallery, Upload & Crop/Zoom */}
-      <ChangeImageModal
-        isOpen={isChangeModalOpen}
-        onClose={() => setIsChangeModalOpen(false)}
-      />
-
-      {/* Full-Feature Image Inspection Modal */}
-      {activeArtifact && (
-        <ImageInspectionModal
-          isOpen={isInspectModalOpen}
-          onClose={() => setIsInspectModalOpen(false)}
-          imageSrc={activeArtifact.dataUri}
-          name={activeArtifact.name}
-          width={activeArtifact.width}
-          height={activeArtifact.height}
-        />
-      )}
     </>
   );
 }

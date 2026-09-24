@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useRef } from "react";
+import React, { useState, useEffect, useCallback, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   PlayIcon as Play,
@@ -135,35 +135,9 @@ function AnalysisBenchContent() {
     }
   }, [searchParams, artifacts, activeArtifact]);
 
-  // Auto-run analysis when requested (via ?autorun=1 query parameter or session flag)
-  const autoRunDoneRef = useRef(false);
-  useEffect(() => {
-    if (autoRunDoneRef.current) return;
-    const autorunParam = searchParams.get("autorun");
-    const autorunSession = typeof window !== "undefined" ? sessionStorage.getItem("analysis_autorun") : null;
-    const shouldAutoRun = autorunParam === "1" || autorunParam === "true" || autorunSession === "true";
-
-    if (shouldAutoRun && plainImage && (cipherImage || recoveredImage) && !fullAnalysis && !loading) {
-      autoRunDoneRef.current = true;
-      if (typeof window !== "undefined") sessionStorage.removeItem("analysis_autorun");
-      handleRunAnalysis();
-    }
-  }, [searchParams, plainImage, cipherImage, recoveredImage, fullAnalysis, loading]);
-
-  // Adjust default compare tab based on available inputs
-  useEffect(() => {
-    if (cipherImage && recoveredImage) {
-      setActiveCompareTab("cipher");
-    } else if (recoveredImage && !cipherImage) {
-      setActiveCompareTab("recovered");
-    } else {
-      setActiveCompareTab("cipher");
-    }
-  }, [cipherImage, recoveredImage]);
-
   const canRunAnalysis = Boolean(plainImage && (cipherImage || recoveredImage));
 
-  const handleRunAnalysis = async () => {
+  const handleRunAnalysis = useCallback(async () => {
     if (!plainImage || (!cipherImage && !recoveredImage)) return;
     try {
       const algoParam = searchParams.get("algo") || "DRPE";
@@ -179,7 +153,33 @@ function AnalysisBenchContent() {
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [plainImage, cipherImage, recoveredImage, searchParams, executeFullAnalysis]);
+
+  // Auto-run analysis when requested (via ?autorun=1 query parameter or session flag)
+  const autoRunDoneRef = useRef(false);
+  useEffect(() => {
+    if (autoRunDoneRef.current) return;
+    const autorunParam = searchParams.get("autorun");
+    const autorunSession = typeof window !== "undefined" ? sessionStorage.getItem("analysis_autorun") : null;
+    const shouldAutoRun = autorunParam === "1" || autorunParam === "true" || autorunSession === "true";
+
+    if (shouldAutoRun && plainImage && (cipherImage || recoveredImage) && !fullAnalysis && !loading) {
+      autoRunDoneRef.current = true;
+      if (typeof window !== "undefined") sessionStorage.removeItem("analysis_autorun");
+      handleRunAnalysis();
+    }
+  }, [searchParams, plainImage, cipherImage, recoveredImage, fullAnalysis, loading, handleRunAnalysis]);
+
+  // Adjust default compare tab based on available inputs
+  useEffect(() => {
+    if (cipherImage && recoveredImage) {
+      setActiveCompareTab("cipher");
+    } else if (recoveredImage && !cipherImage) {
+      setActiveCompareTab("recovered");
+    } else {
+      setActiveCompareTab("cipher");
+    }
+  }, [cipherImage, recoveredImage]);
 
   return (
     <div className="space-y-6 max-w-7xl py-2">

@@ -8,6 +8,11 @@ def calculate_ssim(original: np.ndarray, recovered: np.ndarray) -> float:
     if original.shape != recovered.shape:
         raise ValueError("Inputs must have identical shapes.")
 
+    if np.iscomplexobj(original):
+        original = np.abs(original)
+    if np.iscomplexobj(recovered):
+        recovered = np.abs(recovered)
+
     orig = original.astype(np.float64)
     rec = recovered.astype(np.float64)
 
