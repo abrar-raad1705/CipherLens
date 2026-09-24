@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef, Suspense } from "react";
-import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChartBarIcon as BarChart3,
@@ -39,7 +38,7 @@ import {
   downloadKeyJson,
 } from "@/lib/key-file";
 import { runCorrelation, runEntropy } from "@/lib/api/analysis";
-import { DRPEStages } from "@/types/encryption";
+import { DRPEStages, KeyFileV2 } from "@/types/encryption";
 
 interface AlgorithmMeta {
   id: EncryptionAlgorithm;
@@ -133,6 +132,7 @@ function EncryptionWorkbenchContent() {
   const {
     loading,
     error,
+    executeV2Encrypt,
     executeDRPEEncrypt,
     executeFourier,
     executeDCT,
@@ -217,25 +217,9 @@ function EncryptionWorkbenchContent() {
     shape: number[];
   } | null>(null);
 
-  // Download popup modal state
-  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState<boolean>(false);
-  const [isMounted, setIsMounted] = useState<boolean>(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  // Keyboard shortcut: Escape to close download modal
-  useEffect(() => {
-    if (!isDownloadModalOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsDownloadModalOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isDownloadModalOpen]);
+  // Version 2 Key File state
+  const [keyFileV2, setKeyFileV2] = useState<KeyFileV2 | null>(null);
+  const [keyFileText, setKeyFileText] = useState<string | null>(null);
 
   // Sync algorithm if URL param changes
   useEffect(() => {
@@ -269,63 +253,38 @@ function EncryptionWorkbenchContent() {
       let outputUri = "";
       let latency = 0;
 
-      if (selectedAlgo === "drpe") {
-        const res = await executeDRPEEncrypt(uploadedImage.dataUri, drpeSeed1, drpeSeed2);
+      if (["drpe", "fourier", "dct", "arnold"].includes(selectedAlgo)) {
+        const res = await executeV2Encrypt(uploadedImage.dataUri, selectedAlgo, {
+          itr: arnoldItr,
+        });
         outputUri = res.ciphertext;
         latency = res.latency_ms;
         setPipelineStages(res.stages);
         setActivePipelineStage("ciphertext");
+        setKeyFileV2(res.key_file);
+        setKeyFileText(res.key_file_text);
+        if (selectedAlgo === "arnold") {
+          setArnoldCropped(Boolean(res.metadata?.square_cropped));
+        }
 
-        // Capture complex package for JSON key download
-        if (res.ciphertext_real && res.ciphertext_imag && res.ciphertext_shape) {
-          setCiphertextPackage({
-            real: res.ciphertext_real,
-            imag: res.ciphertext_imag,
-            shape: res.ciphertext_shape,
-          });
-        }
-      } else if (selectedAlgo === "fourier") {
-        const res = await executeFourier(uploadedImage.dataUri, fourierSeed, "encrypt");
-        outputUri = res.output_image;
-        latency = res.latency_ms;
-        if (res.stages) {
-          setPipelineStages(res.stages);
-        }
-        setActivePipelineStage("ciphertext");
-
-        if (res.ciphertext_real && res.ciphertext_imag && res.ciphertext_shape) {
-          setCiphertextPackage({
-            real: res.ciphertext_real,
-            imag: res.ciphertext_imag,
-            shape: res.ciphertext_shape,
-          });
-        }
-      } else if (selectedAlgo === "dct") {
-        const res = await executeDCT(uploadedImage.dataUri, dctSeed, "encrypt");
-        outputUri = res.output_image;
-        latency = res.latency_ms;
-        if (res.stages) {
-          setPipelineStages(res.stages);
-        }
-        setActivePipelineStage("ciphertext");
-
-        if (res.ciphertext_real && res.ciphertext_shape) {
-          setCiphertextPackage({
-            real: res.ciphertext_real,
-            shape: res.ciphertext_shape,
-          });
-        }
-      } else if (selectedAlgo === "arnold") {
-        const res = await executeArnoldXOR(uploadedImage.dataUri, arnoldItr, arnoldXor, "encrypt");
-        outputUri = res.output_image;
-        latency = res.latency_ms;
-        setArnoldCropped(Boolean(res.metadata?.square_cropped));
-        if (res.stages) {
-          setPipelineStages(res.stages);
-        }
-        setActivePipelineStage("ciphertext");
+        saveEncryptionSession({
+          algorithm: selectedAlgo,
+          realImageUri: uploadedImage.dataUri,
+          realImageName: uploadedImage.name,
+          cipherImageUri: outputUri,
+          keys: {
+            iterations: arnoldItr,
+          },
+          timestamp: Date.now(),
+        });
       } else if (selectedAlgo === "spectral_hybrid") {
-        const res = await executeSpectralHybrid(uploadedImage.dataUri, scrambleSeed, maskSeed, kernelSeed, "encrypt");
+        const res = await executeSpectralHybrid(
+          uploadedImage.dataUri,
+          scrambleSeed,
+          maskSeed,
+          kernelSeed,
+          "encrypt"
+        );
         outputUri = res.output_image;
         latency = res.latency_ms;
         if (res.stages) {
@@ -341,7 +300,12 @@ function EncryptionWorkbenchContent() {
           });
         }
       } else if (selectedAlgo === "feistel") {
-        const res = await executeFeistel(uploadedImage.dataUri, feistelSeed, feistelRounds, "encrypt");
+        const res = await executeFeistel(
+          uploadedImage.dataUri,
+          feistelSeed,
+          feistelRounds,
+          "encrypt"
+        );
         outputUri = res.output_image;
         latency = res.latency_ms;
         if (res.stages) {
@@ -426,9 +390,34 @@ function EncryptionWorkbenchContent() {
     downloadImage(ciphertextUri, `${baseName}_${selectedAlgo}_ciphertext.png`);
   };
 
+  const handleSendToDecryption = () => {
+    if (!uploadedImage || !ciphertextUri) return;
+    router.push(`/decryption?algo=${selectedAlgo}`);
+  };
+
+  const handleNewKeySession = () => {
+    setCiphertextUri(null);
+    setPipelineStages(null);
+    setActivePipelineStage("ciphertext");
+    setKeyFileV2(null);
+    setKeyFileText(null);
+    setComparisonStats({
+      realEntropy: null,
+      cipherEntropy: null,
+      realCorr: null,
+      cipherCorr: null,
+    });
+  };
+
   const handleDownloadKeyFile = () => {
     if (!uploadedImage) return;
     const baseName = uploadedImage.name.replace(/\.[^/.]+$/, "");
+
+    if (keyFileText) {
+      downloadKeyJson(keyFileText, `${baseName}_${selectedAlgo}_key.json`);
+      return;
+    }
+
     const keys: EncryptionSessionKeys =
       selectedAlgo === "drpe"
         ? { seed1: drpeSeed1, seed2: drpeSeed2 }
@@ -447,7 +436,6 @@ function EncryptionWorkbenchContent() {
       keys,
       sourceImageName: uploadedImage.name,
       imageDimensions: { width: uploadedImage.width, height: uploadedImage.height },
-      // Embed ciphertext package for cross-session decryption if available
       ...(ciphertextPackage
         ? {
             ciphertextReal: ciphertextPackage.real,
@@ -681,69 +669,114 @@ function EncryptionWorkbenchContent() {
                   {/* 1. DRPE Settings */}
                   {selectedAlgo === "drpe" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        PHASE KEY SEEDS (ENCRYPTION)
+                      <div className="rounded-lg border border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            Layer 2 Cryptographic Security
+                          </span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-600/10 text-blue-700 dark:text-blue-300 font-medium">
+                            256-bit CSPRNG
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] leading-relaxed">
+                          Phase masks (R₁ &amp; R₂) are automatically derived from a fresh 256-bit master key and salt via HKDF-SHA256, authenticated with HMAC-SHA256. Manual seed entry is deprecated for security.
+                        </p>
+                        <div className="flex items-center justify-between pt-1 border-t border-blue-200/40 dark:border-blue-900/30">
+                          <span className="text-[10px] text-[#8E8E93] font-mono">Status: Ready to derive</span>
+                          <button
+                            type="button"
+                            onClick={handleNewKeySession}
+                            className="text-[10px] font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-0.5"
+                          >
+                            <RotateCcw className="h-2.5 w-2.5" />
+                            <span>New Key Session</span>
+                          </button>
+                        </div>
                       </div>
-                      <Slider
-                        label="Spatial Phase Mask (R₁)"
-                        valueDisplay={drpeSeed1}
-                        min={100}
-                        max={9999}
-                        step={1}
-                        value={drpeSeed1}
-                        onChange={(e) => setDrpeSeed1(Number(e.target.value))}
-                      />
-                      <Slider
-                        label="Fourier Phase Mask (R₂)"
-                        valueDisplay={drpeSeed2}
-                        min={100}
-                        max={9999}
-                        step={1}
-                        value={drpeSeed2}
-                        onChange={(e) => setDrpeSeed2(Number(e.target.value))}
-                      />
                     </div>
                   )}
 
                   {/* 2. Fourier Settings */}
                   {selectedAlgo === "fourier" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        SPECTRAL PERMUTATION KEY
+                      <div className="rounded-lg border border-cyan-200 dark:border-cyan-900/40 bg-cyan-50/50 dark:bg-cyan-950/20 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-700 dark:text-cyan-300 font-semibold flex items-center gap-1">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            Layer 2 Cryptographic Security
+                          </span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-600/10 text-cyan-700 dark:text-cyan-300 font-medium">
+                            256-bit CSPRNG
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] leading-relaxed">
+                          Frequency permutation indices are derived from fresh 256-bit CSPRNG entropy via HKDF domain label <code className="font-mono text-[10px]">BatSignal/v2/FOURIER/Permutation</code>.
+                        </p>
+                        <div className="flex items-center justify-between pt-1 border-t border-cyan-200/40 dark:border-cyan-900/30">
+                          <span className="text-[10px] text-[#8E8E93] font-mono">Status: Ready to derive</span>
+                          <button
+                            type="button"
+                            onClick={handleNewKeySession}
+                            className="text-[10px] font-medium text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer flex items-center gap-0.5"
+                          >
+                            <RotateCcw className="h-2.5 w-2.5" />
+                            <span>New Key Session</span>
+                          </button>
+                        </div>
                       </div>
-                      <Slider
-                        label="Phase Seed"
-                        valueDisplay={fourierSeed}
-                        min={1}
-                        max={9999}
-                        step={1}
-                        value={fourierSeed}
-                        onChange={(e) => setFourierSeed(Number(e.target.value))}
-                      />
                     </div>
                   )}
 
                   {/* 3. DCT Settings */}
                   {selectedAlgo === "dct" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        DCT BASIS PERMUTATION SEED
+                      <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            Layer 2 Cryptographic Security
+                          </span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 font-medium">
+                            256-bit CSPRNG
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] leading-relaxed">
+                          DCT basis permutation is derived from fresh 256-bit CSPRNG entropy via HKDF domain label <code className="font-mono text-[10px]">BatSignal/v2/DCT/Permutation</code>.
+                        </p>
+                        <div className="flex items-center justify-between pt-1 border-t border-emerald-200/40 dark:border-emerald-900/30">
+                          <span className="text-[10px] text-[#8E8E93] font-mono">Status: Ready to derive</span>
+                          <button
+                            type="button"
+                            onClick={handleNewKeySession}
+                            className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-0.5"
+                          >
+                            <RotateCcw className="h-2.5 w-2.5" />
+                            <span>New Key Session</span>
+                          </button>
+                        </div>
                       </div>
-                      <Slider
-                        label="Permutation Seed"
-                        valueDisplay={dctSeed}
-                        min={1}
-                        max={9999}
-                        step={1}
-                        value={dctSeed}
-                        onChange={(e) => setDctSeed(Number(e.target.value))}
-                      />
                     </div>
                   )}
 
                   {/* 4. Arnold Cat Map Settings */}
                   {selectedAlgo === "arnold" && (
                     <div className="space-y-3">
+                      <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-amber-700 dark:text-amber-300 font-semibold flex items-center gap-1">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            ChaCha20 Keystream XOR
+                          </span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-600/10 text-amber-700 dark:text-amber-300 font-medium">
+                            Layer 2
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] leading-relaxed">
+                          Replaces constant XOR with a fresh ChaCha20 stream cipher keystream. Cat Map iterations remain configurable.
+                        </p>
+                      </div>
+
                       <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
                         CHAOTIC TORAL PARAMETERS
                       </div>
@@ -755,15 +788,6 @@ function EncryptionWorkbenchContent() {
                         step={1}
                         value={arnoldItr}
                         onChange={(e) => setArnoldItr(Number(e.target.value))}
-                      />
-                      <Slider
-                        label="XOR Diffusion Mask"
-                        valueDisplay={`0x${arnoldXor.toString(16).toUpperCase()} (${arnoldXor})`}
-                        min={0}
-                        max={255}
-                        step={1}
-                        value={arnoldXor}
-                        onChange={(e) => setArnoldXor(Number(e.target.value))}
                       />
                       {arnoldCropped && (
                         <div className="text-[10px] font-mono text-[#D97706] dark:text-[#FBBF24] p-1.5 rounded bg-[#FFFBEB] dark:bg-[#78350F]/20 border border-[#FDE68A] dark:border-[#B45309]/30">
@@ -882,27 +906,49 @@ function EncryptionWorkbenchContent() {
                   </Button>
 
                   {ciphertextUri && (
-                    <>
+                    <div className="space-y-1.5 pt-1.5 border-t border-[#E8E8E3] dark:border-[#242424]">
                       <Button
                         type="button"
-                        onClick={() => setIsDownloadModalOpen(true)}
-                        className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-[#2563EB] hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 animate-in fade-in duration-150"
-                        title="Download Encrypted Image or Key Package"
+                        onClick={handleDownloadCiphertext}
+                        className="w-full h-8.5 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-[#2563EB] hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 animate-in fade-in duration-150"
+                        title="Download Encrypted Image (.png)"
                       >
                         <Download className="h-3.5 w-3.5 text-white shrink-0" />
-                        <span>Download Package</span>
+                        <span>Download Encrypted Image (.png)</span>
+                      </Button>
+
+                      <Button
+                        type="button"
+                        onClick={handleDownloadKeyFile}
+                        variant="outline"
+                        className="w-full h-8.5 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] border-[#D0D0CA] dark:border-[#383838] hover:border-[#2563EB] text-[#181818] dark:text-[#F2F2F0] flex items-center justify-center gap-1.5 animate-in fade-in duration-150"
+                        title="Download Secret Key (.json)"
+                      >
+                        <FileText className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span>Download Secret Key (.json)</span>
+                      </Button>
+
+                      <Button
+                        type="button"
+                        onClick={handleSendToDecryption}
+                        variant="outline"
+                        className="w-full h-8.5 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] border-[#D0D0CA] dark:border-[#383838] hover:border-[#2563EB] text-[#181818] dark:text-[#F2F2F0] flex items-center justify-center gap-1.5 animate-in fade-in duration-150"
+                        title="Send to Decryption Workbench"
+                      >
+                        <Unlock className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                        <span>Send to Decryption Workbench</span>
                       </Button>
 
                       <Button
                         type="button"
                         onClick={handleNavigateToAnalysis}
-                        className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 animate-in fade-in duration-150 shadow-xs"
+                        className="w-full h-8.5 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 animate-in fade-in duration-150 shadow-xs"
                         title="Direct Analysis Report (Original vs Ciphertext)"
                       >
                         <BarChart3 className="h-3.5 w-3.5 text-white shrink-0" />
                         <span>Analysis Report</span>
                       </Button>
-                    </>
+                    </div>
                   )}
                 </div>
 
@@ -915,88 +961,6 @@ function EncryptionWorkbenchContent() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Download Options Modal Popup */}
-      {isDownloadModalOpen && isMounted && createPortal(
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150 select-none"
-          onClick={() => setIsDownloadModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-xl border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] p-5 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
-              <div>
-                <h3 className="text-sm font-semibold text-[#181818] dark:text-[#F2F2F0]">
-                  Download Options
-                </h3>
-                <p className="text-xs text-[#71717A] dark:text-[#A1A1AA] mt-0.5">
-                  Choose what you want to download:
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsDownloadModalOpen(false)}
-                className="p-1 rounded text-[#71717A] hover:text-[#181818] dark:text-[#A1A1AA] dark:hover:text-[#F2F2F0] hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* 2 Download Options */}
-            <div className="space-y-2.5">
-              {/* Option 1: Download Encrypted Image */}
-              <button
-                type="button"
-                onClick={() => {
-                  handleDownloadCiphertext();
-                }}
-                className="w-full flex items-center gap-3 p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#1C1C1C] hover:border-[#2563EB] dark:hover:border-[#3B82F6] hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-all text-left cursor-pointer group"
-              >
-                <div className="w-9 h-9 rounded-lg bg-blue-500/10 dark:bg-blue-500/15 text-[#2563EB] dark:text-[#60A5FA] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <PhotoIcon className="h-5 w-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA]">
-                    Download Encrypted Image
-                  </div>
-                  <div className="text-[11px] text-[#71717A] dark:text-[#A1A1AA] truncate">
-                    PNG ciphertext format
-                  </div>
-                </div>
-                <Download className="h-4 w-4 text-[#71717A] dark:text-[#A1A1AA] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] shrink-0" />
-              </button>
-
-              {/* Option 2: Download Key File */}
-              <button
-                type="button"
-                onClick={() => {
-                  handleDownloadKeyFile();
-                }}
-                className="w-full flex items-center gap-3 p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#1C1C1C] hover:border-[#2563EB] dark:hover:border-[#3B82F6] hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-all text-left cursor-pointer group"
-              >
-                <div className="w-9 h-9 rounded-lg bg-amber-500/10 dark:bg-amber-500/15 text-[#D97706] dark:text-[#FBBF24] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-[#181818] dark:text-[#F2F2F0] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA]">
-                    Download Key Package (.json)
-                  </div>
-                  <div className="text-[11px] text-[#71717A] dark:text-[#A1A1AA] truncate">
-                    {selectedAlgo === "drpe"
-                      ? "Seeds + ciphertext (for cross-session DRPE)"
-                      : "Algorithm + seeds for decryption"}
-                  </div>
-                </div>
-                <Download className="h-4 w-4 text-[#71717A] dark:text-[#A1A1AA] group-hover:text-[#2563EB] dark:group-hover:text-[#60A5FA] shrink-0" />
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
       )}
     </div>
   );

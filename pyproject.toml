@@ -5,6 +5,7 @@ description = "2D signal processing and image encryption analysis platform"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "cryptography>=50.0.1",
     "fastapi>=0.141.1",
     "numpy>=2.5.2",
     "opencv-python>=5.0.0.93",

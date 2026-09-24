@@ -38,6 +38,7 @@ import {
 import { downloadImage, ParsedKeyData } from "@/lib/key-file";
 import { runMetrics } from "@/lib/api/analysis";
 import { preloadDRPECiphertext, preloadFourierCiphertext, preloadDCTCiphertext, preloadSpectralHybridCiphertext } from "@/lib/api/encryption";
+import type { KeyFileV2 } from "@/types/encryption";
 import { cn } from "@/lib/utils/cn";
 
 interface AlgorithmMeta {
@@ -124,6 +125,7 @@ function DecryptionWorkbenchContent() {
     executeArnoldXOR,
     executeSpectralHybrid,
     executeFeistel,
+    executeV2Decrypt,
   } = useEncryption();
 
   // Operation-Specific Upload State (Independent of centralized workspace image)
@@ -135,6 +137,7 @@ function DecryptionWorkbenchContent() {
     keys: ParsedKeyData;
     fileName: string;
     ciphertextPackage?: { real: string; imag?: string; shape: number[] };
+    keyFileV2?: KeyFileV2;
   } | null>(null);
 
   // Optional session for reference comparison if image originated from the same session
@@ -364,7 +367,24 @@ function DecryptionWorkbenchContent() {
       let latency = 0;
       let returnedStages: Record<string, string> | undefined = undefined;
 
-      if (algo === "drpe") {
+      if (keyLoaded?.keyFileV2) {
+        const res = await executeV2Decrypt(
+          uploadedImage.dataUri,
+          keyLoaded.keyFileV2,
+          referenceSrc || undefined
+        );
+        recoveredUri = res.decrypted_image;
+        latency = res.latency_ms;
+        returnedStages = res.stages;
+
+        if (res.quality && Object.keys(res.quality).length > 0) {
+          setQualityMetrics({
+            ssim: res.quality.ssim !== undefined && res.quality.ssim !== null ? Number(res.quality.ssim) : null,
+            psnr: res.quality.psnr !== undefined ? res.quality.psnr : null,
+            mse: res.quality.mse !== undefined && res.quality.mse !== null ? Number(res.quality.mse) : null,
+          });
+        }
+      } else if (algo === "drpe") {
         const s1 = params.seed1 ?? drpeSeed1;
         const s2 = params.seed2 ?? drpeSeed2;
         const res = await executeDRPEDecrypt(
@@ -427,8 +447,8 @@ function DecryptionWorkbenchContent() {
       }
       setActivePipelineStage("decrypted");
 
-      // Calculate comparative metrics if reference ground truth exists
-      if (referenceSrc && recoveredUri && (algo !== "drpe" || qualityMetrics.ssim === null)) {
+      // Calculate comparative metrics if reference ground truth exists and not already populated
+      if (referenceSrc && recoveredUri && !keyLoaded?.keyFileV2 && (algo !== "drpe" || qualityMetrics.ssim === null)) {
         try {
           const metrics = await runMetrics(referenceSrc, recoveredUri, false);
           setQualityMetrics({
@@ -483,6 +503,7 @@ function DecryptionWorkbenchContent() {
     keys: ParsedKeyData;
     fileName: string;
     ciphertextPackage?: { real: string; imag?: string; shape: number[] };
+    keyFileV2?: KeyFileV2;
   }) => {
     if (params.algorithm !== selectedAlgo) {
       handleAlgorithmChange(params.algorithm);
@@ -670,6 +691,12 @@ function DecryptionWorkbenchContent() {
                     <div className="text-center space-y-1">
                       <div className="text-xs font-semibold text-[#181818] dark:text-[#F2F2F0] truncate max-w-[180px]">{keyLoaded.fileName}</div>
                       <div className="text-[10px] font-mono text-[#6F6F6A] dark:text-[#A0A09B]">{keyLoaded.algorithm.toUpperCase()} · Key loaded</div>
+                      {keyLoaded.keyFileV2 && (
+                        <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                          <ShieldCheck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <span>Bearer Key (HMAC: {keyLoaded.keyFileV2.authentication.tag.slice(0, 8)}...)</span>
+                        </div>
+                      )}
                       {keyLoaded.ciphertextPackage && (
                         <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -895,161 +922,194 @@ function DecryptionWorkbenchContent() {
                   </div>
                 </div>
 
-                {/* Dynamic Decryption Key Sliders per Algorithm */}
-                <div key={selectedAlgo} className="space-y-3 animate-option-switch">
-                  {/* 1. DRPE Decrypt Controls */}
-                  {selectedAlgo === "drpe" && (
-                    <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        OPTICAL CONJUGATE MASKS
-                      </div>
-                      <Slider
-                        label="Spatial Phase Mask (R₁*)"
-                        valueDisplay={drpeSeed1}
-                        min={100}
-                        max={9999}
-                        step={1}
-                        value={drpeSeed1}
-                        onChange={(e) => setDrpeSeed1(Number(e.target.value))}
-                      />
-                      <Slider
-                        label="Fourier Phase Mask (R₂*)"
-                        valueDisplay={drpeSeed2}
-                        min={100}
-                        max={9999}
-                        step={1}
-                        value={drpeSeed2}
-                        onChange={(e) => setDrpeSeed2(Number(e.target.value))}
-                      />
+                {/* Dynamic Decryption Key Sliders per Algorithm OR Layer 2 Bearer Key Card */}
+                {keyLoaded?.keyFileV2 ? (
+                  <div className="space-y-3 p-3.5 rounded-lg border border-blue-200 dark:border-blue-900/40 bg-blue-50/40 dark:bg-blue-950/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1">
+                        <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                        Layer 2 Bearer Key
+                      </span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-600/10 text-blue-700 dark:text-blue-300 font-medium">
+                        v2.0 Verified
+                      </span>
                     </div>
-                  )}
+                    <div className="space-y-1.5 text-xs text-[#6F6F6A] dark:text-[#A0A09B]">
+                      <div className="flex justify-between font-mono text-[11px]">
+                        <span>Algorithm:</span>
+                        <span className="text-[#181818] dark:text-[#F2F2F0] font-medium uppercase">{keyLoaded.keyFileV2.algorithm}</span>
+                      </div>
+                      <div className="flex justify-between font-mono text-[11px]">
+                        <span>KDF / Security:</span>
+                        <span className="text-[#181818] dark:text-[#F2F2F0]">HKDF-SHA256 (256-bit)</span>
+                      </div>
+                      <div className="flex justify-between font-mono text-[11px]">
+                        <span>HMAC Tag:</span>
+                        <span className="font-mono text-[10px] truncate max-w-[130px] text-emerald-600 dark:text-emerald-400">
+                          {keyLoaded.keyFileV2.authentication.tag.slice(0, 16)}...
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-[#71717A] dark:text-[#A1A1AA] pt-1.5 border-t border-blue-200/50 dark:border-blue-900/30">
+                      HMAC integrity check is enforced prior to mathematical decryption.
+                    </p>
+                  </div>
+                ) : (
+                  <div key={selectedAlgo} className="space-y-3 animate-option-switch">
+                    {/* 1. DRPE Decrypt Controls */}
+                    {selectedAlgo === "drpe" && (
+                      <div className="space-y-3">
+                        <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                          OPTICAL CONJUGATE MASKS
+                        </div>
+                        <Slider
+                          label="Spatial Phase Mask (R₁*)"
+                          valueDisplay={drpeSeed1}
+                          min={100}
+                          max={9999}
+                          step={1}
+                          value={drpeSeed1}
+                          onChange={(e) => setDrpeSeed1(Number(e.target.value))}
+                        />
+                        <Slider
+                          label="Fourier Phase Mask (R₂*)"
+                          valueDisplay={drpeSeed2}
+                          min={100}
+                          max={9999}
+                          step={1}
+                          value={drpeSeed2}
+                          onChange={(e) => setDrpeSeed2(Number(e.target.value))}
+                        />
+                      </div>
+                    )}
 
-                  {/* 2. Fourier Decrypt Controls */}
-                  {selectedAlgo === "fourier" && (
-                    <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        INVERSE FFT PERMUTATION KEY
+                    {/* 2. Fourier Decrypt Controls */}
+                    {selectedAlgo === "fourier" && (
+                      <div className="space-y-3">
+                        <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                          INVERSE FFT PERMUTATION KEY
+                        </div>
+                        <Slider
+                          label="Phase Seed"
+                          valueDisplay={fourierSeed}
+                          min={1}
+                          max={9999}
+                          step={1}
+                          value={fourierSeed}
+                          onChange={(e) => setFourierSeed(Number(e.target.value))}
+                        />
                       </div>
-                      <Slider
-                        label="Phase Seed"
-                        valueDisplay={fourierSeed}
-                        min={1}
-                        max={9999}
-                        step={1}
-                        value={fourierSeed}
-                        onChange={(e) => setFourierSeed(Number(e.target.value))}
-                      />
-                    </div>
-                  )}
+                    )}
 
-                  {/* 3. DCT Decrypt Controls */}
-                  {selectedAlgo === "dct" && (
-                    <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        INVERSE DCT PERMUTATION KEY
+                    {/* 3. DCT Decrypt Controls */}
+                    {selectedAlgo === "dct" && (
+                      <div className="space-y-3">
+                        <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                          INVERSE DCT PERMUTATION KEY
+                        </div>
+                        <Slider
+                          label="Permutation Seed"
+                          valueDisplay={dctSeed}
+                          min={1}
+                          max={9999}
+                          step={1}
+                          value={dctSeed}
+                          onChange={(e) => setDctSeed(Number(e.target.value))}
+                        />
                       </div>
-                      <Slider
-                        label="Permutation Seed"
-                        valueDisplay={dctSeed}
-                        min={1}
-                        max={9999}
-                        step={1}
-                        value={dctSeed}
-                        onChange={(e) => setDctSeed(Number(e.target.value))}
-                      />
-                    </div>
-                  )}
+                    )}
 
-                  {/* 4. Arnold Cat Map Decrypt Controls */}
-                  {selectedAlgo === "arnold" && (
-                    <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        INVERSE CHAOTIC PARAMETERS
+                    {/* 4. Arnold Cat Map Decrypt Controls */}
+                    {selectedAlgo === "arnold" && (
+                      <div className="space-y-3">
+                        <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                          INVERSE CHAOTIC PARAMETERS
+                        </div>
+                        <Slider
+                          label="Inverse Cat Map Iterations"
+                          valueDisplay={arnoldItr}
+                          min={1}
+                          max={50}
+                          step={1}
+                          value={arnoldItr}
+                          onChange={(e) => setArnoldItr(Number(e.target.value))}
+                        />
+                        <Slider
+                          label="Inverse XOR Mask"
+                          valueDisplay={`0x${arnoldXor.toString(16).toUpperCase()} (${arnoldXor})`}
+                          min={0}
+                          max={255}
+                          step={1}
+                          value={arnoldXor}
+                          onChange={(e) => setArnoldXor(Number(e.target.value))}
+                        />
                       </div>
-                      <Slider
-                        label="Inverse Cat Map Iterations"
-                        valueDisplay={arnoldItr}
-                        min={1}
-                        max={50}
-                        step={1}
-                        value={arnoldItr}
-                        onChange={(e) => setArnoldItr(Number(e.target.value))}
-                      />
-                      <Slider
-                        label="Inverse XOR Mask"
-                        valueDisplay={`0x${arnoldXor.toString(16).toUpperCase()} (${arnoldXor})`}
-                        min={0}
-                        max={255}
-                        step={1}
-                        value={arnoldXor}
-                        onChange={(e) => setArnoldXor(Number(e.target.value))}
-                      />
-                    </div>
-                  )}
+                    )}
 
-                  {/* 5. Spectral Hybrid Decrypt Controls */}
-                  {selectedAlgo === "spectral_hybrid" && (
-                    <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        INVERSE HYBRID PARAMETERS
+                    {/* 5. Spectral Hybrid Decrypt Controls */}
+                    {selectedAlgo === "spectral_hybrid" && (
+                      <div className="space-y-3">
+                        <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                          INVERSE HYBRID PARAMETERS
+                        </div>
+                        <Slider
+                          label="Scramble Seed"
+                          valueDisplay={scrambleSeed}
+                          min={1}
+                          max={9999}
+                          step={1}
+                          value={scrambleSeed}
+                          onChange={(e) => setScrambleSeed(Number(e.target.value))}
+                        />
+                        <Slider
+                          label="Mask Seed"
+                          valueDisplay={maskSeed}
+                          min={1}
+                          max={9999}
+                          step={1}
+                          value={maskSeed}
+                          onChange={(e) => setMaskSeed(Number(e.target.value))}
+                        />
+                        <Slider
+                          label="Kernel Seed"
+                          valueDisplay={kernelSeed}
+                          min={1}
+                          max={9999}
+                          step={1}
+                          value={kernelSeed}
+                          onChange={(e) => setKernelSeed(Number(e.target.value))}
+                        />
                       </div>
-                      <Slider
-                        label="Scramble Seed"
-                        valueDisplay={scrambleSeed}
-                        min={1}
-                        max={9999}
-                        step={1}
-                        value={scrambleSeed}
-                        onChange={(e) => setScrambleSeed(Number(e.target.value))}
-                      />
-                      <Slider
-                        label="Mask Seed"
-                        valueDisplay={maskSeed}
-                        min={1}
-                        max={9999}
-                        step={1}
-                        value={maskSeed}
-                        onChange={(e) => setMaskSeed(Number(e.target.value))}
-                      />
-                      <Slider
-                        label="Kernel Seed"
-                        valueDisplay={kernelSeed}
-                        min={1}
-                        max={9999}
-                        step={1}
-                        value={kernelSeed}
-                        onChange={(e) => setKernelSeed(Number(e.target.value))}
-                      />
-                    </div>
-                  )}
+                    )}
 
-                  {/* 7. Feistel Cipher Decrypt Controls */}
-                  {selectedAlgo === "feistel" && (
-                    <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        INVERSE NETWORK PARAMETERS
+                    {/* 7. Feistel Cipher Decrypt Controls */}
+                    {selectedAlgo === "feistel" && (
+                      <div className="space-y-3">
+                        <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                          INVERSE NETWORK PARAMETERS
+                        </div>
+                        <Slider
+                          label="Seed"
+                          valueDisplay={feistelSeed}
+                          min={1}
+                          max={9999}
+                          step={1}
+                          value={feistelSeed}
+                          onChange={(e) => setFeistelSeed(Number(e.target.value))}
+                        />
+                        <Slider
+                          label="Rounds"
+                          valueDisplay={feistelRounds}
+                          min={4}
+                          max={16}
+                          step={2}
+                          value={feistelRounds}
+                          onChange={(e) => setFeistelRounds(Number(e.target.value))}
+                        />
                       </div>
-                      <Slider
-                        label="Seed"
-                        valueDisplay={feistelSeed}
-                        min={1}
-                        max={9999}
-                        step={1}
-                        value={feistelSeed}
-                        onChange={(e) => setFeistelSeed(Number(e.target.value))}
-                      />
-                      <Slider
-                        label="Rounds"
-                        valueDisplay={feistelRounds}
-                        min={4}
-                        max={16}
-                        step={2}
-                        value={feistelRounds}
-                        onChange={(e) => setFeistelRounds(Number(e.target.value))}
-                      />
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Execute Decryption Button */}
                 <Button
@@ -1059,7 +1119,7 @@ function DecryptionWorkbenchContent() {
                   className="w-full h-8.5 mt-1 text-xs"
                 >
                   <Unlock className="h-3.5 w-3.5 mr-1" />
-                  <span>Execute {activeMeta.name} Decryption</span>
+                  <span>{keyLoaded?.keyFileV2 ? "Authenticate & Decrypt Image" : `Execute ${activeMeta.name} Decryption`}</span>
                 </Button>
 
                 {/* Post-decryption Action Button */}
@@ -1077,9 +1137,11 @@ function DecryptionWorkbenchContent() {
                 )}
 
                 {(error || decryptError) && (
-                  <div className="text-xs text-[#DC2626] font-mono py-1 leading-relaxed">
-                    {error && <div>Error: {error}</div>}
-                    {decryptError && !error && <div>Error: {decryptError}</div>}
+                  <div className="text-xs text-[#DC2626] font-mono py-1.5 leading-relaxed p-2 rounded bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40">
+                    <div className="font-semibold text-[10px] uppercase tracking-wider text-red-700 dark:text-red-400 mb-0.5">
+                      Authentication / Decryption Error
+                    </div>
+                    <div>{error || decryptError}</div>
                   </div>
                 )}
               </Card>

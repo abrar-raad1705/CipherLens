@@ -36,9 +36,12 @@ def decode_image_payload(payload: str | bytes) -> np.ndarray:
     return img.astype(np.uint8)
 
 
-def array_to_data_uri(image_array: np.ndarray) -> str:
+def array_to_data_uri(
+    image_array: np.ndarray, raw_array: np.ndarray | None = None
+) -> str:
     """
     Convert a 2D numpy array to a base64 encoded PNG data URI.
+    If raw_array is provided, it is losslessly embedded into PNG tEXt metadata chunks.
     """
     if image_array.ndim != 2:
         raise ValueError(f"Expected 2D image array, got shape {image_array.shape}")
@@ -52,10 +55,72 @@ def array_to_data_uri(image_array: np.ndarray) -> str:
         img_uint8 = image_array
 
     pil_img = Image.fromarray(img_uint8, mode="L")
+    png_info = None
+    if raw_array is not None:
+        from PIL import PngImagePlugin
+
+        png_info = PngImagePlugin.PngInfo()
+        png_info.add_text("batsignal_version", "2.0")
+        png_info.add_text("batsignal_dtype", str(raw_array.dtype))
+        png_info.add_text(
+            "batsignal_shape", f"{raw_array.shape[0]},{raw_array.shape[1]}"
+        )
+        png_info.add_text(
+            "batsignal_raw_b64",
+            base64.b64encode(np.ascontiguousarray(raw_array).tobytes()).decode("ascii"),
+        )
+
     buf = io.BytesIO()
-    pil_img.save(buf, format="PNG", optimize=True)
+    pil_img.save(buf, format="PNG", optimize=True, pnginfo=png_info)
     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
     return f"data:image/png;base64,{b64}"
+
+
+def array_to_lossless_data_uri(
+    vis_image: np.ndarray, raw_array: np.ndarray
+) -> str:
+    """
+    Convenience helper to encode an 8-bit visualization into PNG while embedding
+    the raw mathematical array (complex64, float32, uint8) losslessly in metadata.
+    """
+    return array_to_data_uri(vis_image, raw_array=raw_array)
+
+
+def extract_embedded_array(payload: str | bytes) -> np.ndarray | None:
+    """
+    Extract raw mathematical array losslessly from PNG metadata chunks.
+    Returns None if no embedded array is found in the PNG metadata.
+    """
+    if isinstance(payload, str):
+        cleaned = DATA_URI_PATTERN.sub("", payload.strip())
+        try:
+            raw_bytes = base64.b64decode(cleaned)
+        except Exception:
+            return None
+    elif isinstance(payload, bytes):
+        raw_bytes = payload
+    else:
+        return None
+
+    try:
+        pil_img = Image.open(io.BytesIO(raw_bytes))
+        text_chunks = getattr(pil_img, "text", {}) or {}
+        if "batsignal_raw_b64" in text_chunks:
+            b64_data = text_chunks["batsignal_raw_b64"]
+            dtype_str = text_chunks.get("batsignal_dtype", "complex64")
+            shape_str = text_chunks.get("batsignal_shape", "")
+            raw_arr_bytes = base64.b64decode(b64_data)
+            dt = np.dtype(dtype_str)
+            arr = np.frombuffer(raw_arr_bytes, dtype=dt)
+            if shape_str:
+                shape = tuple(int(x) for x in shape_str.split(","))
+                arr = arr.reshape(shape)
+            return arr
+    except Exception:
+        pass
+
+    return None
+
 
 
 def phase_to_data_uri(phase_array: np.ndarray) -> str:

@@ -289,3 +289,71 @@ class FeistelResponse(BaseModel):
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float
+
+
+# ── Layer 2 Cryptographic Architecture Schemas ─────────────────────
+
+class EncryptRequestV2(BaseModel):
+    image: str = Field(..., description="Base64 encoded plaintext image or data URI")
+    algorithm: str = Field(
+        ..., description="Target algorithm identifier: DRPE, Fourier, DCT, Arnold"
+    )
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Public non-secret parameters (e.g. itr for Arnold)",
+    )
+
+
+class EncryptResponseV2(BaseModel):
+    status: str = "COMPLETE"
+    algorithm: str
+    ciphertext: str = Field(
+        ...,
+        description="Base64 PNG data URI with lossless embedded raw mathematical array in metadata",
+    )
+    stages: dict[str, str] = Field(
+        default_factory=dict,
+        description="Visual representations of transformation stages",
+    )
+    key_file: dict[str, Any] = Field(
+        ..., description="Structured Version 2 Key File dictionary"
+    )
+    key_file_text: str = Field(
+        ..., description="Pretty-printed Version 2 Key File JSON string"
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    latency_ms: float
+
+
+class DecryptRequestV2(BaseModel):
+    ciphertext: str = Field(
+        ...,
+        description="Base64 PNG data URI or raw ciphertext with embedded metadata",
+    )
+    key_file: dict[str, Any] | str = Field(
+        ...,
+        description="Version 2 JSON key file as parsed dict or raw JSON string",
+    )
+    reference_image: str | None = Field(
+        None,
+        description="Optional plaintext ground-truth for PSNR/SSIM evaluation",
+    )
+
+
+class DecryptResponseV2(BaseModel):
+    status: str = "COMPLETE"
+    algorithm: str
+    decrypted_image: str = Field(
+        ..., description="Base64 PNG data URI of recovered image"
+    )
+    diff_heatmap: str | None = Field(
+        None, description="Base64 PNG data URI of error difference heatmap"
+    )
+    stages: dict[str, str] = Field(
+        default_factory=dict,
+        description="Visual representations of transformation stages",
+    )
+    quality: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    latency_ms: float
+

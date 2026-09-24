@@ -1,5 +1,13 @@
 import { apiClient } from "./client";
-import { DRPEEncryptResponse, DRPEDecryptResponse, TransformResponse } from "@/types/encryption";
+import {
+  DRPEEncryptResponse,
+  DRPEDecryptResponse,
+  TransformResponse,
+  KeyFileV2,
+  EncryptResponseV2,
+  DecryptResponseV2,
+} from "@/types/encryption";
+
 
 export async function runDRPEEncrypt(
   image: string,
@@ -141,3 +149,28 @@ export async function runFeistel(
     body: JSON.stringify({ image, seed, rounds, action }),
   });
 }
+
+// ── Layer 2 Endpoints ──────────────────────────────────────────────
+
+export async function runV2Encrypt(
+  image: string,
+  algorithm: string,
+  parameters: Record<string, unknown> = {}
+): Promise<EncryptResponseV2> {
+  return apiClient<EncryptResponseV2>("/api/encryption/v2/encrypt", {
+    method: "POST",
+    body: JSON.stringify({ image, algorithm, parameters }),
+  });
+}
+
+export async function runV2Decrypt(
+  ciphertext: string,
+  key_file: KeyFileV2 | string | Record<string, unknown>,
+  reference_image?: string | null
+): Promise<DecryptResponseV2> {
+  return apiClient<DecryptResponseV2>("/api/encryption/v2/decrypt", {
+    method: "POST",
+    body: JSON.stringify({ ciphertext, key_file, reference_image }),
+  });
+}
+

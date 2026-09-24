@@ -79,10 +79,12 @@ export function saveEncryptionSession(session: EncryptionSession): void {
   inMemorySession = session;
   if (typeof window !== "undefined") {
     try {
+      // Scoped exclusively to current browser tab, cleared on tab close
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    } catch (e) {
-      console.warn("Could not save encryption session to storage:", e);
+      // Purge any legacy localStorage entry
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Ignore storage write issues
     }
   }
   notifySessionListeners();

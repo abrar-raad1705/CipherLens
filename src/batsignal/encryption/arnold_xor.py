@@ -93,3 +93,46 @@ def decrypt(ciphertext: np.ndarray, key: ArnoldXORKey | tuple | list) -> np.ndar
     validate_key(norm_key)
     xored = xor_transform(ciphertext, norm_key.xor_value)
     return arnold_unscramble(xored, norm_key.itr)
+
+
+def encrypt_arnold_chacha(
+    image: np.ndarray, itr: int, chacha_key: bytes, nonce: bytes
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Encrypt using Arnold cat map shearing followed by ChaCha20 keystream XOR diffusion.
+
+    :param image: 2D uint8 square image
+    :param itr: Number of Arnold iterations
+    :param chacha_key: 32-byte ChaCha20 key
+    :param nonce: 16-byte nonce
+    :return: (scrambled, ciphertext) tuple of 2D uint8 arrays
+    """
+    if itr < 0:
+        raise ValueError("Iterations must be non-negative")
+    from batsignal.crypto.chacha import apply_chacha20_xor
+
+    scrambled = arnold_scramble(image, itr)
+    ciphertext = apply_chacha20_xor(scrambled, chacha_key, nonce)
+    return scrambled, ciphertext
+
+
+def decrypt_arnold_chacha(
+    ciphertext: np.ndarray, itr: int, chacha_key: bytes, nonce: bytes
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Decrypt Arnold + ChaCha20 ciphertext by inverting ChaCha20 XOR then inverse Arnold shearing.
+
+    :param ciphertext: 2D uint8 square ciphertext
+    :param itr: Number of Arnold iterations
+    :param chacha_key: 32-byte ChaCha20 key
+    :param nonce: 16-byte nonce
+    :return: (unxored, recovered) tuple of 2D uint8 arrays
+    """
+    if itr < 0:
+        raise ValueError("Iterations must be non-negative")
+    from batsignal.crypto.chacha import apply_chacha20_xor
+
+    unxored = apply_chacha20_xor(ciphertext, chacha_key, nonce)
+    recovered = arnold_unscramble(unxored, itr)
+    return unxored, recovered
+

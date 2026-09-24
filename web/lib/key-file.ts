@@ -1,4 +1,5 @@
 import type { EncryptionAlgorithm, EncryptionSessionKeys } from "./encryption-session";
+import type { KeyFileV2 } from "@/types/encryption";
 
 export interface KeyFileMetadata {
   algorithm: EncryptionAlgorithm;
@@ -29,6 +30,9 @@ export interface ParsedKeyData {
   // Feistel
   feistelSeed?: number;
   feistelRounds?: number;
+  // Layer 2 Key File
+  isV2?: boolean;
+  keyFileV2?: KeyFileV2;
   // Cross-session ciphertext package (from JSON key file)
   ciphertextPackage?: {
     real: string;
@@ -41,6 +45,7 @@ export interface KeyFileValidationResult {
   valid: boolean;
   algorithm?: EncryptionAlgorithm;
   keys?: ParsedKeyData;
+  keyFileV2?: KeyFileV2;
   metadata?: Partial<KeyFileMetadata>;
   error?: string;
   warning?: string;
@@ -134,6 +139,37 @@ export function generateKeyFileJson(options: KeyPackageOptions): string {
 }
 
 /**
+ * Generates a Version 2 JSON Key File string.
+ */
+export function generateKeyFileV2(params: {
+  algorithm: string;
+  master_key: string;
+  salt: string;
+  nonce?: string | null;
+  parameters?: Record<string, unknown>;
+  dimensions: [number, number];
+  raw_dtype: string;
+  tag: string;
+}): string {
+  const kf: KeyFileV2 = {
+    format_version: 2,
+    algorithm: params.algorithm.toUpperCase(),
+    created_at: new Date().toISOString(),
+    master_key: params.master_key,
+    salt: params.salt,
+    nonce: params.nonce ?? null,
+    parameters: params.parameters || {},
+    dimensions: params.dimensions,
+    raw_dtype: params.raw_dtype,
+    authentication: {
+      algorithm: "HMAC-SHA256",
+      tag: params.tag,
+    },
+  };
+  return JSON.stringify(kf, null, 2);
+}
+
+/**
  * @deprecated Use generateKeyFileJson instead. Kept for reference only.
  */
 export function generateKeyFileContent(options: {
@@ -178,6 +214,89 @@ export function parseAndValidateKeyFile(
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     try {
       const json = JSON.parse(trimmed);
+
+      // ── Detect Version 2 Structured Key File ───────────────────
+      if (
+        json.format_version === 2 ||
+        json.format_version === "2" ||
+        json.format_version === "2.0"
+      ) {
+        const rawAlgo = json.algorithm || json.algo || targetAlgorithm;
+        const algo = rawAlgo ? normalizeAlgorithmName(String(rawAlgo)) : null;
+
+        if (!algo) {
+          return {
+            valid: false,
+            error: `Unrecognized algorithm '${rawAlgo}' in Version 2 key file. Supported: DRPE, Fourier, DCT, Arnold.`,
+          };
+        }
+
+        if (!json.master_key || typeof json.master_key !== "string") {
+          return {
+            valid: false,
+            error: "Invalid Version 2 key file: Missing required 'master_key'.",
+          };
+        }
+
+        if (!json.salt || typeof json.salt !== "string") {
+          return {
+            valid: false,
+            error: "Invalid Version 2 key file: Missing required 'salt'.",
+          };
+        }
+
+        if (!json.authentication || !json.authentication.tag) {
+          return {
+            valid: false,
+            error: "Invalid Version 2 key file: Missing required 'authentication.tag'.",
+          };
+        }
+
+        const isMismatch = targetAlgorithm ? targetAlgorithm !== algo : false;
+
+        const kfV2: KeyFileV2 = {
+          format_version: 2,
+          algorithm: algo.toUpperCase(),
+          created_at: json.created_at || new Date().toISOString(),
+          master_key: json.master_key,
+          salt: json.salt,
+          nonce: json.nonce ?? null,
+          parameters: json.parameters || {},
+          dimensions: json.dimensions || [512, 512],
+          raw_dtype: json.raw_dtype || "complex64",
+          authentication: {
+            algorithm: json.authentication.algorithm || "HMAC-SHA256",
+            tag: json.authentication.tag,
+          },
+        };
+
+        const keys: ParsedKeyData = {
+          isV2: true,
+          keyFileV2: kfV2,
+          iterations: json.parameters?.itr ?? json.parameters?.iterations,
+        };
+
+        return {
+          valid: true,
+          algorithm: algo,
+          keys,
+          keyFileV2: kfV2,
+          metadata: {
+            algorithm: algo,
+            version: "2.0",
+            createdAt: kfV2.created_at,
+            imageDimensions: Array.isArray(kfV2.dimensions)
+              ? `${kfV2.dimensions[1]}x${kfV2.dimensions[0]}`
+              : undefined,
+          },
+          algorithmMismatch: isMismatch,
+          warning: isMismatch
+            ? `Key file is for ${algo.toUpperCase()}, but currently selected algorithm is ${targetAlgorithm?.toUpperCase()}.`
+            : undefined,
+        };
+      }
+
+      // ── Legacy v1 JSON Fallback ────────────────────────────────
       const rawAlgo = json.algorithm || json.algo || targetAlgorithm;
       const algo = rawAlgo ? normalizeAlgorithmName(String(rawAlgo)) : null;
 

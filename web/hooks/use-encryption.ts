@@ -10,8 +10,17 @@ import {
   runFeistel,
   runFourier,
   runSpectralHybrid,
+  runV2Decrypt,
+  runV2Encrypt,
 } from "@/lib/api/encryption";
-import { DRPEEncryptResponse, DRPEDecryptResponse, TransformResponse } from "@/types/encryption";
+import {
+  DRPEEncryptResponse,
+  DRPEDecryptResponse,
+  TransformResponse,
+  KeyFileV2,
+  EncryptResponseV2,
+  DecryptResponseV2,
+} from "@/types/encryption";
 
 export function useEncryption() {
   const [loading, setLoading] = useState(false);
@@ -170,6 +179,44 @@ export function useEncryption() {
     }
   };
 
+  const executeV2Encrypt = async (
+    imageUri: string,
+    algorithm: string,
+    parameters?: Record<string, unknown>
+  ): Promise<EncryptResponseV2> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await runV2Encrypt(imageUri, algorithm, parameters);
+      return res;
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err, "Layer 2 encryption failed");
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const executeV2Decrypt = async (
+    ciphertextUri: string,
+    keyFile: KeyFileV2 | string | Record<string, unknown>,
+    referenceUri?: string | null
+  ): Promise<DecryptResponseV2> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await runV2Decrypt(ciphertextUri, keyFile, referenceUri);
+      return res;
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err, "Layer 2 decryption failed");
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     loading,
     error,
@@ -184,6 +231,8 @@ export function useEncryption() {
     executeChaos,
     executeSpectralHybrid,
     executeFeistel,
+    executeV2Encrypt,
+    executeV2Decrypt,
     clearResults: () => {
       setDrpeEncryptResult(null);
       setDrpeDecryptResult(null);

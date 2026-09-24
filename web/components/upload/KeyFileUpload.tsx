@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EncryptionAlgorithm } from "@/lib/encryption-session";
 import { parseAndValidateKeyFile, ParsedKeyData } from "@/lib/key-file";
+import type { KeyFileV2 } from "@/types/encryption";
 
 interface KeyFileUploadProps {
   selectedAlgo: EncryptionAlgorithm;
@@ -26,6 +27,7 @@ interface KeyFileUploadProps {
       imag?: string;
       shape: number[];
     };
+    keyFileV2?: KeyFileV2;
   }) => void;
   onSwitchAlgorithm?: (algo: EncryptionAlgorithm) => void;
   dropzoneClassName?: string;
@@ -92,6 +94,7 @@ export function KeyFileUpload({
         keys: result.keys,
         fileName: file.name,
         ciphertextPackage: result.keys.ciphertextPackage,
+        keyFileV2: result.keyFileV2,
       });
     };
 
@@ -120,6 +123,12 @@ export function KeyFileUpload({
   };
 
   const formatKeySummary = (keys: ParsedKeyData, algo: EncryptionAlgorithm): string => {
+    if (keys.keyFileV2) {
+      const tag = keys.keyFileV2.authentication.tag;
+      const tagShort = tag.length > 16 ? `${tag.slice(0, 8)}...${tag.slice(-8)}` : tag;
+      const dim = keys.keyFileV2.dimensions ? `${keys.keyFileV2.dimensions[1]}×${keys.keyFileV2.dimensions[0]}` : "";
+      return `v2.0 Bearer Key · HMAC: ${tagShort}${dim ? ` · ${dim}` : ""}`;
+    }
     if (algo === "drpe") {
       return `Seed1: ${keys.seed1}, Seed2: ${keys.seed2}`;
     }

@@ -17,22 +17,53 @@ from api.schemas.encryption import (
     ArnoldXORResponse,
     ChaosResponse,
     DCTResponse,
+    DecryptResponseV2,
     DRPEDecryptResponse,
     DRPEEncryptResponse,
+    EncryptResponseV2,
     FeistelResponse,
     FourierResponse,
     SpectralHybridResponse,
 )
 from api.services.utils import (
     array_to_data_uri,
+    array_to_lossless_data_uri,
     dct_spectrum_to_data_uri,
     decode_image_payload,
     diff_heatmap_to_data_uri,
+    extract_embedded_array,
     log_spectrum_to_data_uri,
     phase_to_data_uri,
 )
 from batsignal.analysis import calculate_mse, calculate_psnr, calculate_ssim
-from batsignal.encryption import arnold_xor, chaos, dct, drpe, feistel, fourier, spectral_hybrid
+from batsignal.crypto.auth import build_canonical_metadata, compute_hmac, verify_hmac
+from batsignal.crypto.chacha import generate_chacha20_nonce
+from batsignal.crypto.kdf import (
+    derive_chacha20_key,
+    derive_dct_seed,
+    derive_drpe_seeds,
+    derive_fourier_seed,
+    derive_hmac_key,
+    generate_master_key,
+    generate_salt,
+)
+from batsignal.crypto.keyfile import (
+    AuthenticationMeta,
+    KeyFileV2,
+    b64url_decode,
+    b64url_encode,
+    parse_key_file_v2,
+    serialize_key_file_v2,
+)
+from batsignal.encryption import (
+    arnold_xor,
+    chaos,
+    dct,
+    drpe,
+    feistel,
+    fourier,
+    spectral_hybrid,
+)
 
 
 import collections
@@ -765,3 +796,413 @@ def run_feistel(
         },
         latency_ms=round(latency_ms, 2),
     )
+
+
+# ── Layer 2 Architecture: CSPRNG + HKDF + ChaCha20 + HMAC Authentication ──
+
+
+def run_v2_encrypt(
+    image_payload: str | bytes,
+    algorithm: str,
+    parameters: dict[str, Any] | None = None,
+) -> EncryptResponseV2:
+    """
+    Layer 2 Cryptographic Encryption Engine:
+    1. Generates 256-bit CSPRNG master key and 256-bit CSPRNG salt.
+    2. Derives algorithm-specific subkeys via HKDF-SHA256 domain labels.
+    3. Runs the Layer 1 engine to obtain raw mathematical ciphertext.
+    4. Computes HMAC-SHA256 tag over canonical metadata and raw ciphertext.
+    5. Returns lossless encrypted PNG and Version 2 structured key file.
+    """
+    from datetime import datetime, timezone
+
+    t0 = time.perf_counter()
+    if parameters is None:
+        parameters = {}
+
+    algo_norm = algorithm.strip().lower().replace("-", "_").replace(" ", "")
+    img = decode_image_payload(image_payload)
+
+    master_key = generate_master_key()
+    salt = generate_salt()
+    salt_b64 = b64url_encode(salt)
+
+    public_params: dict[str, Any] = {}
+    nonce_bytes: bytes | None = None
+    nonce_b64: str | None = None
+
+    if "drpe" in algo_norm:
+        canonical_algo = "DRPE"
+        seed1, seed2 = derive_drpe_seeds(master_key, salt)
+        key = drpe.DRPEKey(seed1=seed1, seed2=seed2)
+
+        r1 = drpe.generate_phase_mask(img.shape, key.seed1)
+        r1_phase = np.angle(r1)
+
+        spatial_modulated = img * r1
+        fourier_plane = np.fft.fft2(spatial_modulated, norm="ortho")
+
+        r2 = drpe.generate_phase_mask(img.shape, key.seed2)
+        r2_phase = np.angle(r2)
+
+        filtered = fourier_plane * r2
+        raw_ciphertext = np.asarray(
+            np.fft.ifft2(filtered, norm="ortho"), dtype=np.complex64
+        )
+        raw_dtype = "complex64"
+
+        c_vis = cv2.normalize(
+            np.abs(raw_ciphertext), None, 0, 255, cv2.NORM_MINMAX
+        ).astype(np.uint8)
+
+        stages = {
+            "original": array_to_data_uri(img),
+            "r1_phase": phase_to_data_uri(r1_phase),
+            "fourier_spectrum": log_spectrum_to_data_uri(fourier_plane),
+            "r2_phase": phase_to_data_uri(r2_phase),
+        }
+
+    elif "fourier" in algo_norm or "fft" in algo_norm:
+        canonical_algo = "Fourier"
+        seed = derive_fourier_seed(master_key, salt)
+
+        coeffs = np.fft.fft2(img, norm="ortho")
+        fft_spec_uri = log_spectrum_to_data_uri(coeffs)
+
+        flat = coeffs.flatten()
+        perm = fourier.generate_permutation(flat.size, seed)
+        encrypted_flat = flat[perm]
+        encrypted_coeffs = encrypted_flat.reshape(coeffs.shape)
+        spec_uri = log_spectrum_to_data_uri(encrypted_coeffs)
+
+        raw_ciphertext = np.asarray(
+            np.fft.ifft2(encrypted_coeffs, norm="ortho"), dtype=np.complex64
+        )
+        raw_dtype = "complex64"
+
+        c_vis = np.clip(np.round(np.real(raw_ciphertext)), 0, 255).astype(np.uint8)
+
+        stages = {
+            "original": array_to_data_uri(img),
+            "fft_spectrum": fft_spec_uri,
+            "permuted_spectrum": spec_uri,
+        }
+
+    elif "dct" in algo_norm or "cosine" in algo_norm:
+        canonical_algo = "DCT"
+        seed = derive_dct_seed(master_key, salt)
+
+        coeffs = dct.dctn(img, norm="ortho")
+        dct_basis_uri = dct_spectrum_to_data_uri(coeffs)
+
+        flat = coeffs.flatten()
+        perm = dct.generate_permutation(flat.size, seed)
+        encrypted_flat = flat[perm]
+        encrypted_coeffs = encrypted_flat.reshape(coeffs.shape)
+        scrambled_dct_uri = dct_spectrum_to_data_uri(encrypted_coeffs)
+
+        raw_ciphertext = np.asarray(
+            dct.idctn(encrypted_coeffs, norm="ortho"), dtype=np.float32
+        )
+        raw_dtype = "float32"
+
+        c_vis = np.clip(np.round(raw_ciphertext), 0, 255).astype(np.uint8)
+
+        stages = {
+            "original": array_to_data_uri(img),
+            "dct_basis": dct_basis_uri,
+            "scrambled_dct": scrambled_dct_uri,
+        }
+
+    elif "arnold" in algo_norm or "catmap" in algo_norm:
+        canonical_algo = "Arnold"
+        h, w = img.shape
+        if h != w:
+            min_dim = min(h, w)
+            sy = (h - min_dim) // 2
+            sx = (w - min_dim) // 2
+            img = img[sy : sy + min_dim, sx : sx + min_dim]
+
+        itr = int(parameters.get("itr", 10))
+        public_params["itr"] = itr
+
+        nonce_bytes = generate_chacha20_nonce()
+        nonce_b64 = b64url_encode(nonce_bytes)
+
+        chacha_key = derive_chacha20_key(master_key, salt)
+        scrambled, raw_ciphertext = arnold_xor.encrypt_arnold_chacha(
+            img, itr, chacha_key, nonce_bytes
+        )
+        raw_ciphertext = raw_ciphertext.astype(np.uint8)
+        raw_dtype = "uint8"
+        c_vis = raw_ciphertext
+
+        stages = {
+            "original": array_to_data_uri(img),
+            "arnold_scramble": array_to_data_uri(scrambled),
+        }
+
+    else:
+        raise ValueError(
+            f"Unsupported algorithm '{algorithm}' for Layer 2. "
+            "Supported: DRPE, Fourier, DCT, Arnold."
+        )
+
+    # Encode lossless PNG containing raw mathematical array in metadata
+    c_uri = array_to_lossless_data_uri(c_vis, raw_ciphertext)
+    stages["ciphertext"] = c_uri
+    if canonical_algo == "Arnold":
+        stages["xor_diffusion"] = c_uri
+
+    # Cache raw array for session fast path
+    _cache_cipher_array(c_uri, raw_ciphertext)
+
+    # Compute HMAC-SHA256 authentication tag
+    hmac_key = derive_hmac_key(master_key, salt)
+    dimensions = list(raw_ciphertext.shape)
+
+    canonical_meta = build_canonical_metadata(
+        format_version=2,
+        algorithm=canonical_algo,
+        salt=salt_b64,
+        nonce=nonce_b64,
+        parameters=public_params,
+        dimensions=dimensions,
+        raw_dtype=raw_dtype,
+    )
+
+    auth_tag = compute_hmac(hmac_key, canonical_meta, raw_ciphertext.tobytes())
+
+    key_file = KeyFileV2(
+        format_version=2,
+        algorithm=canonical_algo,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        master_key=b64url_encode(master_key),
+        salt=salt_b64,
+        nonce=nonce_b64,
+        parameters=public_params,
+        dimensions=dimensions,
+        raw_dtype=raw_dtype,
+        authentication=AuthenticationMeta(algorithm="HMAC-SHA256", tag=auth_tag),
+    )
+
+    latency_ms = (time.perf_counter() - t0) * 1000.0
+
+    return EncryptResponseV2(
+        status="COMPLETE",
+        algorithm=canonical_algo,
+        ciphertext=c_uri,
+        stages=stages,
+        key_file=key_file.model_dump(),
+        key_file_text=serialize_key_file_v2(key_file),
+        metadata={
+            "shape": f"{dimensions[1]}×{dimensions[0]}",
+            "raw_dtype": raw_dtype,
+            "format_version": 2,
+        },
+        latency_ms=round(latency_ms, 2),
+    )
+
+
+def run_v2_decrypt(
+    ciphertext_payload: str | bytes,
+    key_file_data: dict[str, Any] | str,
+    reference_payload: str | bytes | None = None,
+) -> DecryptResponseV2:
+    """
+    Layer 2 Cryptographic Decryption Engine:
+    1. Parses and validates Version 2 JSON Key File.
+    2. Extracts lossless raw array from ciphertext PNG metadata or cache.
+    3. Derives HMAC key from master key and salt.
+    4. Computes HMAC tag over canonical metadata and raw ciphertext.
+    5. CRITICAL: If HMAC verification fails, immediately aborts with:
+       'The supplied key does not match this encrypted image, or the encrypted data has been modified.'
+       Decryption is NEVER executed on tampered data or wrong keys.
+    6. If HMAC passes, derives algorithmic subkeys and executes Layer 1 decryption.
+    """
+    t0 = time.perf_counter()
+
+    key_file = parse_key_file_v2(key_file_data)
+
+    # Extract raw array from PNG metadata or session cache
+    raw_array = extract_embedded_array(ciphertext_payload)
+    if raw_array is None:
+        cached = _get_cached_cipher_array(ciphertext_payload)
+        if cached is not None:
+            raw_array = np.asarray(cached, dtype=np.dtype(key_file.raw_dtype))
+        elif key_file.raw_dtype == "uint8":
+            raw_array = decode_image_payload(ciphertext_payload)
+        else:
+            raise ValueError(
+                "Lossless raw ciphertext array could not be extracted from the uploaded image. "
+                "Ensure you uploaded the original encrypted PNG file downloaded from Bat_Signal."
+            )
+
+    # Verify dimensions and raw dtype
+    if list(raw_array.shape) != list(key_file.dimensions):
+        raise ValueError(
+            f"Ciphertext image dimensions {list(raw_array.shape)} do not match "
+            f"key file dimensions {key_file.dimensions}."
+        )
+    if str(raw_array.dtype) != key_file.raw_dtype:
+        raise ValueError(
+            f"Ciphertext array dtype '{raw_array.dtype}' does not match "
+            f"key file raw_dtype '{key_file.raw_dtype}'."
+        )
+
+    # Derive HMAC authentication key
+    master_key = b64url_decode(key_file.master_key)
+    salt = b64url_decode(key_file.salt)
+    hmac_key = derive_hmac_key(master_key, salt)
+
+    # Reconstruct canonical metadata representation
+    canonical_meta = build_canonical_metadata(
+        format_version=key_file.format_version,
+        algorithm=key_file.algorithm,
+        salt=key_file.salt,
+        nonce=key_file.nonce,
+        parameters=key_file.parameters,
+        dimensions=key_file.dimensions,
+        raw_dtype=key_file.raw_dtype,
+    )
+
+    # Verify HMAC tag in constant time
+    expected_tag = compute_hmac(hmac_key, canonical_meta, raw_array.tobytes())
+    if not verify_hmac(expected_tag, key_file.authentication.tag):
+        raise ValueError(
+            "The supplied key does not match this encrypted image, or the encrypted data has been modified."
+        )
+
+    # HMAC VERIFICATION PASSED: Proceed with Layer 1 Decryption
+    algo = key_file.algorithm.upper()
+
+    if algo == "DRPE":
+        seed1, seed2 = derive_drpe_seeds(master_key, salt)
+        key = drpe.DRPEKey(seed1=seed1, seed2=seed2)
+
+        r1 = drpe.generate_phase_mask(raw_array.shape, key.seed1)
+        r2 = drpe.generate_phase_mask(raw_array.shape, key.seed2)
+
+        fourier_plane = np.fft.fft2(raw_array, norm="ortho")
+        demodulated_fourier = fourier_plane * np.conj(r2)
+        demodulated_spatial = np.fft.ifft2(demodulated_fourier, norm="ortho")
+
+        recovered = np.real(demodulated_spatial * np.conj(r1))
+        rec_uint8 = np.clip(np.round(recovered), 0, 255).astype(np.uint8)
+
+        cipher_vis = cv2.normalize(
+            np.abs(raw_array), None, 0, 255, cv2.NORM_MINMAX
+        ).astype(np.uint8)
+
+        stages = {
+            "ciphertext": array_to_data_uri(cipher_vis),
+            "r2_conj": phase_to_data_uri(np.angle(np.conj(r2))),
+            "fourier_demod": log_spectrum_to_data_uri(demodulated_fourier),
+            "r1_conj": phase_to_data_uri(np.angle(np.conj(r1))),
+            "decrypted": array_to_data_uri(rec_uint8),
+        }
+
+    elif algo == "FOURIER":
+        seed = derive_fourier_seed(master_key, salt)
+
+        f_cipher = np.fft.fft2(raw_array, norm="ortho")
+        flat = f_cipher.flatten()
+        perm = fourier.generate_permutation(flat.size, seed)
+        inv_perm = np.empty_like(perm)
+        inv_perm[perm] = np.arange(flat.size)
+        original_coeffs = flat[inv_perm].reshape(f_cipher.shape)
+        result = np.asarray(np.real(np.fft.ifft2(original_coeffs, norm="ortho")))
+
+        rec_uint8 = np.clip(np.round(result), 0, 255).astype(np.uint8)
+        cipher_vis = np.clip(np.round(np.real(raw_array)), 0, 255).astype(np.uint8)
+
+        stages = {
+            "ciphertext": array_to_data_uri(cipher_vis),
+            "fft_spectrum": log_spectrum_to_data_uri(f_cipher),
+            "inverse_perm": log_spectrum_to_data_uri(original_coeffs),
+            "decrypted": array_to_data_uri(rec_uint8),
+        }
+
+    elif algo == "DCT":
+        seed = derive_dct_seed(master_key, salt)
+
+        d_cipher = dct.dctn(raw_array, norm="ortho")
+        flat = d_cipher.flatten()
+        perm = dct.generate_permutation(flat.size, seed)
+        inv_perm = np.empty_like(perm)
+        inv_perm[perm] = np.arange(flat.size)
+        original_coeffs = flat[inv_perm].reshape(d_cipher.shape)
+        result = np.asarray(dct.idctn(original_coeffs, norm="ortho"))
+
+        rec_uint8 = np.clip(np.round(result), 0, 255).astype(np.uint8)
+        cipher_vis = np.clip(np.round(raw_array), 0, 255).astype(np.uint8)
+
+        stages = {
+            "ciphertext": array_to_data_uri(cipher_vis),
+            "dct_coeffs": dct_spectrum_to_data_uri(d_cipher),
+            "inverse_perm": dct_spectrum_to_data_uri(original_coeffs),
+            "decrypted": array_to_data_uri(rec_uint8),
+        }
+
+    elif algo == "ARNOLD":
+        if not key_file.nonce:
+            raise ValueError(
+                "Key file is missing required 'nonce' for Arnold+ChaCha20 decryption."
+            )
+        nonce = b64url_decode(key_file.nonce)
+        chacha_key = derive_chacha20_key(master_key, salt)
+        itr = int(key_file.parameters.get("itr", 10))
+
+        unxored, rec_uint8 = arnold_xor.decrypt_arnold_chacha(
+            raw_array, itr, chacha_key, nonce
+        )
+
+        stages = {
+            "ciphertext": array_to_data_uri(raw_array),
+            "xor_invert": array_to_data_uri(unxored),
+            "inverse_arnold": array_to_data_uri(rec_uint8),
+            "decrypted": array_to_data_uri(rec_uint8),
+        }
+
+    else:
+        raise ValueError(f"Unsupported algorithm '{key_file.algorithm}' for decryption.")
+
+    # Quality metrics evaluation
+    quality: dict[str, Any] = {}
+    diff_heatmap_uri: str | None = None
+
+    if reference_payload:
+        try:
+            ref_img = decode_image_payload(reference_payload)
+            if ref_img.shape == rec_uint8.shape:
+                mse_val = calculate_mse(ref_img, rec_uint8)
+                psnr_val = calculate_psnr(ref_img, rec_uint8)
+                ssim_val = calculate_ssim(ref_img, rec_uint8)
+                diff = np.abs(
+                    ref_img.astype(np.float64) - rec_uint8.astype(np.float64)
+                )
+                diff_heatmap_uri = diff_heatmap_to_data_uri(diff)
+                quality = {
+                    "mse": round(mse_val, 4),
+                    "psnr": round(psnr_val, 2) if not np.isinf(psnr_val) else "inf",
+                    "ssim": round(ssim_val, 4),
+                }
+        except Exception:
+            pass
+
+    latency_ms = (time.perf_counter() - t0) * 1000.0
+
+    return DecryptResponseV2(
+        status="COMPLETE",
+        algorithm=key_file.algorithm,
+        decrypted_image=array_to_data_uri(rec_uint8),
+        diff_heatmap=diff_heatmap_uri,
+        stages=stages,
+        quality=quality,
+        metadata={
+            "shape": f"{rec_uint8.shape[1]}×{rec_uint8.shape[0]}",
+            "format_version": 2,
+        },
+        latency_ms=round(latency_ms, 2),
+    )
+

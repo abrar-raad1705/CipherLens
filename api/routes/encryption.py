@@ -16,12 +16,16 @@ from api.schemas.encryption import (
     DCTPreloadResponse,
     DCTRequest,
     DCTResponse,
+    DecryptRequestV2,
+    DecryptResponseV2,
     DRPEDecryptRequest,
     DRPEDecryptResponse,
     DRPEEncryptRequest,
     DRPEEncryptResponse,
     DRPEPreloadRequest,
     DRPEPreloadResponse,
+    EncryptRequestV2,
+    EncryptResponseV2,
     FeistelRequest,
     FeistelResponse,
     FourierPreloadRequest,
@@ -201,4 +205,33 @@ async def post_feistel(req: FeistelRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Feistel cipher failed: {str(e)}")
+
+
+# ── Layer 2 Route Handlers ──────────────────────────────────────────
+
+@router.post("/v2/encrypt", response_model=EncryptResponseV2)
+async def post_v2_encrypt(req: EncryptRequestV2):
+    try:
+        return encryption_service.run_v2_encrypt(
+            req.image, algorithm=req.algorithm, parameters=req.parameters
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Encryption failed: {str(e)}")
+
+
+@router.post("/v2/decrypt", response_model=DecryptResponseV2)
+async def post_v2_decrypt(req: DecryptRequestV2):
+    try:
+        return encryption_service.run_v2_decrypt(
+            req.ciphertext,
+            key_file_data=req.key_file,
+            reference_payload=req.reference_image,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Decryption failed: {str(e)}")
+
 
