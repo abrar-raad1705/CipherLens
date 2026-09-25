@@ -19,6 +19,11 @@ export function useAnalysis() {
   const [histogram, setHistogram] = useState<HistogramData | null>(null);
   const [fullAnalysis, setFullAnalysis] = useState<FullAnalysisData | null>(null);
 
+  const clearFullAnalysis = () => {
+    setFullAnalysis(null);
+    setError(null);
+  };
+
   const getErrorMessage = (err: unknown, fallback: string) => {
     return err instanceof Error ? err.message : fallback;
   };
@@ -94,6 +99,7 @@ export function useAnalysis() {
   ) => {
     setLoading(true);
     setError(null);
+    setFullAnalysis(null);
     try {
       const res = await runFullAnalysis(plainUri, cipherUri, recoveredUri, diffX, diffY, algorithm, keyParams);
       setFullAnalysis(res);
@@ -114,6 +120,7 @@ export function useAnalysis() {
     metrics,
     histogram,
     fullAnalysis,
+    clearFullAnalysis,
     executeEntropy,
     executeCorrelation,
     executeMetrics,

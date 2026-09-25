@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowDownTrayIcon as Download, EyeIcon as Eye } from "@heroicons/react/24/outline";
-import { Button } from "@/components/ui/button";
+import { EyeIcon as Eye } from "@heroicons/react/24/outline";
 import {
   CompareSlider,
   CompareSliderBefore,
@@ -94,27 +93,19 @@ export function SplitCompareCanvas({
     imgAfter.src = afterSrc;
   }, [viewMode, beforeSrc, afterSrc]);
 
-  const handleDownloadResult = () => {
-    if (!afterSrc) return;
-    const link = document.createElement("a");
-    link.download = `${afterLabel.toLowerCase().replace(/[^a-z0-9]/g, "_")}_result.png`;
-    link.href = afterSrc;
-    link.click();
-  };
-
   const hasBefore = Boolean(beforeSrc && beforeSrc.trim().length > 0);
   const hasAfter = Boolean(afterSrc && afterSrc.trim().length > 0);
 
   return (
     <Card className={`flex flex-col overflow-hidden ${className}`}>
       {/* Top Bar Header */}
-      <CardHeader className="py-2 px-3 border-b">
+      <CardHeader className="flex-wrap gap-2 py-2.5 px-4 border-b">
         {/* Mode Selector using shadcn Tabs */}
         <Tabs
           value={viewMode}
           onValueChange={(val) => setViewMode(val as ViewMode)}
         >
-          <TabsList variant="line" className="h-7 gap-3">
+          <TabsList variant="line" className="h-auto flex-wrap gap-2 sm:gap-3">
             <TabsTrigger value="split" className="text-xs pb-1">
               Split
             </TabsTrigger>
@@ -132,30 +123,32 @@ export function SplitCompareCanvas({
 
         {/* Tools */}
         <div className="flex items-center gap-2">
-          {viewMode !== "3d-topography" && (
+          {viewMode === "split" && (
             <button
-              onMouseDown={() => setIsHoldingOriginal(true)}
-              onMouseUp={() => setIsHoldingOriginal(false)}
-              onTouchStart={() => setIsHoldingOriginal(true)}
-              onTouchEnd={() => setIsHoldingOriginal(false)}
-              className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#E8E8E3] dark:border-[#292929] text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] select-none transition-colors cursor-pointer"
-              title="Press and hold to inspect original"
+              type="button"
+              onPointerDown={() => setIsHoldingOriginal(true)}
+              onPointerUp={() => setIsHoldingOriginal(false)}
+              onPointerCancel={() => setIsHoldingOriginal(false)}
+              onPointerLeave={() => setIsHoldingOriginal(false)}
+              onBlur={() => setIsHoldingOriginal(false)}
+              onKeyDown={(event) => {
+                if (event.key === " " || event.key === "Enter") setIsHoldingOriginal(true);
+              }}
+              onKeyUp={(event) => {
+                if (event.key === " " || event.key === "Enter") setIsHoldingOriginal(false);
+              }}
+              aria-pressed={isHoldingOriginal}
+              className={`inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-xs font-medium select-none touch-manipulation transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${
+                isHoldingOriginal
+                  ? "border-blue-500/40 bg-blue-500/15 text-blue-700 dark:text-blue-300"
+                  : "border-[#E8E8E3] dark:border-[#353535] bg-white dark:bg-[#242424] text-[#575A55] dark:text-[#C0C0C0] hover:border-blue-500/30 hover:text-blue-700 dark:hover:text-blue-400"
+              }`}
+              title="Press and hold to view the original image"
             >
-              <Eye className="h-3 w-3" />
-              <span>Hold for Original</span>
+              <Eye className="h-4 w-4" />
+              <span>{isHoldingOriginal ? "Viewing original" : "Press to view original"}</span>
             </button>
           )}
-
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 text-[11px]"
-            onClick={handleDownloadResult}
-            title="Export image"
-          >
-            <Download className="h-3 w-3" />
-            <span>Export</span>
-          </Button>
         </div>
       </CardHeader>
 

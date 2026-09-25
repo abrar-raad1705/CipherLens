@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, Suspense, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  Suspense,
+  useRef,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownTrayIcon as Download,
@@ -12,19 +18,46 @@ import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
 import { KernelGrid } from "@/components/processing/KernelGrid";
-import { DriveDropzone, UploadedImageInfo } from "@/components/upload/DriveDropzone";
+import {
+  DriveDropzone,
+  UploadedImageInfo,
+} from "@/components/upload/DriveDropzone";
 import { useWorkspace } from "@/hooks/use-image";
 import { useProcessing } from "@/hooks/use-processing";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type FilterMode = "presets" | "custom" | "brightness_contrast" | "heatmap" | "invert" | null;
+type FilterMode =
+  | "presets"
+  | "custom"
+  | "brightness_contrast"
+  | "heatmap"
+  | "invert"
+  | null;
 
 // ─── Jet Heatmap Palette Lookup Table (256 entries) ──────────────────────────
 const HEATMAP_LUT = Array.from({ length: 256 }, (_, i) => {
   const t = i / 255;
-  const r = Math.min(255, Math.max(0, Math.round(255 * Math.min(Math.max(1.5 - Math.abs(6 * t - 4.5), 0), 1))));
-  const g = Math.min(255, Math.max(0, Math.round(255 * Math.min(Math.max(1.5 - Math.abs(6 * t - 3.0), 0), 1))));
-  const b = Math.min(255, Math.max(0, Math.round(255 * Math.min(Math.max(1.5 - Math.abs(6 * t - 1.5), 0), 1))));
+  const r = Math.min(
+    255,
+    Math.max(
+      0,
+      Math.round(255 * Math.min(Math.max(1.5 - Math.abs(6 * t - 4.5), 0), 1)),
+    ),
+  );
+  const g = Math.min(
+    255,
+    Math.max(
+      0,
+      Math.round(255 * Math.min(Math.max(1.5 - Math.abs(6 * t - 3.0), 0), 1)),
+    ),
+  );
+  const b = Math.min(
+    255,
+    Math.max(
+      0,
+      Math.round(255 * Math.min(Math.max(1.5 - Math.abs(6 * t - 1.5), 0), 1)),
+    ),
+  );
   return [r, g, b];
 });
 
@@ -44,70 +77,110 @@ const PRESET_CATALOGUE: PresetEntry[] = [
     label: "Gaussian Blur",
     tag: "LOW-PASS",
     serverOp: "gaussian",
-    matrix: [[1, 2, 1], [2, 4, 2], [1, 2, 1]],
+    matrix: [
+      [1, 2, 1],
+      [2, 4, 2],
+      [1, 2, 1],
+    ],
   },
   {
     id: "median",
     label: "Median Filter",
     tag: "NOISE REDUCTION",
     serverOp: "median",
-    matrix: [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+    matrix: [
+      [1, 1, 1],
+      [1, 1, 1],
+      [1, 1, 1],
+    ],
   },
   {
     id: "sobel",
     label: "Sobel Edge",
     tag: "GRADIENT",
     serverOp: "sobel",
-    matrix: [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],
+    matrix: [
+      [-1, 0, 1],
+      [-2, 0, 2],
+      [-1, 0, 1],
+    ],
   },
   {
     id: "sharpen",
     label: "Sharpen",
     tag: "HIGH-PASS",
     serverOp: "custom",
-    matrix: [[0, -1, 0], [-1, 5, -1], [0, -1, 0]],
+    matrix: [
+      [0, -1, 0],
+      [-1, 5, -1],
+      [0, -1, 0],
+    ],
   },
   {
     id: "laplacian",
     label: "Laplacian",
     tag: "2nd DERIVATIVE",
     serverOp: "custom",
-    matrix: [[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]],
+    matrix: [
+      [-1, -1, -1],
+      [-1, 8, -1],
+      [-1, -1, -1],
+    ],
   },
   {
     id: "emboss",
     label: "Emboss",
     tag: "RELIEF",
     serverOp: "custom",
-    matrix: [[-2, -1, 0], [-1, 1, 1], [0, 1, 2]],
+    matrix: [
+      [-2, -1, 0],
+      [-1, 1, 1],
+      [0, 1, 2],
+    ],
   },
   {
     id: "box_blur",
     label: "Box Blur",
     tag: "AVERAGING",
     serverOp: "custom",
-    matrix: [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+    matrix: [
+      [1, 1, 1],
+      [1, 1, 1],
+      [1, 1, 1],
+    ],
   },
   {
     id: "edge_detect",
     label: "Edge Detection",
     tag: "CONTOUR",
     serverOp: "custom",
-    matrix: [[0, 1, 0], [1, -4, 1], [0, 1, 0]],
+    matrix: [
+      [0, 1, 0],
+      [1, -4, 1],
+      [0, 1, 0],
+    ],
   },
   {
     id: "high_pass",
     label: "High Pass",
     tag: "FREQUENCY",
     serverOp: "custom",
-    matrix: [[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]],
+    matrix: [
+      [-1, -1, -1],
+      [-1, 9, -1],
+      [-1, -1, -1],
+    ],
   },
   {
     id: "low_pass",
     label: "Low Pass",
     tag: "SMOOTHING",
     serverOp: "custom",
-    matrix: [[1, 2, 1], [2, 4, 2], [1, 2, 1]],
+    matrix: [
+      [1, 2, 1],
+      [2, 4, 2],
+      [1, 2, 1],
+    ],
   },
 ];
 
@@ -135,13 +208,11 @@ function ConvolutionBenchContent() {
   const router = useRouter();
   const { activeArtifact, addArtifact } = useWorkspace();
 
-  const [uploadedImage, setUploadedImage] = useState<UploadedImageInfo | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<UploadedImageInfo | null>(
+    null,
+  );
 
-  const {
-    loading,
-    error,
-    result,
-  } = useProcessing();
+  const { loading, error, result } = useProcessing();
 
   // ── Mode (none selected initially)
   const [filterMode, setFilterMode] = useState<FilterMode>(null);
@@ -152,12 +223,16 @@ function ConvolutionBenchContent() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const selectedPreset = selectedPresetId
-    ? PRESET_CATALOGUE.find((p) => p.id === selectedPresetId) ?? null
+    ? (PRESET_CATALOGUE.find((p) => p.id === selectedPresetId) ?? null)
     : null;
 
   // ── Kernel matrices (integers)
-  const [presetMatrix, setPresetMatrix] = useState<number[][]>(PRESET_CATALOGUE[0].matrix);
-  const [customMatrix, setCustomMatrix] = useState<number[][]>(DEFAULT_CUSTOM_MATRIX);
+  const [presetMatrix, setPresetMatrix] = useState<number[][]>(
+    PRESET_CATALOGUE[0].matrix,
+  );
+  const [customMatrix, setCustomMatrix] = useState<number[][]>(
+    DEFAULT_CUSTOM_MATRIX,
+  );
 
   // ── Brightness: -50 to +50, center 0
   const [brightness, setBrightness] = useState<number>(0);
@@ -171,13 +246,16 @@ function ConvolutionBenchContent() {
     filterMode === "presets" && selectedPreset
       ? presetMatrix
       : filterMode === "custom"
-      ? customMatrix
-      : IDENTITY_MATRIX;
+        ? customMatrix
+        : IDENTITY_MATRIX;
 
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
         setIsDropdownOpen(false);
       }
     };
@@ -218,7 +296,7 @@ function ConvolutionBenchContent() {
     const contrastMult = 1 + contrast;
     const norm = normaliseKernel(activeMatrix);
     return norm.map((row) =>
-      row.map((val) => Number((val * contrastMult).toFixed(4)))
+      row.map((val) => Number((val * contrastMult).toFixed(4))),
     );
   }, [activeMatrix, contrast]);
 
@@ -254,7 +332,9 @@ function ConvolutionBenchContent() {
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        let r = 0, g = 0, b = 0;
+        let r = 0,
+          g = 0,
+          b = 0;
         for (let ky = 0; ky < kLen; ky++) {
           const iy = Math.min(Math.max(y + ky - half, 0), height - 1);
           for (let kx = 0; kx < kLen; kx++) {
@@ -272,7 +352,10 @@ function ConvolutionBenchContent() {
         const pb = Math.min(255, Math.max(0, b + biasOffset));
 
         if (filterMode === "heatmap") {
-          const gray = Math.min(255, Math.max(0, Math.round(0.299 * pr + 0.587 * pg + 0.114 * pb)));
+          const gray = Math.min(
+            255,
+            Math.max(0, Math.round(0.299 * pr + 0.587 * pg + 0.114 * pb)),
+          );
           const [hr, hg, hb] = HEATMAP_LUT[gray];
           dst[outIdx] = hr;
           dst[outIdx + 1] = hg;
@@ -342,7 +425,10 @@ function ConvolutionBenchContent() {
 
   // ── Download
   const handleDownload = () => {
-    const outputImg = liveCanvasResult || (result ? result.output_image : null) || activeArtifact?.dataUri;
+    const outputImg =
+      liveCanvasResult ||
+      (result ? result.output_image : null) ||
+      activeArtifact?.dataUri;
     if (!outputImg) return;
     const a = document.createElement("a");
     a.href = outputImg;
@@ -350,7 +436,9 @@ function ConvolutionBenchContent() {
     a.click();
   };
 
-  const currentOutputImage = liveCanvasResult || (result ? result.output_image : activeArtifact?.dataUri);
+  const currentOutputImage =
+    liveCanvasResult ||
+    (result ? result.output_image : activeArtifact?.dataUri);
 
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -369,11 +457,17 @@ function ConvolutionBenchContent() {
       {!uploadedImage ? (
         <DriveDropzone
           title="Drop your image here"
-          description="Maximum 25 MB · PNG, JPG, WEBP, BMP supported"
+          description="PNG, JPG, WEBP, BMP supported"
           actionLabel="Browse files"
           onImageUploaded={(img) => {
             setUploadedImage(img);
-            addArtifact({ name: img.name, dataUri: img.dataUri, width: img.width, height: img.height, sourceBench: "processing" });
+            addArtifact({
+              name: img.name,
+              dataUri: img.dataUri,
+              width: img.width,
+              height: img.height,
+              sourceBench: "processing",
+            });
           }}
         />
       ) : (
@@ -396,12 +490,14 @@ function ConvolutionBenchContent() {
 
           {/* Controls */}
           <Card className="lg:col-span-4 p-5 space-y-5 overflow-visible">
-
             {/* ── FILTER METHOD ── */}
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
                 <span>FILTER METHOD</span>
-                {(filterMode !== null || selectedPresetId !== null || brightness !== 0 || contrast !== 0) && (
+                {(filterMode !== null ||
+                  selectedPresetId !== null ||
+                  brightness !== 0 ||
+                  contrast !== 0) && (
                   <button
                     type="button"
                     onClick={handleResetAll}
@@ -429,7 +525,11 @@ function ConvolutionBenchContent() {
                     <button
                       key={id}
                       type="button"
-                      onClick={() => setFilterMode((prev) => (prev === id ? null : id as FilterMode))}
+                      onClick={() =>
+                        setFilterMode((prev) =>
+                          prev === id ? null : (id as FilterMode),
+                        )
+                      }
                       className={[
                         "w-full py-3 px-4 rounded-lg border transition-all duration-150 cursor-pointer text-center font-medium text-sm sm:text-base flex items-center justify-center gap-2",
                         isActive
@@ -463,7 +563,9 @@ function ConvolutionBenchContent() {
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="font-medium truncate">
-                        {selectedPreset ? selectedPreset.label : "Select a Preset..."}
+                        {selectedPreset
+                          ? selectedPreset.label
+                          : "Select a Preset..."}
                       </span>
                       {selectedPreset && (
                         <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#222] text-[#999993] dark:text-[#6A6A6A] shrink-0">
@@ -471,7 +573,9 @@ function ConvolutionBenchContent() {
                         </span>
                       )}
                     </div>
-                    <ChevronDown className={`h-3.5 w-3.5 text-[#6F6F6A] shrink-0 transition-transform duration-150 ${isDropdownOpen ? "rotate-180" : ""}`} />
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 text-[#6F6F6A] shrink-0 transition-transform duration-150 ${isDropdownOpen ? "rotate-180" : ""}`}
+                    />
                   </button>
 
                   {isDropdownOpen && (
@@ -488,7 +592,9 @@ function ConvolutionBenchContent() {
                               : "hover:bg-[#F4F4F1] dark:hover:bg-[#1E1E1E] text-[#181818] dark:text-[#F2F2F0]",
                           ].join(" ")}
                         >
-                          <span className="font-medium truncate">{p.label}</span>
+                          <span className="font-medium truncate">
+                            {p.label}
+                          </span>
                           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#222] text-[#999993] dark:text-[#6A6A6A] shrink-0">
                             {p.tag}
                           </span>
@@ -513,7 +619,10 @@ function ConvolutionBenchContent() {
                       </button>
                     </div>
                     <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#111]">
-                      <KernelGrid matrix={presetMatrix} onChange={setPresetMatrix} />
+                      <KernelGrid
+                        matrix={presetMatrix}
+                        onChange={setPresetMatrix}
+                      />
                     </div>
                     <p className="text-[10px] text-[#999993] dark:text-[#6A6A6A] text-center">
                       ↑↓ or scroll ±1 · Shift+↑↓ ±5 · ←→ navigate
@@ -530,7 +639,10 @@ function ConvolutionBenchContent() {
                   Custom Kernel Matrix
                 </div>
                 <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#111]">
-                  <KernelGrid matrix={customMatrix} onChange={setCustomMatrix} />
+                  <KernelGrid
+                    matrix={customMatrix}
+                    onChange={setCustomMatrix}
+                  />
                 </div>
                 <p className="text-[10px] text-[#999993] dark:text-[#6A6A6A] text-center">
                   Click & type · ↑↓ ±1 · Shift+↑↓ ±5 · scroll ±1
@@ -561,7 +673,9 @@ function ConvolutionBenchContent() {
                   label="Brightness"
                   hint="−50   0   +50"
                   value={brightness}
-                  valueDisplay={brightness > 0 ? `+${brightness}` : String(brightness)}
+                  valueDisplay={
+                    brightness > 0 ? `+${brightness}` : String(brightness)
+                  }
                   min={-50}
                   max={50}
                   step={1}
@@ -573,7 +687,11 @@ function ConvolutionBenchContent() {
                   label="Contrast"
                   hint="−0.5   0   +0.5"
                   value={contrast}
-                  valueDisplay={contrast > 0 ? `+${contrast.toFixed(2)}` : contrast.toFixed(2)}
+                  valueDisplay={
+                    contrast > 0
+                      ? `+${contrast.toFixed(2)}`
+                      : contrast.toFixed(2)
+                  }
                   min={-0.5}
                   max={0.5}
                   step={0.05}
@@ -584,14 +702,17 @@ function ConvolutionBenchContent() {
                 <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#0F0F0F] space-y-2.5">
                   <div className="flex items-center justify-between text-[10px] font-mono text-[#999993] dark:text-[#6A6A6A] uppercase tracking-wider">
                     <span>Effective Kernel Weights</span>
-                    <span className="text-[#2563EB] dark:text-[#5B8CFF]">Scale: ×{(1 + contrast).toFixed(2)}</span>
+                    <span className="text-[#2563EB] dark:text-[#5B8CFF]">
+                      Scale: ×{(1 + contrast).toFixed(2)}
+                    </span>
                   </div>
 
                   <div className="grid grid-cols-3 gap-1">
                     {effectiveKernel.map((row, r) =>
                       row.map((cell, c) => {
                         const sz = effectiveKernel.length;
-                        const isCenter = r === Math.floor(sz / 2) && c === Math.floor(sz / 2);
+                        const isCenter =
+                          r === Math.floor(sz / 2) && c === Math.floor(sz / 2);
                         return (
                           <div
                             key={`ek-${r}-${c}`}
@@ -605,14 +726,19 @@ function ConvolutionBenchContent() {
                             {parseFloat(cell.toFixed(3))}
                           </div>
                         );
-                      })
+                      }),
                     )}
                   </div>
 
                   <div className="flex items-center justify-between text-[10px] font-mono pt-1.5 border-t border-[#E8E8E3]/60 dark:border-[#292929]/60">
-                    <span className="text-[#6F6F6A] dark:text-[#A0A09B]">Brightness Pixel Bias:</span>
+                    <span className="text-[#6F6F6A] dark:text-[#A0A09B]">
+                      Brightness Pixel Bias:
+                    </span>
                     <span className="font-semibold text-[#181818] dark:text-[#F2F2F0]">
-                      {effectiveBiasOffset >= 0 ? `+${effectiveBiasOffset.toFixed(1)}` : effectiveBiasOffset.toFixed(1)} px
+                      {effectiveBiasOffset >= 0
+                        ? `+${effectiveBiasOffset.toFixed(1)}`
+                        : effectiveBiasOffset.toFixed(1)}{" "}
+                      px
                     </span>
                   </div>
                 </div>
@@ -647,17 +773,18 @@ function ConvolutionBenchContent() {
                     RGB<sub>out</sub> = 255 − RGB<sub>in</sub>
                   </p>
                   <p className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
-                    Reverses color channel values to produce a photographic negative preview.
+                    Reverses color channel values to produce a photographic
+                    negative preview.
                   </p>
                 </div>
               </div>
             )}
 
-
-
             {/* ── ERRORS ── */}
             {error && (
-              <div className="text-xs text-[#DC2626] font-mono text-center py-1">Error: {error}</div>
+              <div className="text-xs text-[#DC2626] font-mono text-center py-1">
+                Error: {error}
+              </div>
             )}
 
             {/* ── ACTIONS ── */}
@@ -681,7 +808,9 @@ function ConvolutionBenchContent() {
 
 export default function ConvolutionBenchPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-[#6F6F6A]">Loading...</div>}>
+    <Suspense
+      fallback={<div className="p-6 text-sm text-[#6F6F6A]">Loading...</div>}
+    >
       <ConvolutionBenchContent />
     </Suspense>
   );

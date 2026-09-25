@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useMemo } from "react";
+import React, { useState, useEffect, Suspense, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRightIcon as ArrowRight,
-  ChartBarIcon as BarChart3,
   CommandLineIcon as Binary,
   CheckCircleIcon as CheckCircle2,
   ArrowDownTrayIcon as Download,
@@ -15,7 +14,7 @@ import {
   ArrowsRightLeftIcon as Shuffle,
   LockOpenIcon as Unlock,
   SignalIcon as Waves,
-  SparklesIcon as Sparkles,
+  PhotoIcon,
   KeyIcon as KeyRound,
   XMarkIcon as X,
 } from "@heroicons/react/24/outline";
@@ -136,6 +135,13 @@ function DecryptionWorkbenchContent() {
     fileName: string;
     ciphertextPackage?: { real: string; imag?: string; shape: number[] };
   } | null>(null);
+
+  // Bench active state — allows reviewing uploaded files before entering workbench
+  const [isBenchActive, setIsBenchActive] = useState<boolean>(false);
+  const [continueWithoutKey, setContinueWithoutKey] = useState<boolean>(false);
+  const ciphertextInputRef = useRef<HTMLInputElement | null>(null);
+  const [openKeyPickerSignal, setOpenKeyPickerSignal] = useState(0);
+  const [openCipherPickerSignal, setOpenCipherPickerSignal] = useState(0);
 
   // Optional session for reference comparison if image originated from the same session
   const [session, setSession] = useState(getEncryptionSession());
@@ -274,9 +280,6 @@ function DecryptionWorkbenchContent() {
     setActivePipelineStage("decrypted");
     setQualityMetrics({ ssim: null, psnr: null, mse: null });
     setDecryptError(null);
-    // Also clear key if image changes (different ciphertext = need new key)
-    setKeyLoaded(null);
-
     // Validate if the new image matches the current session
     if (session) {
       if (uploadedImage && uploadedImage.dataUri !== session.cipherImageUri) {
@@ -484,6 +487,7 @@ function DecryptionWorkbenchContent() {
     fileName: string;
     ciphertextPackage?: { real: string; imag?: string; shape: number[] };
   }) => {
+    setContinueWithoutKey(false);
     if (params.algorithm !== selectedAlgo) {
       handleAlgorithmChange(params.algorithm);
     }
@@ -562,6 +566,27 @@ function DecryptionWorkbenchContent() {
     setKeyLoaded(params);
   };
 
+  // Directly trigger decryption from the pre-bench upload card
+  const handleDirectDecryptFromKeyCard = async () => {
+    if (!uploadedImage || isDecrypting) return;
+    setIsBenchActive(true);
+    const algo = keyLoaded?.algorithm || selectedAlgo;
+    const keys = keyLoaded?.keys;
+    await executeDecryptionWithParams(algo, {
+      seed1: keys?.seed1 ?? drpeSeed1,
+      seed2: keys?.seed2 ?? drpeSeed2,
+      fourierSeed: keys?.fourierSeed ?? fourierSeed,
+      dctSeed: keys?.dctSeed ?? dctSeed,
+      arnoldItr: keys?.iterations ?? arnoldItr,
+      arnoldXor: keys?.xorValue ?? arnoldXor,
+      scrambleSeed: keys?.scrambleSeed ?? scrambleSeed,
+      maskSeed: keys?.maskSeed ?? maskSeed,
+      kernelSeed: keys?.kernelSeed ?? kernelSeed,
+      feistelSeed: keys?.feistelSeed ?? feistelSeed,
+      feistelRounds: keys?.feistelRounds ?? feistelRounds,
+    });
+  };
+
   // Download recovered image
   const handleDownloadDecrypted = () => {
     if (!decryptedSrc || !uploadedImage) return;
@@ -570,6 +595,32 @@ function DecryptionWorkbenchContent() {
   };
 
   const activeMeta = ALGORITHMS.find((a) => a.id === selectedAlgo) || ALGORITHMS[0];
+  const loadedKeyParameters = keyLoaded
+    ? keyLoaded.algorithm === "drpe"
+      ? [
+          ["Spatial mask R₁", keyLoaded.keys.seed1 ?? "—"],
+          ["Fourier mask R₂", keyLoaded.keys.seed2 ?? "—"],
+        ]
+      : keyLoaded.algorithm === "fourier"
+        ? [["Phase seed", keyLoaded.keys.fourierSeed ?? "—"]]
+        : keyLoaded.algorithm === "dct"
+          ? [["Permutation seed", keyLoaded.keys.dctSeed ?? "—"]]
+          : keyLoaded.algorithm === "arnold"
+            ? [
+                ["Iterations", keyLoaded.keys.iterations ?? "—"],
+                ["XOR mask", `0x${(keyLoaded.keys.xorValue ?? 0).toString(16).toUpperCase()} (${keyLoaded.keys.xorValue ?? 0})`],
+              ]
+            : keyLoaded.algorithm === "spectral_hybrid"
+              ? [
+                  ["Scramble seed", keyLoaded.keys.scrambleSeed ?? "—"],
+                  ["Mask seed", keyLoaded.keys.maskSeed ?? "—"],
+                  ["Kernel seed", keyLoaded.keys.kernelSeed ?? "—"],
+                ]
+              : [
+                  ["Seed", keyLoaded.keys.feistelSeed ?? "—"],
+                  ["Rounds", keyLoaded.keys.feistelRounds ?? "—"],
+                ]
+    : [];
 
   // Format PSNR cleanly
   const formatPsnr = (psnr: number | string | null | undefined): string => {
@@ -588,7 +639,7 @@ function DecryptionWorkbenchContent() {
   return (
     <div className="space-y-4 max-w-7xl py-1">
       {/* Header */}
-      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
+      <div className="flex items-end justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
         <div>
           <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
             CRYPTOGRAPHIC LABORATORY
@@ -598,109 +649,187 @@ function DecryptionWorkbenchContent() {
           </h1>
         </div>
 
-        <div className="flex items-center gap-2">
-          {uploadedImage && (
+        <div>
+          {isBenchActive && uploadedImage && (keyLoaded || continueWithoutKey) && (
             <Button
+              type="button"
               variant="outline"
-              size="sm"
-              onClick={() => { setUploadedImage(null); setKeyLoaded(null); }}
-              className="text-xs h-8 px-3"
+              onClick={() => {
+                setIsBenchActive(false);
+                setDecryptedSrc(null);
+                setOpenCipherPickerSignal((value) => value + 1);
+              }}
+              className="group h-11 px-4 text-xs sm:text-sm font-medium rounded-lg border border-[#E8E8E3] dark:border-[#2E2E2E] bg-white dark:bg-[#1A1A1A] hover:bg-[#F4F4F1] dark:hover:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] shadow-xs hover:shadow-sm transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2"
             >
-              <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+              <RotateCcw className="h-4 w-4 text-[#6F6F6A] dark:text-[#A0A09B] group-hover:text-[#181818] dark:group-hover:text-[#F2F2F0] group-hover:-rotate-45 transition-transform duration-200 shrink-0" />
               <span>Change Ciphertext</span>
             </Button>
           )}
         </div>
       </div>
 
-      {/* Empty State: Two-panel upload card — image + key JSON, equal height */}
-      {!uploadedImage || !keyLoaded ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
+      {/* Persistent picker keeps the current ciphertext visible until a replacement is accepted. */}
+      <div className="hidden" aria-hidden="true">
+        <DriveDropzone
+          compact
+          inputRef={ciphertextInputRef}
+          openPickerSignal={openCipherPickerSignal}
+          onImageUploaded={(img) => setUploadedImage(img)}
+        />
+      </div>
+
+      {/* Upload State: Two-panel upload card — image + key JSON, equal height */}
+      {!isBenchActive || !uploadedImage || (!keyLoaded && !continueWithoutKey) ? (
+        <div className="w-full pb-8 sm:pb-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch">
 
             {/* Panel 1: Ciphertext Image */}
-            <div className="flex flex-col gap-2">
-              <div className="text-xs sm:text-sm font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-semibold text-center py-1">
-                Step 1 — Ciphertext Image
-              </div>
-              <div className="flex-1">
-                {uploadedImage ? (
-                  <div className="h-full rounded-lg border border-[#A7F3D0] dark:border-[#047857]/40 bg-[#ECFDF5] dark:bg-[#064E3B]/20 p-4 flex flex-col items-center justify-center gap-3 min-h-[340px] sm:min-h-[360px]">
-                    <div className="w-24 h-24 rounded-lg overflow-hidden border-2 border-[#A7F3D0] dark:border-[#047857]/40 shadow-md">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={uploadedImage.dataUri} alt="cipher" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="text-center space-y-0.5">
-                      <div className="text-xs font-semibold text-[#065F46] dark:text-[#6EE7B7] truncate max-w-[180px]">{uploadedImage.name}</div>
-                      <div className="text-[10px] text-[#047857] dark:text-[#A7F3D0] font-mono">{uploadedImage.width}×{uploadedImage.height}px · Uploaded</div>
+            <div className="flex-1 h-[480px] sm:h-[500px]">
+              {uploadedImage ? (
+                <div className="h-full rounded-2xl border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#141414] overflow-hidden flex flex-col justify-between">
+                  {/* Details at top of that space */}
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#181818] shrink-0 h-11">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <PhotoIcon className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF] shrink-0" />
+                      <span className="text-xs sm:text-sm font-medium text-[#181818] dark:text-[#F2F2F0] truncate max-w-[200px] sm:max-w-[260px]">
+                        {uploadedImage.name}
+                      </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setUploadedImage(null)}
-                      className="text-[11px] text-[#047857] dark:text-[#A7F3D0] hover:underline cursor-pointer font-medium"
+                      onClick={() => {
+                        setOpenCipherPickerSignal((value) => value + 1);
+                      }}
+                      className="group inline-flex h-8 items-center gap-1.5 px-2.5 text-xs font-medium rounded-lg border border-[#E8E8E3] dark:border-[#2E2E2E] bg-white dark:bg-[#1A1A1A] hover:bg-[#F4F4F1] dark:hover:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
                     >
-                      Change image
+                      <RotateCcw className="h-3.5 w-3.5 text-[#6F6F6A] dark:text-[#A0A09B] group-hover:text-[#181818] dark:group-hover:text-[#F2F2F0] group-hover:-rotate-45 transition-transform duration-200" />
+                      <span>Change Ciphertext</span>
                     </button>
                   </div>
-                ) : (
-                  <div className="min-h-[340px] sm:min-h-[360px] [&>div]:h-full [&>div]:min-h-[340px] sm:[&>div]:min-h-[360px]">
-                    <DriveDropzone
-                      title="Drop ciphertext image here"
-                      description="PNG · max 25 MB"
-                      actionLabel="Browse"
-                      compact={true}
-                      onImageUploaded={(img) => setUploadedImage(img)}
+
+                  {/* Big Full Size View */}
+                  <div className="flex-1 w-full p-4 sm:p-5 flex items-center justify-center bg-black/[0.02] dark:bg-black/20 overflow-hidden min-h-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={uploadedImage.dataUri}
+                      alt={uploadedImage.name}
+                      className="max-h-full max-w-full w-auto h-auto object-contain rounded-xl shadow-xs"
                     />
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="h-full [&>div]:h-full">
+                  <DriveDropzone
+                    title="Drop ciphertext image here"
+                    description=""
+                    actionLabel="Browse"
+                    compact={true}
+                    dropzoneClassName="relative overflow-hidden h-full rounded-2xl flex flex-col items-center justify-center"
+                    onImageUploaded={(img) => setUploadedImage(img)}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Panel 2: Key JSON */}
-            <div className="flex flex-col gap-2">
-              <div className="text-xs sm:text-sm font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-semibold text-center py-1">
-                Step 2 — Key Package (.json)
-              </div>
-              <div className="flex-1 flex flex-col justify-center min-h-[340px] sm:min-h-[360px]">
-                {keyLoaded ? (
-                  <div className="h-full rounded-lg border border-[#D7D7D1] dark:border-[#2E2E2E] bg-[#FAFAF8] dark:bg-[#121212] p-5 flex flex-col items-center justify-center gap-4 transition-all hover:border-[#2563EB] dark:hover:border-[#5B8CFF] min-h-[340px] sm:min-h-[360px]">
-                    <div className="w-14 h-14 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 flex items-center justify-center">
-                      <CheckCircle2 className="h-7 w-7 text-emerald-500" />
+            <div className="flex-1 h-[480px] sm:h-[500px]">
+              {keyLoaded ? (
+                <div className="h-full rounded-2xl border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#141414] overflow-hidden flex flex-col justify-between">
+                  {/* Details at top of key card */}
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#181818] shrink-0 h-11">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <KeyRound className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF] shrink-0" />
+                      <span className="text-xs sm:text-sm font-medium text-[#181818] dark:text-[#F2F2F0] truncate max-w-[200px] sm:max-w-[260px]">
+                        {keyLoaded.fileName}
+                      </span>
                     </div>
-                    <div className="text-center space-y-1">
-                      <div className="text-xs font-semibold text-[#181818] dark:text-[#F2F2F0] truncate max-w-[180px]">{keyLoaded.fileName}</div>
-                      <div className="text-[10px] font-mono text-[#6F6F6A] dark:text-[#A0A09B]">{keyLoaded.algorithm.toUpperCase()} · Key loaded</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setKeyLoaded(null);
+                        setContinueWithoutKey(false);
+                        setOpenKeyPickerSignal((value) => value + 1);
+                      }}
+                      className="group inline-flex h-8 items-center gap-1.5 px-2.5 text-xs font-medium rounded-lg border border-[#E8E8E3] dark:border-[#2E2E2E] bg-white dark:bg-[#1A1A1A] hover:bg-[#F4F4F1] dark:hover:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5 text-[#6F6F6A] dark:text-[#A0A09B] group-hover:text-[#181818] dark:group-hover:text-[#F2F2F0] group-hover:-rotate-45 transition-transform duration-200" />
+                      <span>Change Key</span>
+                    </button>
+                  </div>
+
+                  {/* Body with Key Details - compact layout */}
+                  <div className="flex-1 p-5 sm:p-6 flex flex-col justify-center space-y-3.5 min-h-0 overflow-y-auto">
+                    <div>
+                      <div className="text-[10px] font-mono tracking-[0.14em] text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                        Cryptographic key
+                      </div>
+                      <div className="mt-0.5 text-base sm:text-lg font-semibold text-[#181818] dark:text-[#F2F2F0]">
+                        {activeMeta.name}
+                      </div>
+                    </div>
+
+                    <div className="overflow-hidden rounded-xl border border-[#E8E8E3] dark:border-[#2C2C2C] bg-[#FAFAF8] dark:bg-[#191919]">
+                      {loadedKeyParameters.map(([label, value], index) => (
+                        <div
+                          key={String(label)}
+                          className={`flex items-center justify-between gap-3 px-4 py-2.5 sm:py-3 ${index > 0 ? "border-t border-[#E8E8E3] dark:border-[#2A2A2A]" : ""}`}
+                        >
+                          <span className="text-xs sm:text-sm text-[#6F6F6A] dark:text-[#A0A09B]">{label}</span>
+                          <code className="rounded-md bg-black/[0.04] dark:bg-white/[0.06] px-2.5 py-0.5 text-xs font-mono font-medium text-[#181818] dark:text-[#F2F2F0]">
+                            {value}
+                          </code>
+                        </div>
+                      ))}
+
                       {keyLoaded.ciphertextPackage && (
-                        <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          Ciphertext package embedded
+                        <div className="flex items-center gap-2 border-t border-[#E8E8E3] dark:border-[#2A2A2A] bg-[#2563EB]/5 dark:bg-[#5B8CFF]/[0.07] px-4 py-2.5 text-xs font-medium text-[#2563EB] dark:text-[#7EA2FF]">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#2563EB] dark:bg-[#5B8CFF]" />
+                          Embedded ciphertext cache ready
                         </div>
                       )}
                     </div>
                   </div>
-                ) : (
+
+                  {/* Bottom Action Area: Prominent Decrypt Button */}
+                  <div className="p-4 border-t border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#181818] shrink-0">
+                    <Button
+                      type="button"
+                      onClick={handleDirectDecryptFromKeyCard}
+                      disabled={!uploadedImage || isDecrypting}
+                      className="w-full h-11 rounded-xl text-sm font-medium cursor-pointer transition-all hover:-translate-y-0.5 active:translate-y-0 bg-[#202020] hover:bg-[#282828] dark:bg-[#202020] dark:hover:bg-[#282828] text-[#F2F2F0] border border-[#3A3A3A] hover:border-[#5B8CFF]/70 flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none shadow-[0_4px_16px_rgba(0,0,0,0.14)]"
+                    >
+                      {isDecrypting ? (
+                        <>
+                          <RotateCcw className="h-4 w-4 animate-spin text-[#7EA2FF] shrink-0" />
+                          <span>Decrypting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Unlock className="h-4 w-4 text-[#7EA2FF] shrink-0" />
+                          <span>{uploadedImage ? "Decrypt" : "Upload Ciphertext to Decrypt"}</span>
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-full [&>div]:h-full">
                   <KeyFileUpload
                     selectedAlgo={selectedAlgo}
                     onKeyLoaded={handleKeyLoaded}
                     onSwitchAlgorithm={handleAlgorithmChange}
-                    dropzoneClassName="h-full min-h-[340px] sm:min-h-[360px] flex flex-col items-center justify-center gap-3 border-2"
+                    continueWithoutKey={continueWithoutKey}
+                    onContinueWithoutKeyChange={setContinueWithoutKey}
+                    canContinueWithoutKey={Boolean(uploadedImage)}
+                    onContinueWithoutKey={handleDirectDecryptFromKeyCard}
+                    isDecrypting={isDecrypting}
+                    openPickerSignal={openKeyPickerSignal}
+                    dropzoneClassName="h-full rounded-2xl flex flex-col items-center justify-center gap-3 border-2"
                   />
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
-          </div>
-
-          {/* Centered Random Key Package Action */}
-          <div className="flex justify-center pt-2">
-            <button
-              type="button"
-              onClick={() => setIsRandomKeyModalOpen(true)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2E2E2E] text-[#181818] dark:text-[#F2F2F0] hover:border-[#2563EB] dark:hover:border-[#5B8CFF] hover:text-[#2563EB] dark:hover:text-[#5B8CFF] text-xs font-medium shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-98"
-            >
-              <Sparkles className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF]" />
-              <span>Generate Random Key Package</span>
-            </button>
           </div>
         </div>
       ) : (
@@ -711,12 +840,6 @@ function DecryptionWorkbenchContent() {
           <div className="space-y-2.5">
             <div className="flex items-center justify-between text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
               <span>SELECT DECRYPTION ALGORITHM</span>
-              {session?.algorithm === selectedAlgo && (
-                <span className="text-[#059669] dark:text-[#34D399] font-medium flex items-center gap-1 font-mono text-[11px] normal-case">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  <span>Session Match: {selectedAlgo.toUpperCase()}</span>
-                </span>
-              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -772,9 +895,6 @@ function DecryptionWorkbenchContent() {
                     <div className="flex items-center justify-between pb-2 border-b border-[#E8E8E3] dark:border-[#242424] mb-2 px-1">
                       <span className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
                         {activeMeta.name} Decryption Pipeline
-                      </span>
-                      <span className="text-[10px] font-mono text-[#6F6F6A] dark:text-[#A0A09B]">
-                        Interactive Stages
                       </span>
                     </div>
                     <OpticalBenchDiagram
@@ -877,7 +997,7 @@ function DecryptionWorkbenchContent() {
                   <CanvasViewer
                     imageSrc={uploadedImage?.dataUri || ""}
                     title="CIPHERTEXT INPUT"
-                    subtitle={`${uploadedImage.name} · Ready for ${activeMeta.name} decryption`}
+                    subtitle={uploadedImage.name}
                     isLoading={isDecrypting || loading}
                     loadingText={`Decrypting with ${activeMeta.name}...`}
                   />
@@ -900,9 +1020,6 @@ function DecryptionWorkbenchContent() {
                   {/* 1. DRPE Decrypt Controls */}
                   {selectedAlgo === "drpe" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        OPTICAL CONJUGATE MASKS
-                      </div>
                       <Slider
                         label="Spatial Phase Mask (R₁*)"
                         valueDisplay={drpeSeed1}
@@ -927,9 +1044,6 @@ function DecryptionWorkbenchContent() {
                   {/* 2. Fourier Decrypt Controls */}
                   {selectedAlgo === "fourier" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        INVERSE FFT PERMUTATION KEY
-                      </div>
                       <Slider
                         label="Phase Seed"
                         valueDisplay={fourierSeed}
@@ -945,9 +1059,6 @@ function DecryptionWorkbenchContent() {
                   {/* 3. DCT Decrypt Controls */}
                   {selectedAlgo === "dct" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        INVERSE DCT PERMUTATION KEY
-                      </div>
                       <Slider
                         label="Permutation Seed"
                         valueDisplay={dctSeed}
@@ -963,9 +1074,6 @@ function DecryptionWorkbenchContent() {
                   {/* 4. Arnold Cat Map Decrypt Controls */}
                   {selectedAlgo === "arnold" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        INVERSE CHAOTIC PARAMETERS
-                      </div>
                       <Slider
                         label="Inverse Cat Map Iterations"
                         valueDisplay={arnoldItr}
@@ -990,9 +1098,6 @@ function DecryptionWorkbenchContent() {
                   {/* 5. Spectral Hybrid Decrypt Controls */}
                   {selectedAlgo === "spectral_hybrid" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        INVERSE HYBRID PARAMETERS
-                      </div>
                       <Slider
                         label="Scramble Seed"
                         valueDisplay={scrambleSeed}
@@ -1026,9 +1131,6 @@ function DecryptionWorkbenchContent() {
                   {/* 7. Feistel Cipher Decrypt Controls */}
                   {selectedAlgo === "feistel" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        INVERSE NETWORK PARAMETERS
-                      </div>
                       <Slider
                         label="Seed"
                         valueDisplay={feistelSeed}
@@ -1053,25 +1155,30 @@ function DecryptionWorkbenchContent() {
 
                 {/* Execute Decryption Button */}
                 <Button
-                  variant="primary"
+                  type="button"
                   onClick={handleExecuteDecrypt}
                   disabled={isDecrypting || loading || !uploadedImage}
-                  className="w-full h-8.5 mt-1 text-xs"
+                  className="w-full h-11 rounded-xl text-sm font-medium cursor-pointer transition-all hover:-translate-y-0.5 active:translate-y-0 bg-[#202020] hover:bg-[#282828] dark:bg-[#202020] dark:hover:bg-[#282828] text-[#F2F2F0] border border-[#3A3A3A] hover:border-[#5B8CFF]/70 flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
                 >
-                  <Unlock className="h-3.5 w-3.5 mr-1" />
-                  <span>Execute {activeMeta.name} Decryption</span>
+                  <Unlock className="h-4 w-4 text-[#7EA2FF] shrink-0" />
+                  <span>{isDecrypting ? "Decrypting..." : decryptedSrc ? "Re-Decrypt Image" : "Decrypt"}</span>
                 </Button>
 
-                {/* Post-decryption Action Button */}
+                {/* Post-decryption Action Buttons */}
                 {decryptedSrc && (
-                  <div className="space-y-1.5 pt-1 border-t border-[#E8E8E3] dark:border-[#242424]">
+                  <div className="space-y-2 pt-3 mt-1 border-t border-[#292929]">
+                    <div className="px-1 text-[10px] font-mono tracking-[0.18em] text-[#A0A09B] dark:text-[#A0A09B] uppercase">
+                      Next steps
+                    </div>
                     <Button
-                      variant="primary"
+                      type="button"
                       onClick={handleDownloadDecrypted}
-                      className="w-full h-7.5 text-xs bg-[#059669] hover:bg-[#047857]"
+                      className="w-full h-10 rounded-xl text-sm font-medium cursor-pointer transition-all hover:-translate-y-0.5 active:translate-y-0 bg-black/[0.03] dark:bg-white/[0.06] hover:bg-black/[0.06] dark:hover:bg-white/[0.1] border border-[#D7D7D1] dark:border-[#3A3A3A] hover:border-[#2563EB]/60 dark:hover:border-[#5B8CFF]/60 text-[#181818] dark:text-[#F2F2F0] flex items-center justify-start gap-3 px-4 animate-in fade-in duration-150"
+                      title="Download Decrypted Image"
                     >
-                      <Download className="h-3 w-3 mr-1.5" />
+                      <Download className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF] shrink-0" />
                       <span>Download Decrypted Image</span>
+                      <ArrowRight className="ml-auto h-4 w-4 text-[#999993] dark:text-[#6A6A6A]" />
                     </Button>
                   </div>
                 )}

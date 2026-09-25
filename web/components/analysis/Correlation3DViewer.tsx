@@ -4,6 +4,13 @@ import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useTheme } from "@/hooks/use-theme";
 
 interface Correlation3DViewerProps {
@@ -14,6 +21,11 @@ interface Correlation3DViewerProps {
 }
 
 type Mode3D = "correlation-scatter" | "phase-sphere";
+
+const MODE_OPTIONS = [
+  { value: "correlation-scatter", label: "3D Correlation (xi, yi, zi)" },
+  { value: "phase-sphere", label: "3D Phase-Mag Sphere" },
+] as const;
 
 export function Correlation3DViewer({
   imageSrc,
@@ -363,34 +375,32 @@ export function Correlation3DViewer({
 
   return (
     <Card className={`overflow-hidden ${className}`}>
-      <CardHeader className="py-2.5 px-4 border-b flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-            {title}
-          </span>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 sm:px-5 py-2.5 sm:py-3 border-b border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#1B1B1B]">
+        <div className="text-lg font-semibold tracking-tight text-[#181818] dark:text-[#F2F2F0]">
+          {title}
         </div>
 
         {/* Controls */}
         <div className="flex items-center gap-2">
           {/* Target Toggle */}
           {ciphertextSrc && (
-            <div className="flex items-center gap-1 bg-[#E8E8E3]/50 dark:bg-[#222222] p-0.5 rounded border border-[#E8E8E3] dark:border-[#292929]">
+            <div className="flex items-center gap-1 bg-[#F2F2EE] dark:bg-[#262626] p-1 rounded-lg text-xs">
               <button
                 onClick={() => setActiveTarget("plaintext")}
-                className={`px-2 py-0.5 text-xs font-mono rounded cursor-pointer transition-colors ${
+                className={`px-2.5 py-1 rounded-md text-xs font-mono transition-all cursor-pointer ${
                   activeTarget === "plaintext"
-                    ? "bg-white dark:bg-[#171717] text-[#2563EB] dark:text-[#5B8CFF] font-medium"
-                    : "text-[#6F6F6A] dark:text-[#A0A09B]"
+                    ? "bg-white dark:bg-[#2A2A2A] text-blue-600 dark:text-blue-400 font-medium shadow-2xs"
+                    : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-white"
                 }`}
               >
                 Plaintext
               </button>
               <button
                 onClick={() => setActiveTarget("ciphertext")}
-                className={`px-2 py-0.5 text-xs font-mono rounded cursor-pointer transition-colors ${
+                className={`px-2.5 py-1 rounded-md text-xs font-mono transition-all cursor-pointer ${
                   activeTarget === "ciphertext"
-                    ? "bg-white dark:bg-[#171717] text-[#DC2626] dark:text-[#F87171] font-medium"
-                    : "text-[#6F6F6A] dark:text-[#A0A09B]"
+                    ? "bg-white dark:bg-[#2A2A2A] text-blue-600 dark:text-blue-400 font-medium shadow-2xs"
+                    : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-white"
                 }`}
               >
                 Ciphertext
@@ -399,29 +409,45 @@ export function Correlation3DViewer({
           )}
 
           {/* Mode Selector */}
-          <select
+          <Select
+            items={MODE_OPTIONS}
             value={viewMode}
-            onChange={(e) => setViewMode(e.target.value as Mode3D)}
-            className="h-7 px-2 text-xs font-mono rounded border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] text-[#181818] dark:text-[#F2F2F0]"
+            onValueChange={(val) => {
+              if (val) setViewMode(val as Mode3D);
+            }}
           >
-            <option value="correlation-scatter">3D Correlation (xi, yi, zi)</option>
-            <option value="phase-sphere">3D Phase-Mag Sphere</option>
-          </select>
+            <SelectTrigger
+              size="sm"
+              className="h-8 font-mono text-xs border-[#E8E8E3] dark:border-[#2C2C2C] bg-white dark:bg-[#262626] text-[#181818] dark:text-[#F2F2F0] hover:bg-[#F5F5F3] dark:hover:bg-[#303030]"
+              aria-label="3D visualization mode"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent side="bottom" align="end" sideOffset={4} alignItemWithTrigger={false}>
+              {MODE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value} className="text-xs font-mono">
+                  <span>{opt.label}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      </CardHeader>
+      </div>
 
-      <CardContent className="p-0 relative">
-        <div className="relative w-full h-[360px] sm:h-[420px]">
+      <CardContent className="p-0 relative flex flex-col">
+        <div className="relative w-full h-[460px] sm:h-[540px] lg:h-[600px]">
           <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+        </div>
 
-          {/* Overlay Stats */}
-          <div className="absolute top-3 left-3 pointer-events-none flex items-center gap-3 font-mono text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] bg-white/80 dark:bg-[#121212]/80 px-2.5 py-1 rounded border border-[#E8E8E3] dark:border-[#292929] backdrop-blur-xs">
-            <span>3D Correlation r(x,y,z): <strong>{corrMetric.r3d.toFixed(4)}</strong></span>
+        {/* Footer info bar outside the canvas */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 px-4 sm:px-5 py-2.5 border-t border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#1A1A1A] text-xs font-mono">
+          <div className="flex flex-wrap items-center gap-2.5 text-[#6F6F6A] dark:text-[#A0A09B]">
+            <span>3D Correlation r(x,y,z): <strong className="text-[#181818] dark:text-[#F2F2F0] font-semibold">{corrMetric.r3d.toFixed(4)}</strong></span>
             <span>·</span>
-            <span>Entropy: <strong>{corrMetric.entropy.toFixed(3)} bits</strong></span>
+            <span>Entropy: <strong className="text-[#181818] dark:text-[#F2F2F0] font-semibold">{corrMetric.entropy.toFixed(3)} bits</strong></span>
           </div>
 
-          <div className="absolute bottom-3 left-3 pointer-events-none font-mono text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] bg-white/80 dark:bg-[#121212]/80 p-2 rounded border border-[#E8E8E3] dark:border-[#292929] backdrop-blur-xs">
+          <div className="text-[11px] text-[#777B75] dark:text-[#8E8E93]">
             {activeTarget === "plaintext"
               ? "Diagonal Ridge: Adjacent pixels are highly correlated (xi ≈ yi ≈ zi)"
               : "Chaotic Sphere: Encryption disintegrates correlation into 3D white noise"}

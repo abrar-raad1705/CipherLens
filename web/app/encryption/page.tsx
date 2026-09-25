@@ -7,6 +7,7 @@ import {
   ChartBarIcon as BarChart3,
   CommandLineIcon as Binary,
   ArrowDownTrayIcon as Download,
+  ArrowRightIcon as ArrowRight,
   DocumentTextIcon as FileText,
   LockClosedIcon as Lock,
   PhotoIcon,
@@ -463,9 +464,9 @@ function EncryptionWorkbenchContent() {
   const activeMeta = ALGORITHMS.find((a) => a.id === selectedAlgo) || ALGORITHMS[0];
 
   return (
-    <div className="space-y-3.5 max-w-7xl py-1">
+    <div className="space-y-4 max-w-7xl py-1">
       {/* Header */}
-      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
+      <div className="flex items-end justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
         <div>
           <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
             CRYPTOGRAPHIC LABORATORY
@@ -474,13 +475,31 @@ function EncryptionWorkbenchContent() {
             Image Encryption Bench
           </h1>
         </div>
+
+        <div>
+          {uploadedImage && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setUploadedImage(null);
+                setCiphertextUri(null);
+                setCiphertextPackage(null);
+              }}
+              className="group h-10 px-4 text-xs sm:text-sm font-medium rounded-lg border border-[#E8E8E3] dark:border-[#2E2E2E] bg-white dark:bg-[#1A1A1A] hover:bg-[#F4F4F1] dark:hover:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] shadow-xs hover:shadow-sm transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2"
+            >
+              <RotateCcw className="h-4 w-4 text-[#6F6F6A] dark:text-[#A0A09B] group-hover:text-[#181818] dark:group-hover:text-[#F2F2F0] group-hover:-rotate-45 transition-transform duration-200 shrink-0" />
+              <span>Change Image</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Empty State: Focused Upload Card */}
       {!uploadedImage ? (
         <DriveDropzone
           title="Drop your image here"
-          description="Maximum 25 MB"
+          description=""
           actionLabel="Browse files"
           onImageUploaded={(img) => {
             setUploadedImage(img);
@@ -495,14 +514,14 @@ function EncryptionWorkbenchContent() {
         />
       ) : (
         /* Image Active: Reveal Encryption Workflow Controls directly */
-        <div className="space-y-3.5 animate-in fade-in duration-300">
+        <div className="space-y-4 animate-in fade-in duration-300">
           {/* Algorithm Selector Row */}
-          <div className="space-y-1.5">
-            <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
-              SELECT ENCRYPTION ALGORITHM
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium px-0.5">
+              <span>SELECT ENCRYPTION ALGORITHM</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {ALGORITHMS.map((algo) => {
                 const isSelected = selectedAlgo === algo.id;
                 const Icon = algo.icon;
@@ -517,28 +536,28 @@ function EncryptionWorkbenchContent() {
                       params.set("algo", algo.id);
                       router.replace(`/encryption?${params.toString()}`);
                     }}
-                    className={`group text-left py-2 px-3 rounded-md border transition-all cursor-pointer select-none ${
+                    className={`group text-left p-3.5 rounded-md border transition-all cursor-pointer select-none ${
                       isSelected
-                        ? "border-[#2563EB] dark:border-[#5B8CFF] bg-[#2563EB]/[0.04] dark:bg-[#5B8CFF]/[0.05] ring-1 ring-[#2563EB] dark:ring-[#5B8CFF] shadow-2xs"
+                        ? "border-[#2563EB] dark:border-[#5B8CFF] bg-[#2563EB]/[0.03] dark:bg-[#5B8CFF]/[0.04]"
                         : "border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#141414] hover:border-[#D0D0CA] dark:hover:border-[#383838]"
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-3.5">
                       <div
-                        className={`w-7.5 h-7.5 rounded-md flex items-center justify-center shrink-0 transition-all ${
+                        className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 transition-all ${
                           isSelected
                             ? algo.iconBg
                             : "bg-black/[0.03] dark:bg-white/[0.04] text-[#6F6F6A] dark:text-[#A0A09B] group-hover:" + algo.iconColor
                         }`}
                       >
-                        <Icon className="h-4 w-4" />
+                        <Icon className="h-5 w-5" />
                       </div>
 
                       <div className="min-w-0 flex-1 space-y-0.5">
-                        <div className="text-sm font-medium text-[#181818] dark:text-[#F2F2F0] leading-snug truncate">
+                        <div className="text-base font-medium text-[#181818] dark:text-[#F2F2F0] leading-snug truncate">
                           {algo.name}
                         </div>
-                        <div className="font-mono text-[10px] tracking-wider uppercase text-[#999993] dark:text-[#6A6A6A] truncate">
+                        <div className="font-mono text-[11px] tracking-wider uppercase text-[#999993] dark:text-[#6A6A6A] truncate">
                           {algo.tag}
                         </div>
                       </div>
@@ -665,7 +684,7 @@ function EncryptionWorkbenchContent() {
                   <CanvasViewer
                     imageSrc={uploadedImage?.dataUri || ""}
                     title="INPUT PLAINTEXT (REAL IMAGE)"
-                    subtitle={`${uploadedImage.name} · ${uploadedImage.width}×${uploadedImage.height}`}
+                    subtitle={uploadedImage.name}
                     isLoading={isEncrypting || loading}
                     loadingText={`Simulating ${activeMeta.name} Cipher...`}
                   />
@@ -676,14 +695,17 @@ function EncryptionWorkbenchContent() {
             {/* Right Column: Settings & Telemetry Sidebar */}
             <div className="w-full lg:w-[310px] xl:w-[320px] shrink-0 space-y-3.5">
               <Card className="p-3.5 space-y-3 border border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#161616] shadow-xs">
+                <div className="flex items-center justify-between pb-1">
+                  <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
+                    ENCRYPTION KEY CONTROLS
+                  </div>
+                </div>
+
                 {/* Dynamic Settings per Algorithm */}
                 <div key={selectedAlgo} className="space-y-3 animate-option-switch">
                   {/* 1. DRPE Settings */}
                   {selectedAlgo === "drpe" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        PHASE KEY SEEDS (ENCRYPTION)
-                      </div>
                       <Slider
                         label="Spatial Phase Mask (R₁)"
                         valueDisplay={drpeSeed1}
@@ -708,9 +730,6 @@ function EncryptionWorkbenchContent() {
                   {/* 2. Fourier Settings */}
                   {selectedAlgo === "fourier" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        SPECTRAL PERMUTATION KEY
-                      </div>
                       <Slider
                         label="Phase Seed"
                         valueDisplay={fourierSeed}
@@ -726,9 +745,6 @@ function EncryptionWorkbenchContent() {
                   {/* 3. DCT Settings */}
                   {selectedAlgo === "dct" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        DCT BASIS PERMUTATION SEED
-                      </div>
                       <Slider
                         label="Permutation Seed"
                         valueDisplay={dctSeed}
@@ -744,9 +760,6 @@ function EncryptionWorkbenchContent() {
                   {/* 4. Arnold Cat Map Settings */}
                   {selectedAlgo === "arnold" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        CHAOTIC TORAL PARAMETERS
-                      </div>
                       <Slider
                         label="Cat Map Iterations"
                         valueDisplay={arnoldItr}
@@ -776,9 +789,6 @@ function EncryptionWorkbenchContent() {
                   {/* 5. Spectral Hybrid Settings */}
                   {selectedAlgo === "spectral_hybrid" && (
                     <div className="space-y-4">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        HYBRID KEY SEEDS & KERNEL
-                      </div>
                       <Slider
                         label="Scramble Seed"
                         valueDisplay={scrambleSeed}
@@ -812,15 +822,17 @@ function EncryptionWorkbenchContent() {
                       />
 
                       {/* 3x3 Kernel Matrix Display and Direct Keyboard Editor */}
-                      <div className="space-y-2 pt-2 border-t border-[#E8E8E3] dark:border-[#292929]">
-                        <div className="flex items-center justify-between text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                          <span>3 × 3 CONVOLUTION KERNEL</span>
-                          <span className="text-[10px] text-[#2563EB] dark:text-[#60A5FA] font-bold">
-                            Sum = {kernelMatrix.flat().reduce((a, b) => a + b, 0)}
+                      <div className="space-y-2 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="text-[11px] font-mono tracking-wider uppercase font-medium text-[#333333] dark:text-[#D4D4CE]">
+                            3 × 3 CONVOLUTION KERNEL
+                          </span>
+                          <span className="shrink-0 text-[11px] font-mono tracking-wider uppercase font-medium text-[#2563EB] dark:text-[#7EA2FF]">
+                            SUM = {kernelMatrix.flat().reduce((a, b) => a + b, 0)}
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-[#F5F5F0] dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2A2A2A]">
+                        <div className="grid grid-cols-3 gap-1.5 rounded-lg bg-[#F5F5F0] dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2F2F2F] p-1.5">
                           {kernelMatrix.map((row, rIdx) =>
                             row.map((val, cIdx) => (
                               <input
@@ -832,7 +844,8 @@ function EncryptionWorkbenchContent() {
                                   newMatrix[rIdx][cIdx] = parseInt(e.target.value) || 0;
                                   setKernelMatrix(newMatrix);
                                 }}
-                                className="w-full h-11 text-center font-mono text-sm font-semibold rounded-md border border-[#D0D0CB] dark:border-[#383838] bg-white dark:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] focus:outline-none focus:border-[#2563EB] dark:focus:border-[#3B82F6] focus:ring-1 focus:ring-[#2563EB] transition-all"
+                                aria-label={`Kernel coefficient row ${rIdx + 1}, column ${cIdx + 1}`}
+                                className="w-full h-8 text-center font-mono text-sm font-semibold rounded-md border border-[#D7D7D1] dark:border-[#383838] bg-white dark:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] hover:border-[#AFAFAA] dark:hover:border-[#505050] focus:outline-none focus:border-[#2563EB] dark:focus:border-[#5B8CFF] focus:ring-1 focus:ring-[#2563EB]/30 dark:focus:ring-[#5B8CFF]/30 transition-colors"
                               />
                             ))
                           )}
@@ -844,9 +857,6 @@ function EncryptionWorkbenchContent() {
                   {/* 7. Feistel Cipher Settings */}
                   {selectedAlgo === "feistel" && (
                     <div className="space-y-3">
-                      <div className="text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                        FEISTEL PARAMETERS
-                      </div>
                       <Slider
                         label="Block Seed"
                         valueDisplay={feistelSeed}
@@ -870,39 +880,44 @@ function EncryptionWorkbenchContent() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="space-y-2 pt-2">
+                <div className="space-y-3 pt-3">
                   <Button
                     type="button"
                     onClick={handleExecuteEncrypt}
                     disabled={isEncrypting || loading || !uploadedImage}
-                    className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-black hover:bg-neutral-900 text-white border border-[#2563EB] dark:border-[#3B82F6] ring-1 ring-[#2563EB]/40 dark:ring-[#3B82F6]/50 shadow-[0_0_10px_rgba(37,99,235,0.25)] hover:shadow-[0_0_14px_rgba(37,99,235,0.4)] flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                    className="w-full h-11 rounded-xl text-sm font-medium cursor-pointer transition-all hover:-translate-y-0.5 active:translate-y-0 bg-[#202020] hover:bg-[#282828] dark:bg-[#202020] dark:hover:bg-[#282828] text-[#F2F2F0] border border-[#3A3A3A] hover:border-[#5B8CFF]/70 flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
                   >
-                    <Lock className="h-3.5 w-3.5 text-white shrink-0" />
+                    <Lock className="h-4 w-4 text-[#7EA2FF] shrink-0" />
                     <span>{isEncrypting ? "Encrypting..." : ciphertextUri ? "Re-Encrypt Image" : "Encrypt"}</span>
                   </Button>
 
                   {ciphertextUri && (
-                    <>
+                    <div className="space-y-2 pt-3 mt-1 border-t border-[#292929]">
+                      <div className="px-1 text-[10px] font-mono tracking-[0.18em] text-[#A0A09B] dark:text-[#A0A09B] uppercase">
+                        Next steps
+                      </div>
                       <Button
                         type="button"
                         onClick={() => setIsDownloadModalOpen(true)}
-                        className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-[#2563EB] hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 animate-in fade-in duration-150"
+                        className="w-full h-10 rounded-xl text-sm font-medium cursor-pointer transition-all hover:-translate-y-0.5 active:translate-y-0 bg-black/[0.03] dark:bg-white/[0.06] hover:bg-black/[0.06] dark:hover:bg-white/[0.1] border border-[#D7D7D1] dark:border-[#3A3A3A] hover:border-[#2563EB]/60 dark:hover:border-[#5B8CFF]/60 text-[#181818] dark:text-[#F2F2F0] flex items-center justify-start gap-3 px-4 animate-in fade-in duration-150"
                         title="Download Encrypted Image or Key Package"
                       >
-                        <Download className="h-3.5 w-3.5 text-white shrink-0" />
-                        <span>Download Package</span>
+                        <Download className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF] shrink-0" />
+                        <span>Download package</span>
+                        <ArrowRight className="ml-auto h-4 w-4 text-[#999993] dark:text-[#6A6A6A]" />
                       </Button>
 
                       <Button
                         type="button"
                         onClick={handleNavigateToAnalysis}
-                        className="w-full h-9 text-xs font-medium cursor-pointer transition-all active:scale-[0.99] bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 animate-in fade-in duration-150 shadow-xs"
+                        className="w-full h-10 rounded-xl text-sm font-medium cursor-pointer transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.05] border border-transparent hover:border-[#D7D7D1] dark:hover:border-[#3A3A3A] bg-transparent text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] flex items-center justify-start gap-3 px-4 animate-in fade-in duration-150"
                         title="Direct Analysis Report (Original vs Ciphertext)"
                       >
-                        <BarChart3 className="h-3.5 w-3.5 text-white shrink-0" />
-                        <span>Analysis Report</span>
+                        <BarChart3 className="h-4 w-4 shrink-0" />
+                        <span>View analysis report</span>
+                        <ArrowRight className="ml-auto h-4 w-4 text-[#999993] dark:text-[#6A6A6A]" />
                       </Button>
-                    </>
+                    </div>
                   )}
                 </div>
 

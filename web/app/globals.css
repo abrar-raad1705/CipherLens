@@ -370,3 +370,61 @@ input[type="range"]::-moz-range-thumb {
 .animate-float-levitate {
   animation: floatLevitate 2.2s ease-in-out infinite;
 }
+
+/* Modal and popover stacking context guarantees */
+.z-modal,
+.z-\[9999\] {
+  z-index: 9999 !important;
+}
+
+.z-popover,
+.z-\[10001\] {
+  z-index: 10001 !important;
+}
+
+/* Smooth Modal Entrance Animations */
+@keyframes modalBackdropFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes modalDialogPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.94) translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-modal-backdrop {
+  animation: modalBackdropFadeIn 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity;
+}
+
+.animate-modal-pop {
+  animation: modalDialogPopIn 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes modalCardCrossFade {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-modal-crossfade {
+  animation: modalCardCrossFade 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}

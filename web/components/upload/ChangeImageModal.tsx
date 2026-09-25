@@ -6,11 +6,19 @@ import {
   CheckIcon as Check,
   ScissorsIcon as Crop,
   PhotoIcon as ImageIcon,
+  ArrowPathIcon as Processing,
   ArrowPathIcon as RotateCcw,
   ArrowUpTrayIcon as Upload,
   XMarkIcon as X,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useWorkspace } from "@/hooks/use-image";
 import { cn } from "@/lib/utils/cn";
 import { convertToGrayscaleDataUri } from "@/lib/utils";
@@ -30,16 +38,46 @@ export interface ChangeImageModalProps {
   initialMode?: "choose" | "crop";
   initialImageSrc?: string | null;
   initialFileName?: string;
+  initialDimensions?: { width: number; height: number } | null;
+  isPreparing?: boolean;
+  prepareProgress?: number;
   title?: string;
+  skipCrop?: boolean;
 }
 
 type DragHandle = "move" | "nw" | "ne" | "sw" | "se" | null;
+
+const DIMENSION_PRESETS = [
+  { value: "256", label: "256 × 256 px" },
+  { value: "512", label: "512 × 512 px" },
+  { value: "768", label: "768 × 768 px" },
+  { value: "1024", label: "1024 × 1024 px" },
+  { value: "1536", label: "1536 × 1536 px" },
+] as const;
 
 interface DragState {
   handle: DragHandle;
   startX: number;
   startY: number;
   startBox: { x: number; y: number; w: number; h: number };
+}
+
+function computeCropLayout(nw: number, nh: number) {
+  const safeNw = Math.max(1, nw);
+  const safeNh = Math.max(1, nh);
+  const maxW = 540;
+  const maxH = 360;
+  const scale = Math.min(maxW / safeNw, maxH / safeNh, 1);
+  const dispW = Math.max(120, Math.round(safeNw * scale));
+  const dispH = Math.max(120, Math.round(safeNh * scale));
+  const side = Math.min(dispW, dispH);
+  const boxX = Math.round((dispW - side) / 2);
+  const boxY = Math.round((dispH - side) / 2);
+  return {
+    naturalDim: { w: safeNw, h: safeNh },
+    imgDim: { w: dispW, h: dispH },
+    cropBox: { x: boxX, y: boxY, w: side, h: side },
+  };
 }
 
 export function ChangeImageModal({
@@ -49,6 +87,9 @@ export function ChangeImageModal({
   initialMode,
   initialImageSrc,
   initialFileName,
+  initialDimensions,
+  isPreparing = false,
+  prepareProgress = 0,
   title,
 }: ChangeImageModalProps) {
   const {
@@ -60,23 +101,31 @@ export function ChangeImageModal({
     setActiveArtifactId,
   } = useWorkspace();
 
+  const initLayout = initialDimensions
+    ? computeCropLayout(initialDimensions.width, initialDimensions.height)
+    : null;
+
   // Mode: "choose" (gallery/upload) or "crop" (resizable selection box)
-  const [mode, setMode] = useState<"choose" | "crop">("choose");
-  const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
-  const [rawFileName, setRawFileName] = useState<string>("image.png");
+  const [mode, setMode] = useState<"choose" | "crop">(initialImageSrc ? "crop" : (initialMode || "choose"));
+  const [rawImageSrc, setRawImageSrc] = useState<string | null>(initialImageSrc || null);
+  const [rawFileName, setRawFileName] = useState<string>(initialFileName || "image.png");
 
   // Cropper state
-  const [naturalDim, setNaturalDim] = useState<{ w: number; h: number }>({ w: 512, h: 512 });
-  const [imgDim, setImgDim] = useState<{ w: number; h: number }>({ w: 320, h: 320 });
-  const [cropBox, setCropBox] = useState<{ x: number; y: number; w: number; h: number }>({
-    x: 0,
-    y: 0,
-    w: 240,
-    h: 240,
-  });
+  const [naturalDim, setNaturalDim] = useState<{ w: number; h: number }>(initLayout?.naturalDim ?? { w: 512, h: 512 });
+  const [imgDim, setImgDim] = useState<{ w: number; h: number }>(initLayout?.imgDim ?? { w: 320, h: 320 });
+  const [cropBox, setCropBox] = useState<{ x: number; y: number; w: number; h: number }>(
+    initLayout?.cropBox ?? {
+      x: 0,
+      y: 0,
+      w: 240,
+      h: 240,
+    }
+  );
   const [aspectRatio, setAspectRatio] = useState<"1:1">("1:1");
+  const [selectedDimension, setSelectedDimension] = useState("512");
   const [dragOver, setDragOver] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -118,6 +167,8 @@ export function ChangeImageModal({
   const resetModalState = () => {
     setMode("choose");
     setRawImageSrc(null);
+    setSelectedDimension("512");
+    setIsProcessing(false);
     dragStateRef.current = null;
     setIsDragging(false);
   };
@@ -127,7 +178,14 @@ export function ChangeImageModal({
       if (initialImageSrc) {
         setRawImageSrc(initialImageSrc);
         setRawFileName(initialFileName || "image.png");
+        setIsProcessing(false);
         setMode("crop");
+        if (initialDimensions) {
+          const layout = computeCropLayout(initialDimensions.width, initialDimensions.height);
+          setNaturalDim(layout.naturalDim);
+          setImgDim(layout.imgDim);
+          setCropBox(layout.cropBox);
+        }
       } else if (initialMode) {
         setMode(initialMode);
       } else {
@@ -136,7 +194,7 @@ export function ChangeImageModal({
     } else {
       resetModalState();
     }
-  }, [isOpen, initialImageSrc, initialFileName, initialMode]);
+  }, [isOpen, initialImageSrc, initialFileName, initialMode, initialDimensions]);
 
   const handleClose = () => {
     resetModalState();
@@ -204,19 +262,20 @@ export function ChangeImageModal({
     img.onload = () => {
       const nw = img.naturalWidth || 512;
       const nh = img.naturalHeight || 512;
-      setNaturalDim({ w: nw, h: nh });
-
-      const maxW = 540;
-      const maxH = 360;
-      const scale = Math.min(maxW / nw, maxH / nh, 1);
-      const dispW = Math.max(120, Math.round(nw * scale));
-      const dispH = Math.max(120, Math.round(nh * scale));
-      setImgDim({ w: dispW, h: dispH });
-
-      const side = Math.min(dispW, dispH);
-      const boxX = Math.round((dispW - side) / 2);
-      const boxY = Math.round((dispH - side) / 2);
-      setCropBox({ x: boxX, y: boxY, w: side, h: side });
+      const layout = computeCropLayout(nw, nh);
+      setNaturalDim(layout.naturalDim);
+      setImgDim(layout.imgDim);
+      setCropBox((prev) => {
+        if (
+          prev.w === layout.cropBox.w &&
+          prev.h === layout.cropBox.h &&
+          prev.x === layout.cropBox.x &&
+          prev.y === layout.cropBox.y
+        ) {
+          return prev;
+        }
+        return layout.cropBox;
+      });
       setAspectRatio("1:1");
     };
     img.src = rawImageSrc;
@@ -226,13 +285,19 @@ export function ChangeImageModal({
 
   const handleFile = (file: File) => {
     if (!file || !file.type.startsWith("image/")) return;
+    setIsProcessing(true);
     const reader = new FileReader();
+    reader.onerror = () => setIsProcessing(false);
     reader.onload = async (e) => {
-      const src = e.target?.result as string;
-      const graySrc = await convertToGrayscaleDataUri(src);
-      setRawImageSrc(graySrc);
-      setRawFileName(file.name);
-      setMode("crop");
+      try {
+        const src = e.target?.result as string;
+        const graySrc = await convertToGrayscaleDataUri(src);
+        setRawImageSrc(graySrc);
+        setRawFileName(file.name);
+        setMode("crop");
+      } finally {
+        setIsProcessing(false);
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -404,6 +469,19 @@ export function ChangeImageModal({
     onClose();
   };
 
+  const applyDimensionPreset = (value: string) => {
+    setSelectedDimension(value);
+    setAspectRatio("1:1");
+
+    const target = Number(value);
+    const targetW = Math.round((target / Math.max(naturalDim.w, 1)) * imgDim.w);
+    const targetH = Math.round((target / Math.max(naturalDim.h, 1)) * imgDim.h);
+    const side = Math.max(32, Math.min(targetW, targetH, imgDim.w, imgDim.h));
+    const boxX = Math.round((imgDim.w - side) / 2);
+    const boxY = Math.round((imgDim.h - side) / 2);
+    setCropBox({ x: boxX, y: boxY, w: side, h: side });
+  };
+
   // Live dimension calculations
   const curPixelW = naturalDim.w > 0 && imgDim.w > 0 ? Math.round((cropBox.w / imgDim.w) * naturalDim.w) : 512;
   const curPixelH = naturalDim.h > 0 && imgDim.h > 0 ? Math.round((cropBox.h / imgDim.h) * naturalDim.h) : 512;
@@ -459,38 +537,80 @@ export function ChangeImageModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-150 select-none"
-      onClick={handleClose}
+      style={{ zIndex: 9999 }}
+      className="fixed inset-0 z-modal z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-modal-backdrop select-none"
+      onClick={isPreparing ? undefined : handleClose}
     >
-      <div
-        className="w-full max-w-2xl rounded-xl border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#E8E8E3] dark:border-[#292929]">
-          <div className="flex items-center gap-2">
-            {mode === "crop" ? (
-              <Crop className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF]" />
-            ) : (
-              <ImageIcon className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF]" />
-            )}
-            <span className="font-medium text-sm text-[#181818] dark:text-[#F2F2F0]">
-              {mode === "crop" ? "Crop & Adjust Target Selection" : title || "Select or Upload Image Target"}
-            </span>
+      {isPreparing ? (
+        <div
+          key="preparing-modal-card"
+          style={{ backgroundColor: "var(--bg-surface)" }}
+          className="w-full max-w-[480px] rounded-2xl border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] shadow-2xl p-9 sm:p-10 flex flex-col items-center justify-center text-center gap-6 animate-modal-pop"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#2563EB]/10 text-[#2563EB] dark:bg-[#5B8CFF]/15 dark:text-[#7EA2FF] ring-1 ring-[#2563EB]/20 dark:ring-[#5B8CFF]/25 shadow-xs">
+            <Processing className="h-8 w-8 animate-spin stroke-[2]" />
           </div>
+          <div className="space-y-1">
+            <h3 className="text-xl font-semibold tracking-tight text-[#181818] dark:text-[#F2F2F0]">
+              Preparing your image
+            </h3>
+          </div>
+
+          {/* Smooth Filling Progress Bar ("Slider") */}
+          <div className="w-full max-w-[320px] pt-1">
+            <div className="relative h-2 w-full overflow-hidden rounded-full bg-[#E4E4E7] dark:bg-[#292929]">
+              <div
+                className="h-full rounded-full bg-[#2563EB] dark:bg-[#5B8CFF] transition-all duration-150 ease-out"
+                style={{ width: `${Math.min(100, Math.max(5, prepareProgress))}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div
+          key="crop-modal-card"
+          style={{ backgroundColor: "var(--bg-surface)" }}
+          className="w-full max-w-2xl rounded-xl border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-modal-crossfade"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {/* Modal Header */}
+          <div className="flex items-center justify-between px-5 py-2.5 border-b border-[#E8E8E3] dark:border-[#292929]">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#2563EB]/10 text-[#2563EB] dark:bg-[#5B8CFF]/15 dark:text-[#7EA2FF] ring-1 ring-[#2563EB]/15 dark:ring-[#5B8CFF]/20">
+                {mode === "crop" ? <Crop className="h-4 w-4 stroke-[2]" /> : <ImageIcon className="h-4 w-4 stroke-[2]" />}
+              </div>
+              <span className="text-sm font-semibold tracking-tight text-[#181818] dark:text-[#F2F2F0]">
+                {mode === "crop" ? "Crop and Adjust" : title || "Select or Upload Image Target"}
+              </span>
+            </div>
 
           <button
             onClick={handleClose}
-            className="p-1 rounded text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
+            className="p-1 rounded-md text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Modal Body */}
-        {mode === "choose" ? (
+        {isProcessing ? (
+          <div className="flex min-h-[360px] flex-col items-center justify-center gap-4 p-8 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2563EB]/10 text-[#2563EB] dark:bg-[#5B8CFF]/15 dark:text-[#7EA2FF]">
+              <Processing className="h-7 w-7 animate-spin" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-base font-semibold text-[#181818] dark:text-[#F2F2F0]">Preparing your image</p>
+              <p className="text-sm text-[#6F6F6A] dark:text-[#A0A09B]">Optimizing and preparing image for Crop and Adjust…</p>
+            </div>
+            <div className="h-1.5 w-48 overflow-hidden rounded-full bg-[#E8E8E3] dark:bg-[#292929]">
+              <div className="h-full w-2/5 animate-pulse rounded-full bg-[#2563EB] dark:bg-[#5B8CFF]" />
+            </div>
+          </div>
+        ) : mode === "choose" ? (
           <div className="p-5 space-y-6 overflow-y-auto">
             {/* Upload Area */}
             <div className="space-y-2">
@@ -704,7 +824,7 @@ export function ChangeImageModal({
               {rawImageSrc && (
                 <div
                   style={{ width: `${imgDim.w}px`, height: `${imgDim.h}px` }}
-                  className="relative select-none overflow-hidden shadow-2xl"
+                  className="relative select-none overflow-hidden shadow-2xl transition-[width,height] duration-200 ease-out"
                 >
                   {/* Natural Image Canvas/Image */}
                   <img
@@ -722,7 +842,7 @@ export function ChangeImageModal({
                       top: `${cropBox.y}px`,
                       width: `${cropBox.w}px`,
                       height: `${cropBox.h}px`,
-                      transition: isDragging ? "none" : "all 0.05s ease-out",
+                      transition: isDragging ? "none" : "all 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
                     }}
                     className="absolute border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] select-none"
                   >
@@ -784,25 +904,28 @@ export function ChangeImageModal({
             {/* Selection Toolbar */}
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-2">
-                {naturalDim.w >= 512 && naturalDim.h >= 512 && (
-                  <Button
-                    variant="ghost"
+                <Select
+                  items={DIMENSION_PRESETS}
+                  value={selectedDimension}
+                  onValueChange={(value) => {
+                    if (value) applyDimensionPreset(String(value));
+                  }}
+                >
+                  <SelectTrigger
                     size="sm"
-                    className="h-7 text-xs px-2 font-medium text-[#6F6F6A] dark:text-[#A0A09B]"
-                    onClick={() => {
-                      setAspectRatio("1:1");
-                      const targetW = Math.round((512 / naturalDim.w) * imgDim.w);
-                      const targetH = Math.round((512 / naturalDim.h) * imgDim.h);
-                      const side = Math.min(targetW, targetH, imgDim.w, imgDim.h);
-                      const boxX = Math.round((imgDim.w - side) / 2);
-                      const boxY = Math.round((imgDim.h - side) / 2);
-                      setCropBox({ x: boxX, y: boxY, w: side, h: side });
-                    }}
-                    title="Set selection to 512×512 natural pixels"
+                    className="h-8 min-w-[135px]"
+                    aria-label="Output dimensions"
                   >
-                    512×512
-                  </Button>
-                )}
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent side="top" align="start" sideOffset={6} alignItemWithTrigger={false}>
+                    {DIMENSION_PRESETS.map((preset) => (
+                      <SelectItem key={preset.value} value={preset.value} className="text-xs">
+                        <span className="font-medium text-[#181818] dark:text-[#F2F2F0]">{preset.label}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -850,15 +973,17 @@ export function ChangeImageModal({
                 variant="primary"
                 size="md"
                 onClick={handleConfirmCrop}
+                className="gap-1.5"
               >
-                <Check className="h-4 w-4 mr-1.5" />
+                <Check className="h-4 w-4" />
                 <span>Confirm &amp; Use Target</span>
               </Button>
             </div>
           </div>
         )}
       </div>
-    </div>,
-    document.body
-  );
+    )}
+  </div>,
+  document.body
+);
 }
