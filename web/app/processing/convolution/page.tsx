@@ -12,12 +12,17 @@ import {
   ArrowDownTrayIcon as Download,
   ArrowPathIcon as RotateCcw,
   ChevronDownIcon as ChevronDown,
+  Squares2X2Icon,
+  AdjustmentsHorizontalIcon,
+  SunIcon,
+  SwatchIcon,
+  ArrowsRightLeftIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { SplitCompareCanvas } from "@/components/image/SplitCompareCanvas";
-import { KernelGrid } from "@/components/processing/KernelGrid";
+
 import {
   DriveDropzone,
   UploadedImageInfo,
@@ -241,6 +246,10 @@ function ConvolutionBenchContent() {
 
   // ── Live canvas result
   const [liveCanvasResult, setLiveCanvasResult] = useState<string | null>(null);
+  const outputCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const renderVersionRef = useRef(0);
+  const outputUrlRef = useRef<string | null>(null);
+  const realtimeUpdaterRef = useRef<() => void>(() => undefined);
 
   const activeMatrix =
     filterMode === "presets" && selectedPreset
@@ -311,13 +320,15 @@ function ConvolutionBenchContent() {
     data: Uint8ClampedArray;
   } | null>(null);
 
-  // ── Live canvas convolution using cached source pixels
+  // ── Live canvas preview. Keep this work bounded and publish frames off the
+  // main interaction path so dragging a control never waits on PNG encoding.
   const updateRealtimeCanvas = useCallback(() => {
     const cached = srcCanvasRef.current;
     if (!cached) return;
 
     const { width, height, data: src } = cached;
-    const canvas = document.createElement("canvas");
+    const canvas = outputCanvasRef.current ?? document.createElement("canvas");
+    outputCanvasRef.current = canvas;
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
@@ -329,24 +340,34 @@ function ConvolutionBenchContent() {
     const biasOffset = effectiveBiasOffset;
     const kLen = kernel.length;
     const half = Math.floor(kLen / 2);
+    const isPlainAdjustment = kLen === 3 &&
+      activeMatrix === IDENTITY_MATRIX &&
+      filterMode !== "presets" && filterMode !== "custom";
+    const renderVersion = ++renderVersionRef.current;
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
+        const outIdx = (y * width + x) * 4;
         let r = 0,
           g = 0,
           b = 0;
-        for (let ky = 0; ky < kLen; ky++) {
-          const iy = Math.min(Math.max(y + ky - half, 0), height - 1);
-          for (let kx = 0; kx < kLen; kx++) {
-            const ix = Math.min(Math.max(x + kx - half, 0), width - 1);
-            const w = kernel[ky][kx];
-            const idx = (iy * width + ix) * 4;
-            r += src[idx] * w;
-            g += src[idx + 1] * w;
-            b += src[idx + 2] * w;
+        if (isPlainAdjustment) {
+          r = src[outIdx];
+          g = src[outIdx + 1];
+          b = src[outIdx + 2];
+        } else {
+          for (let ky = 0; ky < kLen; ky++) {
+            const iy = Math.min(Math.max(y + ky - half, 0), height - 1);
+            for (let kx = 0; kx < kLen; kx++) {
+              const ix = Math.min(Math.max(x + kx - half, 0), width - 1);
+              const w = kernel[ky][kx];
+              const idx = (iy * width + ix) * 4;
+              r += src[idx] * w;
+              g += src[idx + 1] * w;
+              b += src[idx + 2] * w;
+            }
           }
         }
-        const outIdx = (y * width + x) * 4;
         const pr = Math.min(255, Math.max(0, r + biasOffset));
         const pg = Math.min(255, Math.max(0, g + biasOffset));
         const pb = Math.min(255, Math.max(0, b + biasOffset));
@@ -373,21 +394,35 @@ function ConvolutionBenchContent() {
       }
     }
     ctx.putImageData(dstData, 0, 0);
-    setLiveCanvasResult(canvas.toDataURL("image/png"));
-  }, [effectiveKernel, effectiveBiasOffset, filterMode]);
+    canvas.toBlob((blob) => {
+      if (!blob || renderVersion !== renderVersionRef.current) return;
+      const nextUrl = URL.createObjectURL(blob);
+      if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
+      outputUrlRef.current = nextUrl;
+      setLiveCanvasResult(nextUrl);
+    }, "image/jpeg", 0.88);
+  }, [activeMatrix, effectiveKernel, effectiveBiasOffset, filterMode]);
+
+  useEffect(() => {
+    realtimeUpdaterRef.current = updateRealtimeCanvas;
+  }, [updateRealtimeCanvas]);
 
   // Pre-decode & cache image pixels whenever activeArtifact changes
   useEffect(() => {
     if (!activeArtifact?.dataUri) {
       srcCanvasRef.current = null;
       setLiveCanvasResult(null);
+      if (outputUrlRef.current) {
+        URL.revokeObjectURL(outputUrlRef.current);
+        outputUrlRef.current = null;
+      }
       return;
     }
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.src = activeArtifact.dataUri;
     img.onload = () => {
-      const maxDim = 800; // max preview resolution for ultra-fast response
+      const maxDim = 560; // bounded preview surface keeps pointer updates responsive
       let w = img.width;
       let h = img.height;
       if (w > maxDim || h > maxDim) {
@@ -407,21 +442,27 @@ function ConvolutionBenchContent() {
       ctx.drawImage(img, 0, 0, w, h);
       const imgData = ctx.getImageData(0, 0, w, h);
       srcCanvasRef.current = { width: w, height: h, data: imgData.data };
-      updateRealtimeCanvas();
+      realtimeUpdaterRef.current();
     };
-  }, [activeArtifact?.dataUri, updateRealtimeCanvas]);
+  }, [activeArtifact?.dataUri]);
 
-  // Ultra-responsive 50ms debounced update
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Render the latest slider value once per animation frame. A trailing frame
+  // is enough; intermediate values can be dropped while the pointer moves.
+  const rafRef = useRef<number | null>(null);
   useEffect(() => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      updateRealtimeCanvas();
-    }, 50);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+    rafRef.current = requestAnimationFrame(updateRealtimeCanvas);
+
     return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [updateRealtimeCanvas]);
+
+  useEffect(() => () => {
+    renderVersionRef.current += 1;
+    if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
+  }, []);
 
   // ── Download
   const handleDownload = () => {
@@ -442,8 +483,9 @@ function ConvolutionBenchContent() {
 
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6 max-w-7xl py-2">
-      <div className="flex items-baseline justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
+    <div className="space-y-4 max-w-7xl py-1">
+      {/* Header */}
+      <div className="flex items-end justify-between border-b border-[#E8E8E3] dark:border-[#292929] pb-3">
         <div>
           <div className="text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
             PROCESSING
@@ -452,12 +494,45 @@ function ConvolutionBenchContent() {
             Spatial Image Processing
           </h1>
         </div>
+
+        <div className="flex items-center gap-2.5">
+          {uploadedImage && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleDownload}
+                disabled={!currentOutputImage}
+                className="group h-10 px-4 text-xs sm:text-sm font-medium rounded-lg border border-[#E8E8E3] dark:border-[#2E2E2E] bg-white dark:bg-[#1A1A1A] hover:bg-[#F4F4F1] dark:hover:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] shadow-xs hover:shadow-sm transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
+                title="Download Image"
+              >
+                <Download className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF] group-hover:text-[#1D4ED8] dark:group-hover:text-[#7EA2FF] group-hover:translate-y-0.5 transition-all duration-200 shrink-0" />
+                <span>Download Image</span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setUploadedImage(null);
+                  setLiveCanvasResult(null);
+                  setFilterMode(null);
+                  setSelectedPresetId(null);
+                }}
+                className="group h-10 px-4 text-xs sm:text-sm font-medium rounded-lg border border-[#E8E8E3] dark:border-[#2E2E2E] bg-white dark:bg-[#1A1A1A] hover:bg-[#F4F4F1] dark:hover:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] shadow-xs hover:shadow-sm transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2"
+              >
+                <RotateCcw className="h-4 w-4 text-[#6F6F6A] dark:text-[#A0A09B] group-hover:text-[#181818] dark:group-hover:text-[#F2F2F0] group-hover:-rotate-45 transition-transform duration-200 shrink-0" />
+                <span>Change Image</span>
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {!uploadedImage ? (
         <DriveDropzone
           title="Drop your image here"
-          description="PNG, JPG, WEBP, BMP supported"
+          description=""
           actionLabel="Browse files"
           onImageUploaded={(img) => {
             setUploadedImage(img);
@@ -489,296 +564,391 @@ function ConvolutionBenchContent() {
           </div>
 
           {/* Controls */}
-          <Card className="lg:col-span-4 p-5 space-y-5 overflow-visible">
+          <Card className="lg:col-span-4 p-3.5 space-y-4 overflow-visible border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#161616] shadow-xs">
             {/* ── FILTER METHOD ── */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                <span>FILTER METHOD</span>
-                {(filterMode !== null ||
-                  selectedPresetId !== null ||
-                  brightness !== 0 ||
-                  contrast !== 0) && (
-                  <button
-                    type="button"
-                    onClick={handleResetAll}
-                    className="flex items-center gap-1 text-[10px] text-[#6F6F6A] hover:text-[#DC2626] dark:hover:text-[#EF4444] transition-colors cursor-pointer capitalize font-sans"
-                    title="Reset all filters, brightness, contrast, and matrices"
-                  >
-                    <RotateCcw className="h-2.5 w-2.5" />
-                    <span>Reset All</span>
-                  </button>
-                )}
+              <div className="flex min-h-7 items-center justify-between gap-2">
+                <h2
+                  id="filter-method-heading"
+                  className="text-[11px] font-mono tracking-wider text-[#666660] dark:text-[#A0A09B] uppercase font-semibold"
+                >
+                  Filter Method
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleResetAll}
+                  disabled={
+                    filterMode === null &&
+                    selectedPresetId === null &&
+                    brightness === 0 &&
+                    contrast === 0
+                  }
+                  className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-[#555550] dark:text-[#B0B0AA] hover:bg-[#F4F4F1] dark:hover:bg-[#242424] hover:text-[#181818] dark:hover:text-[#F2F2F0] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB] dark:focus-visible:outline-[#5B8CFF]"
+                  title="Reset all filters and adjustments"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                  Reset all
+                </button>
               </div>
 
-              {/* Stacked filter method buttons */}
-              <div className="flex flex-col gap-2">
+              <div
+                role="group"
+                aria-labelledby="filter-method-heading"
+                className="relative flex flex-col gap-2"
+              >
                 {[
-                  { id: "presets", label: "Convolution Presets" },
-                  { id: "custom", label: "Custom 2D Convolution" },
-                  { id: "brightness_contrast", label: "Brightness & Contrast" },
-                  { id: "heatmap", label: "Heatmap / Pseudo-Color" },
-                  { id: "invert", label: "Invert Colors" },
-                ].map(({ id, label }) => {
+                  {
+                    id: "presets",
+                    label: "Convolution Presets",
+                    description: "Blur, sharpen & detect edges",
+                    icon: Squares2X2Icon,
+                  },
+                  {
+                    id: "custom",
+                    label: "Custom 2D Convolution",
+                    description: "Build your own kernel",
+                    icon: AdjustmentsHorizontalIcon,
+                  },
+                  {
+                    id: "brightness_contrast",
+                    label: "Brightness & Contrast",
+                    description: "Tune light & tonal range",
+                    icon: SunIcon,
+                  },
+                  {
+                    id: "heatmap",
+                    label: "Heatmap / Pseudo-Color",
+                    description: "Map intensity to color",
+                    icon: SwatchIcon,
+                  },
+                  {
+                    id: "invert",
+                    label: "Invert Colors",
+                    description: "Reverse pixel intensities",
+                    icon: ArrowsRightLeftIcon,
+                  },
+                ].map(({ id, label, description, icon: Icon }) => {
                   const isActive = filterMode === id;
 
                   return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() =>
-                        setFilterMode((prev) =>
-                          prev === id ? null : (id as FilterMode),
-                        )
-                      }
-                      className={[
-                        "w-full py-3 px-4 rounded-lg border transition-all duration-150 cursor-pointer text-center font-medium text-sm sm:text-base flex items-center justify-center gap-2",
-                        isActive
-                          ? "border-[#2563EB] dark:border-[#5B8CFF] bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 text-[#2563EB] dark:text-[#5B8CFF] font-semibold shadow-sm hover:bg-[#2563EB]/15 dark:hover:bg-[#5B8CFF]/20"
-                          : "border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#141414] text-[#6F6F6A] dark:text-[#A0A09B] hover:border-[#2563EB]/60 dark:hover:border-[#5B8CFF]/60 hover:bg-[#2563EB]/5 dark:hover:bg-[#5B8CFF]/10 hover:text-[#2563EB] dark:hover:text-[#5B8CFF]",
-                      ].join(" ")}
-                    >
-                      <span>{label}</span>
-                      {isActive && (
-                        <span className="h-2 w-2 rounded-full bg-[#2563EB] dark:bg-[#5B8CFF] shrink-0 ring-2 ring-[#2563EB]/30 dark:ring-[#5B8CFF]/30" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* ── PRESETS ── */}
-            {filterMode === "presets" && (
-              <div className="space-y-3 animate-in fade-in duration-200">
-                <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase text-center">
-                  Select Preset
-                </div>
-
-                {/* Dropdown */}
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    type="button"
-                    onClick={() => setIsDropdownOpen((v) => !v)}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#141414] hover:border-[#B0B0A8] dark:hover:border-[#484848] text-sm text-[#181818] dark:text-[#F2F2F0] transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-medium truncate">
-                        {selectedPreset
-                          ? selectedPreset.label
-                          : "Select a Preset..."}
-                      </span>
-                      {selectedPreset && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#222] text-[#999993] dark:text-[#6A6A6A] shrink-0">
-                          {selectedPreset.tag}
-                        </span>
-                      )}
-                    </div>
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 text-[#6F6F6A] shrink-0 transition-transform duration-150 ${isDropdownOpen ? "rotate-180" : ""}`}
-                    />
-                  </button>
-
-                  {isDropdownOpen && (
-                    <div className="absolute z-50 left-0 right-0 top-[calc(100%+4px)] rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#161616] shadow-xl overflow-hidden max-h-60 overflow-y-auto">
-                      {PRESET_CATALOGUE.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => handleSelectPreset(p.id)}
-                          className={[
-                            "w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left transition-colors cursor-pointer",
-                            p.id === selectedPresetId
-                              ? "bg-[#2563EB]/5 dark:bg-[#5B8CFF]/8 text-[#2563EB] dark:text-[#5B8CFF]"
-                              : "hover:bg-[#F4F4F1] dark:hover:bg-[#1E1E1E] text-[#181818] dark:text-[#F2F2F0]",
-                          ].join(" ")}
-                        >
-                          <span className="font-medium truncate">
-                            {p.label}
-                          </span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#222] text-[#999993] dark:text-[#6A6A6A] shrink-0">
-                            {p.tag}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Always show kernel matrix when a preset is selected */}
-                {selectedPreset && (
-                  <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="flex items-center justify-between text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
-                      <span>Kernel Matrix (integers)</span>
+                    <div key={id} className="space-y-2">
                       <button
                         type="button"
-                        onClick={() => setPresetMatrix(selectedPreset.matrix)}
-                        className="flex items-center gap-0.5 hover:text-[#2563EB] dark:hover:text-[#5B8CFF] transition-colors cursor-pointer"
+                        aria-pressed={isActive}
+                        aria-expanded={isActive}
+                        onClick={() => {
+                          setIsDropdownOpen(false);
+                          setFilterMode((prev) =>
+                            prev === id ? null : (id as FilterMode),
+                          );
+                        }}
+                        className={[
+                          "group w-full flex items-center gap-3 rounded-md border p-3 text-left transition-all duration-150 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB] dark:focus-visible:outline-[#5B8CFF]",
+                          isActive
+                            ? "border-[#2563EB] dark:border-[#5B8CFF] bg-[#2563EB]/[0.03] dark:bg-[#5B8CFF]/[0.04]"
+                            : "border-[#E8E8E3] dark:border-[#242424] bg-white dark:bg-[#141414] hover:border-[#D0D0CA] dark:hover:border-[#383838]",
+                        ].join(" ")}
                       >
-                        <RotateCcw className="h-2.5 w-2.5" />
-                        <span>Reset</span>
+                        <span
+                          className={[
+                            "flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors",
+                            isActive
+                              ? "bg-[#2563EB]/10 dark:bg-[#5B8CFF]/10 text-[#2563EB] dark:text-[#5B8CFF]"
+                              : "bg-black/[0.03] dark:bg-white/[0.04] text-[#6F6F6A] dark:text-[#A0A09B]",
+                          ].join(" ")}
+                        >
+                          <Icon className="h-5 w-5" aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1 space-y-0.5">
+                          <span className="block text-sm font-medium leading-snug text-[#181818] dark:text-[#F2F2F0]">
+                            {label}
+                          </span>
+                          <span className="block text-xs leading-relaxed text-[#555550] dark:text-[#CCCCCC]">
+                            {description}
+                          </span>
+                        </span>
+                        <ChevronDown
+                          className={[
+                            "h-4 w-4 shrink-0 transition-transform duration-200",
+                            isActive
+                              ? "rotate-180 text-[#2563EB] dark:text-[#5B8CFF]"
+                              : "text-[#6F6F6A] dark:text-[#A0A09B] group-hover:text-[#181818] dark:group-hover:text-[#F2F2F0]",
+                          ].join(" ")}
+                          aria-hidden="true"
+                        />
                       </button>
-                    </div>
-                    <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#111]">
-                      <KernelGrid
-                        matrix={presetMatrix}
-                        onChange={setPresetMatrix}
-                      />
-                    </div>
-                    <p className="text-[10px] text-[#999993] dark:text-[#6A6A6A] text-center">
-                      ↑↓ or scroll ±1 · Shift+↑↓ ±5 · ←→ navigate
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
 
-            {/* ── CUSTOM MODE ── */}
-            {filterMode === "custom" && (
-              <div className="space-y-2 animate-in fade-in duration-200">
-                <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase text-center">
-                  Custom Kernel Matrix
-                </div>
-                <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#111]">
-                  <KernelGrid
-                    matrix={customMatrix}
-                    onChange={setCustomMatrix}
-                  />
-                </div>
-                <p className="text-[10px] text-[#999993] dark:text-[#6A6A6A] text-center">
-                  Click & type · ↑↓ ±1 · Shift+↑↓ ±5 · scroll ±1
-                </p>
-              </div>
-            )}
+                      {/* ── DROPDOWN PARAMETERS (DIRECTLY UNDER OPTION) ── */}
+                      <div
+                        className={[
+                          "relative",
+                          isActive
+                            ? "z-20 block origin-top animate-in fade-in slide-in-from-top-1 duration-300 ease-out"
+                            : "z-0 hidden",
+                        ].join(" ")}
+                      >
+                        <div className="overflow-visible">
+                          <div className="pt-1 pb-1">
+                          {id === "presets" && (
+                            <div className="space-y-3 rounded-md border border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#111] p-3.5">
+                              <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
+                                Select Preset
+                              </div>
 
-            {/* ── BRIGHTNESS & CONTRAST MODE ── */}
-            {filterMode === "brightness_contrast" && (
-              <div className="space-y-4 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between text-xs font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase font-medium">
-                  <span>BRIGHTNESS &amp; CONTRAST</span>
-                  {(brightness !== 0 || contrast !== 0) && (
-                    <button
-                      type="button"
-                      onClick={handleResetBC}
-                      className="flex items-center gap-1 text-[10px] text-[#6F6F6A] hover:text-[#2563EB] dark:hover:text-[#5B8CFF] transition-colors cursor-pointer capitalize font-sans"
-                      title="Reset brightness and contrast to 0"
-                    >
-                      <RotateCcw className="h-2.5 w-2.5" />
-                      <span>Reset B&amp;C</span>
-                    </button>
-                  )}
-                </div>
+                              {/* Dropdown */}
+                              <div className="relative z-[201]" ref={dropdownRef}>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsDropdownOpen((v) => !v)}
+                                  className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-md border border-[#D7D7D1] dark:border-[#3A3A3A] bg-white dark:bg-[#171717] hover:border-[#2563EB]/60 dark:hover:border-[#5B8CFF]/60 dark:hover:border-[#484848] text-sm text-[#181818] dark:text-[#F2F2F0] transition-colors cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="font-medium truncate">
+                                      {selectedPreset
+                                        ? selectedPreset.label
+                                        : "Select a Preset..."}
+                                    </span>
+                                    {selectedPreset && (
+                                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#222] text-[#999993] dark:text-[#6A6A6A] shrink-0">
+                                        {selectedPreset.tag}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <ChevronDown
+                                    className={`h-3.5 w-3.5 text-[#6F6F6A] shrink-0 transition-transform duration-150 ${isDropdownOpen ? "rotate-180" : ""}`}
+                                  />
+                                </button>
 
-                {/* Brightness: −50 to +50, centre 0 */}
-                <Slider
-                  label="Brightness"
-                  hint="−50   0   +50"
-                  value={brightness}
-                  valueDisplay={
-                    brightness > 0 ? `+${brightness}` : String(brightness)
-                  }
-                  min={-50}
-                  max={50}
-                  step={1}
-                  onChange={(e) => setBrightness(Number(e.target.value))}
-                />
+                                {isDropdownOpen && (
+                                  <div className="absolute z-[200] left-0 right-0 top-[calc(100%+4px)] rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#161616] shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+                                    {PRESET_CATALOGUE.map((p) => (
+                                      <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => handleSelectPreset(p.id)}
+                                        className={[
+                                          "w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left transition-colors cursor-pointer",
+                                          p.id === selectedPresetId
+                                            ? "bg-[#2563EB]/5 dark:bg-[#5B8CFF]/8 text-[#2563EB] dark:text-[#5B8CFF]"
+                                            : "hover:bg-[#F4F4F1] dark:hover:bg-[#1E1E1E] text-[#181818] dark:text-[#F2F2F0]",
+                                        ].join(" ")}
+                                      >
+                                        <span className="font-medium truncate">
+                                          {p.label}
+                                        </span>
+                                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#222] text-[#999993] dark:text-[#6A6A6A] shrink-0">
+                                          {p.tag}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
 
-                {/* Contrast: −0.5 to +0.5, centre 0 (multiplier = 1 + value) */}
-                <Slider
-                  label="Contrast"
-                  hint="−0.5   0   +0.5"
-                  value={contrast}
-                  valueDisplay={
-                    contrast > 0
-                      ? `+${contrast.toFixed(2)}`
-                      : contrast.toFixed(2)
-                  }
-                  min={-0.5}
-                  max={0.5}
-                  step={0.05}
-                  onChange={(e) => setContrast(Number(e.target.value))}
-                />
+                              {/* Kernel matrix when a preset is selected */}
+                              {selectedPreset && (
+                                <div className="space-y-2 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
+                                  <div className="flex items-baseline justify-between gap-3">
+                                    <span className="text-[11px] font-mono tracking-wider uppercase font-semibold text-[#181818] dark:text-[#E8E8E3]">
+                                      3 × 3 CONVOLUTION KERNEL
+                                    </span>
+                                    <span className="shrink-0 text-[11px] font-mono tracking-wider uppercase font-semibold text-[#2563EB] dark:text-[#7EA2FF]">
+                                      SUM = {presetMatrix.flat().reduce((a, b) => a + b, 0)}
+                                    </span>
+                                  </div>
 
-                {/* Effective Kernel Weights & Pixel Bias */}
-                <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#0F0F0F] space-y-2.5">
-                  <div className="flex items-center justify-between text-[10px] font-mono text-[#999993] dark:text-[#6A6A6A] uppercase tracking-wider">
-                    <span>Effective Kernel Weights</span>
-                    <span className="text-[#2563EB] dark:text-[#5B8CFF]">
-                      Scale: ×{(1 + contrast).toFixed(2)}
-                    </span>
-                  </div>
+                                  <div className="grid grid-cols-3 gap-1.5 rounded-lg bg-[#F5F5F0] dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2F2F2F] p-1.5">
+                                    {presetMatrix.map((row, rIdx) =>
+                                      row.map((val, cIdx) => (
+                                        <input
+                                          key={`preset-${rIdx}-${cIdx}`}
+                                          type="number"
+                                          value={val}
+                                          onChange={(e) => {
+                                            const newMatrix = presetMatrix.map((r) => [...r]);
+                                            newMatrix[rIdx][cIdx] = parseInt(e.target.value) || 0;
+                                            setPresetMatrix(newMatrix);
+                                          }}
+                                          aria-label={`Kernel coefficient row ${rIdx + 1}, column ${cIdx + 1}`}
+                                          className="w-full h-8 text-center font-mono text-sm font-semibold rounded-md border border-[#D7D7D1] dark:border-[#383838] bg-white dark:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] hover:border-[#AFAFAA] dark:hover:border-[#505050] focus:outline-none focus:border-[#2563EB] dark:focus:border-[#5B8CFF] focus:ring-1 focus:ring-[#2563EB]/30 dark:focus:ring-[#5B8CFF]/30 transition-colors"
+                                        />
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
-                  <div className="grid grid-cols-3 gap-1">
-                    {effectiveKernel.map((row, r) =>
-                      row.map((cell, c) => {
-                        const sz = effectiveKernel.length;
-                        const isCenter =
-                          r === Math.floor(sz / 2) && c === Math.floor(sz / 2);
-                        return (
-                          <div
-                            key={`ek-${r}-${c}`}
-                            className={[
-                              "text-center py-1.5 text-[11px] font-mono rounded border",
-                              isCenter
-                                ? "bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 border-[#2563EB]/40 dark:border-[#5B8CFF]/40 text-[#2563EB] dark:text-[#5B8CFF] font-semibold"
-                                : "bg-white dark:bg-[#181818] border-[#E8E8E3] dark:border-[#2D2D2D] text-[#181818] dark:text-[#F2F2F0]",
-                            ].join(" ")}
-                          >
-                            {parseFloat(cell.toFixed(3))}
+                          {id === "custom" && (
+                            <div className="space-y-3 rounded-md border border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#111] p-3.5">
+                              <div className="space-y-2">
+                                <div className="flex items-baseline justify-between gap-3">
+                                  <span className="text-[11px] font-mono tracking-wider uppercase font-semibold text-[#181818] dark:text-[#E8E8E3]">
+                                    3 × 3 CONVOLUTION KERNEL
+                                  </span>
+                                  <span className="shrink-0 text-[11px] font-mono tracking-wider uppercase font-semibold text-[#2563EB] dark:text-[#7EA2FF]">
+                                    SUM = {customMatrix.flat().reduce((a, b) => a + b, 0)}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-1.5 rounded-lg bg-[#F5F5F0] dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2F2F2F] p-1.5">
+                                  {customMatrix.map((row, rIdx) =>
+                                    row.map((val, cIdx) => (
+                                      <input
+                                        key={`custom-${rIdx}-${cIdx}`}
+                                        type="number"
+                                        value={val}
+                                        onChange={(e) => {
+                                          const newMatrix = customMatrix.map((r) => [...r]);
+                                          newMatrix[rIdx][cIdx] = parseInt(e.target.value) || 0;
+                                          setCustomMatrix(newMatrix);
+                                        }}
+                                        aria-label={`Custom kernel coefficient row ${rIdx + 1}, column ${cIdx + 1}`}
+                                        className="w-full h-8 text-center font-mono text-sm font-semibold rounded-md border border-[#D7D7D1] dark:border-[#383838] bg-white dark:bg-[#242424] text-[#181818] dark:text-[#F2F2F0] hover:border-[#AFAFAA] dark:hover:border-[#505050] focus:outline-none focus:border-[#2563EB] dark:focus:border-[#5B8CFF] focus:ring-1 focus:ring-[#2563EB]/30 dark:focus:ring-[#5B8CFF]/30 transition-colors"
+                                      />
+                                    ))
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {id === "brightness_contrast" && (
+                            <div className="space-y-4 rounded-md border border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#111] p-3.5">
+                              <div className="flex items-center justify-between text-[11px] font-mono tracking-wider text-[#666660] dark:text-[#A0A09B] uppercase font-semibold">
+                                <span>BRIGHTNESS &amp; CONTRAST</span>
+                                {(brightness !== 0 || contrast !== 0) && (
+                                  <button
+                                    type="button"
+                                    onClick={handleResetBC}
+                                    className="flex items-center gap-1 text-[11px] text-[#555550] dark:text-[#B0B0AA] hover:text-[#2563EB] dark:hover:text-[#5B8CFF] transition-colors cursor-pointer capitalize font-sans font-medium"
+                                    title="Reset brightness and contrast to 0"
+                                  >
+                                    <RotateCcw className="h-2.5 w-2.5" />
+                                    <span>Reset B&amp;C</span>
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Brightness: −50 to +50, centre 0 */}
+                              <Slider
+                                label="Brightness"
+                                hint="−50   0   +50"
+                                value={brightness}
+                                valueDisplay={
+                                  brightness > 0 ? `+${brightness}` : String(brightness)
+                                }
+                                min={-50}
+                                max={50}
+                                step={1}
+                                onChange={(e) => setBrightness(Number(e.target.value))}
+                              />
+
+                              {/* Contrast: −0.5 to +0.5, centre 0 (multiplier = 1 + value) */}
+                              <Slider
+                                label="Contrast"
+                                hint="−0.5   0   +0.5"
+                                value={contrast}
+                                valueDisplay={
+                                  contrast > 0
+                                    ? `+${contrast.toFixed(2)}`
+                                    : contrast.toFixed(2)
+                                }
+                                min={-0.5}
+                                max={0.5}
+                                step={0.05}
+                                onChange={(e) => setContrast(Number(e.target.value))}
+                              />
+
+                              {/* Effective Kernel Weights & Pixel Bias */}
+                              <div className="space-y-2 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
+                                <div className="flex items-baseline justify-between gap-3">
+                                  <span className="text-[11px] font-mono tracking-wider uppercase font-semibold text-[#181818] dark:text-[#E8E8E3]">
+                                    EFFECTIVE KERNEL WEIGHTS
+                                  </span>
+                                  <span className="shrink-0 text-[11px] font-mono tracking-wider uppercase font-semibold text-[#2563EB] dark:text-[#7EA2FF]">
+                                    SCALE: ×{(1 + contrast).toFixed(2)}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-1.5 rounded-lg bg-[#F5F5F0] dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2F2F2F] p-1.5">
+                                  {effectiveKernel.map((row, r) =>
+                                    row.map((cell, c) => {
+                                      const sz = effectiveKernel.length;
+                                      const isCenter =
+                                        r === Math.floor(sz / 2) && c === Math.floor(sz / 2);
+                                      return (
+                                        <div
+                                          key={`ek-${r}-${c}`}
+                                          className={[
+                                            "w-full h-8 flex items-center justify-center font-mono text-sm font-semibold rounded-md border transition-colors select-none",
+                                            isCenter
+                                              ? "bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 border-[#2563EB]/40 dark:border-[#5B8CFF]/40 text-[#2563EB] dark:text-[#5B8CFF]"
+                                              : "bg-white dark:bg-[#242424] border-[#D7D7D1] dark:border-[#383838] text-[#181818] dark:text-[#F2F2F0]",
+                                          ].join(" ")}
+                                        >
+                                          {parseFloat(cell.toFixed(3))}
+                                        </div>
+                                      );
+                                    }),
+                                  )}
+                                </div>
+
+                                <div className="flex items-center justify-between text-[11px] font-mono pt-1 text-[#444440] dark:text-[#C5C5C0] font-medium">
+                                  <span>Brightness Pixel Bias:</span>
+                                  <span className="font-semibold text-[#181818] dark:text-[#F2F2F0]">
+                                    {effectiveBiasOffset >= 0
+                                      ? `+${effectiveBiasOffset.toFixed(1)}`
+                                      : effectiveBiasOffset.toFixed(1)}{" "}
+                                    px
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {id === "heatmap" && (
+                            <div className="space-y-3 rounded-md border border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#111] p-3.5">
+                              <div className="flex items-center justify-between gap-3 text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
+                                <span>HEATMAP / PSEUDO-COLOR MAP</span>
+                                <span className="text-[#2563EB] dark:text-[#7EA2FF]">INTENSITY</span>
+                              </div>
+                              <div className="rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] p-4 space-y-3">
+                                <div className="h-7 w-full rounded-lg shadow-inner" style={{ background: "linear-gradient(90deg, #1746D1 0%, #4D7BD0 20%, #B4B9A3 38%, #F5C500 54%, #FF8A00 76%, #E5180A 100%)" }} />
+                                <div className="flex justify-between px-1 text-[11px] font-mono text-[#777B75] dark:text-[#A3A7A2]">
+                                  <span>0 <span className="text-[#999993] dark:text-[#6A6A6A]">(Dark)</span></span>
+                                  <span>128</span>
+                                  <span>255 <span className="text-[#999993] dark:text-[#6A6A6A]">(Bright)</span></span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {id === "invert" && (
+                            <div className="space-y-3 rounded-md border border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#111] p-3.5">
+                              <div className="flex items-center justify-between gap-3 text-[11px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase">
+                                <span>COLOR INVERSION</span>
+                                <span className="text-[#2563EB] dark:text-[#7EA2FF]">NEGATIVE</span>
+                              </div>
+                              <div className="rounded-md border border-[#E8E8E3] dark:border-[#292929] bg-white dark:bg-[#171717] px-4 py-5 text-center space-y-3">
+                                <p className="text-xl sm:text-2xl font-mono text-[#2563EB] dark:text-[#5B8CFF] font-semibold tracking-tight">
+                                  RGB<sub>out</sub> <span className="text-[#777B75] dark:text-[#A3A7A2]">=</span> 255 <span className="text-[#777B75] dark:text-[#A3A7A2]">−</span> RGB<sub>in</sub>
+                                </p>
+                                <p className="text-sm leading-relaxed text-[#6F6F6A] dark:text-[#A0A09B] max-w-sm mx-auto">
+                                  Reverses color channel values to produce a photographic negative preview.
+                                </p>
+                              </div>
+                            </div>
+                          )}
                           </div>
-                        );
-                      }),
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between text-[10px] font-mono pt-1.5 border-t border-[#E8E8E3]/60 dark:border-[#292929]/60">
-                    <span className="text-[#6F6F6A] dark:text-[#A0A09B]">
-                      Brightness Pixel Bias:
-                    </span>
-                    <span className="font-semibold text-[#181818] dark:text-[#F2F2F0]">
-                      {effectiveBiasOffset >= 0
-                        ? `+${effectiveBiasOffset.toFixed(1)}`
-                        : effectiveBiasOffset.toFixed(1)}{" "}
-                      px
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── HEATMAP MODE ── */}
-            {filterMode === "heatmap" && (
-              <div className="space-y-3 animate-in fade-in duration-200">
-                <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase text-center">
-                  HEATMAP / PSEUDO-COLOR MAP
-                </div>
-                <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#0F0F0F] space-y-2 text-center">
-                  <div className="h-4 w-full rounded bg-gradient-to-r from-blue-700 via-green-500 via-yellow-400 to-red-600 shadow-inner" />
-                  <div className="flex justify-between text-[10px] font-mono text-[#999993] dark:text-[#6A6A6A] px-1">
-                    <span>0 (Dark)</span>
-                    <span>128</span>
-                    <span>255 (Bright)</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── INVERT MODE ── */}
-            {filterMode === "invert" && (
-              <div className="space-y-3 animate-in fade-in duration-200">
-                <div className="text-[10px] font-mono tracking-wider text-[#999993] dark:text-[#6A6A6A] uppercase text-center">
-                  COLOR INVERSION
-                </div>
-                <div className="p-3 rounded-lg border border-[#E8E8E3] dark:border-[#292929] bg-[#FAFAF8] dark:bg-[#0F0F0F] text-center space-y-1">
-                  <p className="text-xs font-mono text-[#2563EB] dark:text-[#5B8CFF] font-semibold">
-                    RGB<sub>out</sub> = 255 − RGB<sub>in</sub>
-                  </p>
-                  <p className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B]">
-                    Reverses color channel values to produce a photographic
-                    negative preview.
-                  </p>
-                </div>
-              </div>
-            )}
+                        </div>
+                      </div>
+                    </div>
+                );
+              })}
+            </div>
+          </div>
 
             {/* ── ERRORS ── */}
             {error && (
@@ -787,18 +957,7 @@ function ConvolutionBenchContent() {
               </div>
             )}
 
-            {/* ── ACTIONS ── */}
-            <div className="pt-2 border-t border-[#E8E8E3] dark:border-[#292929]">
-              <Button
-                variant="primary"
-                onClick={handleDownload}
-                disabled={!currentOutputImage}
-                className="w-full h-9"
-              >
-                <Download className="h-3.5 w-3.5 mr-1.5" />
-                <span>Download Image</span>
-              </Button>
-            </div>
+
           </Card>
         </div>
       )}

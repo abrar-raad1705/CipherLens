@@ -6,13 +6,15 @@ interface KernelGridProps {
   matrix: number[][];
   onChange: (matrix: number[][]) => void;
   readOnly?: boolean;
+  /** Match the compact encryption parameter matrix presentation. */
+  showFooter?: boolean;
 }
 
 /**
  * Interactive N×N integer kernel grid.
  * Edit: type · ↑↓ ±1 · Shift+↑↓ ±5 · scroll ±1 · ←→ navigate cells
  */
-export function KernelGrid({ matrix, onChange, readOnly = false }: KernelGridProps) {
+export function KernelGrid({ matrix, onChange, readOnly = false, showFooter = true }: KernelGridProps) {
   const size = matrix.length;
   const inputRefs = useRef<(HTMLInputElement | null)[][]>(
     Array.from({ length: size }, () => Array(size).fill(null))
@@ -69,7 +71,7 @@ export function KernelGrid({ matrix, onChange, readOnly = false }: KernelGridPro
     <div className="space-y-2.5">
       {/* Grid */}
       <div
-        className="grid gap-1.5"
+        className="grid gap-3"
         style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}
       >
         {matrix.map((row, r) =>
@@ -96,12 +98,12 @@ export function KernelGrid({ matrix, onChange, readOnly = false }: KernelGridPro
                 onWheel={(e) => handleWheel(e, r, c)}
                 onFocus={(e) => e.target.select()}
                 className={[
-                  "w-full text-center py-2 px-0.5 text-xs font-mono rounded border transition-all outline-none",
+                  "w-full h-16 text-center py-2 px-0.5 text-2xl font-mono font-semibold rounded-2xl border-2 transition-all outline-none",
                   "focus:ring-1 focus:ring-[#2563EB] dark:focus:ring-[#5B8CFF]",
                   readOnly ? "cursor-default" : "cursor-text",
                   isCenter
-                    ? "bg-[#2563EB]/8 dark:bg-[#5B8CFF]/12 border-[#2563EB]/50 dark:border-[#5B8CFF]/50 text-[#2563EB] dark:text-[#5B8CFF] font-bold"
-                    : "bg-white dark:bg-[#181818] border-[#E0E0DA] dark:border-[#2D2D2D] text-[#181818] dark:text-[#F2F2F0] hover:border-[#B0B0A8] dark:hover:border-[#484848]",
+                    ? "bg-[#2A2A2A] dark:bg-[#242424] border-[#4A4A4A] dark:border-[#505050] text-[#F2F2F0] font-bold"
+                    : "bg-[#2A2A2A] dark:bg-[#242424] border-[#3E3E3E] dark:border-[#424242] text-[#F2F2F0] hover:border-[#5A5A5A] dark:hover:border-[#666666]",
                 ].join(" ")}
                 title={`[${r},${c}]${isCenter ? " — center" : ""}  ↑↓=±1  Shift+↑↓=±5  Scroll=±1`}
               />
@@ -111,7 +113,7 @@ export function KernelGrid({ matrix, onChange, readOnly = false }: KernelGridPro
       </div>
 
       {/* Footer: Sum + quick tools */}
-      <div className="flex items-center justify-between text-[11px] font-mono pt-1.5 border-t border-[#E8E8E3] dark:border-[#292929]">
+      {showFooter && <div className="flex items-center justify-between text-[11px] font-mono pt-1.5 border-t border-[#E8E8E3] dark:border-[#292929]">
         {/* Sum display */}
         <span className="text-[#999993] dark:text-[#6A6A6A]">
           Sum:{" "}
@@ -151,7 +153,7 @@ export function KernelGrid({ matrix, onChange, readOnly = false }: KernelGridPro
             </button>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

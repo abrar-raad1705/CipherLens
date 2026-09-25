@@ -124,7 +124,7 @@ function Slider({
               </span>
             )}
             {hint && (
-              <span className="text-[11px] text-[#999993] dark:text-[#6A6A6A] shrink-0">
+              <span className="text-[11px] text-[#6F6F6A] dark:text-[#A0A09B] font-mono shrink-0">
                 ({hint})
               </span>
             )}
@@ -139,7 +139,7 @@ function Slider({
             onBlur={handleInputBlur}
             onKeyDown={handleKeyDown}
             aria-label={label || "Slider value input"}
-            className="w-16 sm:w-20 font-mono text-[11px] font-medium text-center px-1.5 py-0.5 rounded bg-[#F4F4F1] dark:bg-[#1F1F1F] border border-[#E8E8E3] dark:border-[#292929] text-[#181818] dark:text-[#F2F2F0] hover:border-[#D0D0CA] dark:hover:border-[#383838] focus:outline-none focus:border-[#2563EB] dark:focus:border-[#5B8CFF] focus:ring-1 focus:ring-[#2563EB] dark:focus:ring-[#5B8CFF] transition-colors cursor-text"
+            className="w-16 sm:w-20 font-mono text-[11px] font-semibold text-center px-1.5 py-0.5 rounded-md bg-[#F4F4F1] dark:bg-[#202020] border border-[#D7D7D1] dark:border-[#383838] text-[#181818] dark:text-[#F2F2F0] hover:border-[#AFAFAA] dark:hover:border-[#505050] focus:outline-none focus:border-[#2563EB] dark:focus:border-[#5B8CFF] focus:ring-1 focus:ring-[#2563EB] dark:focus:ring-[#5B8CFF] transition-colors cursor-text"
           />
         </div>
       )}
