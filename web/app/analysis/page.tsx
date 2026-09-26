@@ -119,16 +119,16 @@ function AnalysisImagePill({
         alt=""
         className="h-9 w-9 shrink-0 rounded-full object-cover bg-black/10"
       />
-      <div className="min-w-0 flex-1" title={`${label}: ${image.name}`}>
-        <div className="text-[10px] font-mono uppercase tracking-wide text-[#8E8E93] dark:text-[#8A8A8A]">
+      <div
+        className="min-w-0 flex-1 flex flex-wrap items-baseline gap-1.5 sm:gap-2"
+        title={`${label}: ${image.name} (${image.width}×${image.height})`}
+      >
+        <span className="text-xs sm:text-sm font-semibold tracking-wider uppercase text-[#181818] dark:text-[#F2F2F0]">
           {label}
-        </div>
-        <div className="flex items-baseline gap-1.5 min-w-0 text-xs sm:text-sm">
-          <span className="truncate font-medium text-[#181818] dark:text-[#F2F2F0]">{image.name}</span>
-          <span className="hidden sm:inline shrink-0 text-[#8E8E93] dark:text-[#8A8A8A] font-mono">
-            ({image.width}×{image.height})
-          </span>
-        </div>
+        </span>
+        <span className="text-[11px] sm:text-xs font-mono text-[#8E8E93] dark:text-[#8A8A8A]">
+          ({image.width}×{image.height})
+        </span>
       </div>
       <button
         type="button"
@@ -341,14 +341,14 @@ function AnalysisBenchContent() {
               <div className="flex items-center justify-between gap-3 px-3.5 sm:px-4 py-2 border-b border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#181818] shrink-0 h-11">
                 <div
                   className="flex items-center gap-2 min-w-0 flex-1 mr-3 cursor-default"
-                  title={plainImage.name}
+                  title={`Original: ${plainImage.name} (${plainImage.width}×${plainImage.height})`}
                 >
                   <ImageIcon className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF] shrink-0" />
-                  <span
-                    className="text-xs sm:text-sm font-medium text-[#181818] dark:text-[#F2F2F0] truncate block"
-                    title={plainImage.name}
-                  >
-                    {plainImage.name}
+                  <span className="text-xs sm:text-sm font-semibold tracking-wider uppercase text-[#181818] dark:text-[#F2F2F0]">
+                    Original
+                  </span>
+                  <span className="text-[11px] sm:text-xs font-mono text-[#8E8E93] dark:text-[#8A8A8A]">
+                    ({plainImage.width}×{plainImage.height})
                   </span>
                 </div>
                 <button
@@ -419,14 +419,14 @@ function AnalysisBenchContent() {
               <div className="flex items-center justify-between gap-3 px-3.5 sm:px-4 py-2 border-b border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#181818] shrink-0 h-11">
                 <div
                   className="flex items-center gap-2 min-w-0 flex-1 mr-3 cursor-default"
-                  title={cipherImage.name}
+                  title={`Ciphertext: ${cipherImage.name} (${cipherImage.width}×${cipherImage.height})`}
                 >
                   <ImageIcon className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF] shrink-0" />
-                  <span
-                    className="text-xs sm:text-sm font-medium text-[#181818] dark:text-[#F2F2F0] truncate block"
-                    title={cipherImage.name}
-                  >
-                    {cipherImage.name}
+                  <span className="text-xs sm:text-sm font-semibold tracking-wider uppercase text-[#181818] dark:text-[#F2F2F0]">
+                    Ciphertext
+                  </span>
+                  <span className="text-[11px] sm:text-xs font-mono text-[#8E8E93] dark:text-[#8A8A8A]">
+                    ({cipherImage.width}×{cipherImage.height})
                   </span>
                 </div>
                 <button
@@ -497,14 +497,14 @@ function AnalysisBenchContent() {
               <div className="flex items-center justify-between gap-3 px-3.5 sm:px-4 py-2 border-b border-[#E8E8E3] dark:border-[#242424] bg-[#FAFAF8] dark:bg-[#181818] shrink-0 h-11">
                 <div
                   className="flex items-center gap-2 min-w-0 flex-1 mr-3 cursor-default"
-                  title={recoveredImage.name}
+                  title={`Reconstructed: ${recoveredImage.name} (${recoveredImage.width}×${recoveredImage.height})`}
                 >
                   <ImageIcon className="h-4 w-4 text-[#2563EB] dark:text-[#5B8CFF] shrink-0" />
-                  <span
-                    className="text-xs sm:text-sm font-medium text-[#181818] dark:text-[#F2F2F0] truncate block"
-                    title={recoveredImage.name}
-                  >
-                    {recoveredImage.name}
+                  <span className="text-xs sm:text-sm font-semibold tracking-wider uppercase text-[#181818] dark:text-[#F2F2F0]">
+                    Reconstructed
+                  </span>
+                  <span className="text-[11px] sm:text-xs font-mono text-[#8E8E93] dark:text-[#8A8A8A]">
+                    ({recoveredImage.width}×{recoveredImage.height})
                   </span>
                 </div>
                 <button

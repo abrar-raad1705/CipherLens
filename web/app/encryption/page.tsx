@@ -610,6 +610,87 @@ function EncryptionWorkbenchContent() {
                       stageSubtitle = "Ground Truth Source Image Before Encryption";
                     } else if (!isFinalCiphertext && pipelineStages?.[activePipelineStage]) {
                       const stageLabels: Record<string, { title: string; subtitle: string }> = {
+                        // DRPE
+                        drpe_r1_phase: {
+                          title: "DRPE: SPATIAL PHASE MASK (R₁)",
+                          subtitle: `Spatial domain random phase angle [-π, π] modulated wavefront (seed ${drpeSeed1})`,
+                        },
+                        drpe_fourier_spectrum: {
+                          title: "DRPE: FOURIER OPTICAL SPECTRUM (LENS L1)",
+                          subtitle: "Coherent 2D frequency distribution in optical Fourier plane",
+                        },
+                        drpe_r2_phase: {
+                          title: "DRPE: FOURIER PHASE MASK (R₂)",
+                          subtitle: `Frequency domain random phase angle [-π, π] mask distribution (seed ${drpeSeed2})`,
+                        },
+
+                        // Fourier Phase
+                        fourier_fft_spectrum: {
+                          title: "FOURIER: UNPERMUTED SPECTRUM |F(u, v)|",
+                          subtitle: "2D Fast Fourier Transform log-magnitude frequency energy",
+                        },
+                        fourier_permuted_spectrum: {
+                          title: "FOURIER: PERMUTED SPECTRUM π[F(u, v)]",
+                          subtitle: `Key-scrambled frequency coefficient distribution (seed ${fourierSeed})`,
+                        },
+
+                        // DCT
+                        dct_dct_basis: {
+                          title: "DCT: UNPERMUTED BASIS SPECTRUM",
+                          subtitle: "Energy-compacted 2D Cosine transform basis matrix",
+                        },
+                        dct_scrambled_dct: {
+                          title: "DCT: PERMUTED COEFFICIENTS π[C(u, v)]",
+                          subtitle: `Key-dispersed 2D DCT spectral basis coefficients (seed ${dctSeed})`,
+                        },
+
+                        // Arnold Cat Map
+                        arnold_arnold_scramble: {
+                          title: "ARNOLD: TORAL SHEARED STATE",
+                          subtitle: `Chaotic Cat Map area-preserving coordinate shearing (${arnoldItr} iterations)`,
+                        },
+                        arnold_bit_mask: {
+                          title: "ARNOLD: BITWISE XOR MASK",
+                          subtitle: `Uniform 8-bit diffusion mask (0x${arnoldXor.toString(16).toUpperCase()} · ${arnoldXor}) applied across coordinate space`,
+                        },
+                        arnold_xor_diffusion: {
+                          title: "ARNOLD: BITWISE XOR DIFFUSION",
+                          subtitle: "Coordinate array following bitwise non-linear XOR diffusion",
+                        },
+
+                        // Spectral Hybrid
+                        spectral_hybrid_pixel_scramble: {
+                          title: "SPECTRAL HYBRID: SPATIAL PIXEL PERMUTATION π(k)",
+                          subtitle: `Keyed spatial coordinate scrambling (seed ${scrambleSeed})`,
+                        },
+                        spectral_hybrid_fft_spectrum: {
+                          title: "SPECTRAL HYBRID: 2D FFT FREQUENCY SPECTRUM",
+                          subtitle: "Log-magnitude Fourier distribution of scrambled spatial coordinates",
+                        },
+                        spectral_hybrid_phase_mask: {
+                          title: "SPECTRAL HYBRID: FOURIER PHASE MASK Θ(u, v)",
+                          subtitle: `Frequency-domain complex phase mask modulation (seed ${maskSeed})`,
+                        },
+
+                        // Feistel Cipher
+                        feistel_round_1: {
+                          title: "FEISTEL: ROUND 1 MIXING STATE",
+                          subtitle: "Initial round: R₀ ∥ [L₀ ⊕ F(R₀, K₀)] with DCT round function",
+                        },
+                        feistel_round_half: {
+                          title: `FEISTEL: ROUND ${Math.floor(feistelRounds / 2)} CASCADED DIFFUSION`,
+                          subtitle: "Intermediate Feistel block state with progressive confusion-diffusion",
+                        },
+                        feistel_left_half: {
+                          title: "FEISTEL: TOP HALF-BLOCK (L₀)",
+                          subtitle: "Plaintext partitioned into top half-block for round mixing",
+                        },
+                        feistel_right_half: {
+                          title: "FEISTEL: BOTTOM HALF-BLOCK (R₀)",
+                          subtitle: "Plaintext partitioned into bottom half-block for round mixing",
+                        },
+
+                        // Generic fallbacks
                         r1_phase: {
                           title: "DRPE: SPATIAL PHASE MASK (R₁)",
                           subtitle: "Phase angle [-π, π] modulated wavefront",
@@ -623,11 +704,11 @@ function EncryptionWorkbenchContent() {
                           subtitle: "Frequency domain random phase distribution",
                         },
                         fft_spectrum: {
-                          title: "FOURIER: UNPERMUTED SPECTRUM |F(u, v)|",
+                          title: "FREQUENCY DOMAIN SPECTRUM |F(u, v)|",
                           subtitle: "2D Fast Fourier Transform log-magnitude energy",
                         },
                         permuted_spectrum: {
-                          title: "FOURIER: PERMUTED SPECTRUM π[F(u, v)]",
+                          title: "PERMUTED FREQUENCY SPECTRUM π[F(u, v)]",
                           subtitle: "Key-scrambled frequency coefficient distribution",
                         },
                         dct_basis: {
@@ -642,13 +723,33 @@ function EncryptionWorkbenchContent() {
                           title: "ARNOLD: TORAL SHEARED STATE",
                           subtitle: "Chaotic Cat Map area-preserving coordinate scrambling",
                         },
+                        bit_mask: {
+                          title: "BITWISE DIFFUSION MASK",
+                          subtitle: "Key mask applied across coordinate space",
+                        },
                         xor_diffusion: {
-                          title: "ARNOLD: BITWISE XOR DIFFUSION",
+                          title: "BITWISE XOR DIFFUSION",
                           subtitle: "Gray-level bitwise mask encryption",
+                        },
+                        pixel_scramble: {
+                          title: "SPATIAL PIXEL PERMUTATION",
+                          subtitle: "Keyed spatial coordinate scrambling",
+                        },
+                        phase_mask: {
+                          title: "FOURIER PHASE MASK",
+                          subtitle: "Frequency-domain complex phase mask modulation",
+                        },
+                        round_1: {
+                          title: "ROUND 1 MIXING STATE",
+                          subtitle: "Initial round mixing with round function",
+                        },
+                        round_half: {
+                          title: "CASCADED ROUND DIFFUSION",
+                          subtitle: "Intermediate Feistel block state with progressive diffusion",
                         },
                       };
 
-                      const info = stageLabels[activePipelineStage];
+                      const info = stageLabels[`${selectedAlgo}_${activePipelineStage}`] || stageLabels[activePipelineStage];
                       if (info) {
                         stageTitle = info.title;
                         stageSubtitle = info.subtitle;

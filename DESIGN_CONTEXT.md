@@ -85,6 +85,8 @@ Every analytical workbench page follows this three-tier vertical flow:
   * **Fourier Phase**: `FFT` → `Permutation` → `IFFT`
   * **DCT**: `DCT` → `Permutation` → `IDCT` *(Inverse Discrete Cosine Transform)*
   * **Arnold Cat Map**: `Pixel Scrambling` → `Bit Mask` → `XOR Diffusion`
+  * **Spectral Hybrid**: `Pixel Permute` → `FFT Transform` → `Phase Mask` → `Kernel Convolve`
+  * **Feistel Cipher**: `Round 1 Mixing` → `Iterative Rounds` → `Final Avalanche`
 
 ---
 

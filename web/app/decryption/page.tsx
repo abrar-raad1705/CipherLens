@@ -927,6 +927,87 @@ function DecryptionWorkbenchContent() {
                       stageSubtitle = "Stationary Random Wavefront / Permuted Frequency State";
                     } else if (!isFinalDecrypted && pipelineStages?.[activePipelineStage]) {
                       const stageLabels: Record<string, { title: string; subtitle: string }> = {
+                        // DRPE
+                        drpe_r2_conj: {
+                          title: "DRPE: CONJUGATE FOURIER MASK (R₂*)",
+                          subtitle: "Frequency domain phase cancellation wavefront",
+                        },
+                        drpe_fourier_demod: {
+                          title: "DRPE: DEMODULATED SPECTRUM (LENS L2)",
+                          subtitle: "Inverse optical Fourier transformation step",
+                        },
+                        drpe_r1_conj: {
+                          title: "DRPE: CONJUGATE SPATIAL MASK (R₁*)",
+                          subtitle: "Spatial domain phase cancellation wavefront",
+                        },
+
+                        // Fourier Phase
+                        fourier_fft_spectrum: {
+                          title: "FOURIER: CIPHER FREQUENCY SPECTRUM |F(u, v)|",
+                          subtitle: "2D Fast Fourier Transform log-magnitude of ciphertext",
+                        },
+                        fourier_inverse_perm: {
+                          title: "FOURIER: RESTORED SPECTRUM π⁻¹[F(u, v)]",
+                          subtitle: "Key-inverted 2D Fourier coefficient distribution",
+                        },
+
+                        // DCT
+                        dct_dct_coeffs: {
+                          title: "DCT: CIPHER BASIS COEFFICIENTS",
+                          subtitle: "2D Cosine transform basis representation of ciphertext",
+                        },
+                        dct_inverse_perm: {
+                          title: "DCT: RESTORED DCT BASIS π⁻¹[C(u, v)]",
+                          subtitle: "Key-inverted 2D Cosine transform basis distribution",
+                        },
+
+                        // Arnold Cat Map
+                        arnold_bit_mask: {
+                          title: "ARNOLD: INVERSE BIT MASK",
+                          subtitle: "Bitwise key mask applied to undo diffusion",
+                        },
+                        arnold_xor_invert: {
+                          title: "ARNOLD: INVERSE XOR DIFFUSION",
+                          subtitle: "Bitwise gray-level XOR inversion state (restores sheared coordinates)",
+                        },
+                        arnold_inverse_arnold: {
+                          title: "ARNOLD: INVERSE TORAL SHEARING",
+                          subtitle: "Inverse Cat Map modulo coordinate realignment",
+                        },
+
+                        // Spectral Hybrid
+                        spectral_hybrid_deconvolved: {
+                          title: "SPECTRAL HYBRID: KERNEL DECONVOLVED STATE",
+                          subtitle: "Wiener frequency deconvolution removing spatial convolution kernel",
+                        },
+                        spectral_hybrid_phase_demod: {
+                          title: "SPECTRAL HYBRID: CONJUGATE PHASE DEMODULATION",
+                          subtitle: "Demodulated Fourier spectrum after multiplying conjugate phase mask Θ*",
+                        },
+                        spectral_hybrid_scrambled: {
+                          title: "SPECTRAL HYBRID: PRE-INVERSION SCRAMBLED STATE",
+                          subtitle: "Spatial domain pixel arrangement prior to inverse permutation",
+                        },
+
+                        // Feistel Cipher
+                        feistel_round_half: {
+                          title: `FEISTEL: REVERSE ROUND ${Math.floor(feistelRounds / 2)} STATE`,
+                          subtitle: "Feistel network inverted through half the round sequence",
+                        },
+                        feistel_round_1: {
+                          title: "FEISTEL: REVERSE ROUND 1 STATE",
+                          subtitle: "Final inverse round state before full plaintext restoration",
+                        },
+                        feistel_left_half: {
+                          title: "FEISTEL: RESTORED TOP HALF (L₀)",
+                          subtitle: "Unmixed top block aligned for vertical concatenation",
+                        },
+                        feistel_right_half: {
+                          title: "FEISTEL: RESTORED BOTTOM HALF (R₀)",
+                          subtitle: "Unmixed bottom block aligned for vertical concatenation",
+                        },
+
+                        // Generic fallbacks
                         r2_conj: {
                           title: "DRPE: CONJUGATE FOURIER MASK (R₂*)",
                           subtitle: "Frequency domain phase cancellation wavefront",
@@ -940,28 +1021,52 @@ function DecryptionWorkbenchContent() {
                           subtitle: "Spatial domain phase cancellation wavefront",
                         },
                         fft_spectrum: {
-                          title: "FOURIER: CIPHER FREQUENCY SPECTRUM |F(u, v)|",
+                          title: "CIPHER FREQUENCY SPECTRUM |F(u, v)|",
                           subtitle: "2D Fast Fourier Transform log-magnitude of ciphertext",
                         },
                         inverse_perm: {
-                          title: "FOURIER: RESTORED SPECTRUM π⁻¹[F(u, v)]",
-                          subtitle: "Key-inverted 2D Fourier coefficient distribution",
+                          title: "RESTORED SPECTRUM π⁻¹",
+                          subtitle: "Key-inverted coefficient distribution",
                         },
                         dct_coeffs: {
                           title: "DCT: CIPHER BASIS COEFFICIENTS",
                           subtitle: "2D Cosine transform basis representation of ciphertext",
                         },
+                        bit_mask: {
+                          title: "INVERSE BIT MASK",
+                          subtitle: "Bitwise key mask applied to undo diffusion",
+                        },
                         xor_invert: {
-                          title: "ARNOLD: INVERSE XOR DIFFUSION",
+                          title: "INVERSE XOR DIFFUSION",
                           subtitle: "Bitwise gray-level XOR inversion state",
                         },
                         inverse_arnold: {
-                          title: "ARNOLD: INVERSE TORAL SHEARING",
+                          title: "INVERSE TORAL SHEARING",
                           subtitle: "Inverse Cat Map modulo coordinate realignment",
+                        },
+                        deconvolved: {
+                          title: "KERNEL DECONVOLVED STATE",
+                          subtitle: "Frequency deconvolution removing convolution kernel",
+                        },
+                        phase_demod: {
+                          title: "CONJUGATE PHASE DEMODULATION",
+                          subtitle: "Demodulated spectrum after conjugate phase mask",
+                        },
+                        scrambled: {
+                          title: "PRE-INVERSION SCRAMBLED STATE",
+                          subtitle: "Spatial domain pixel arrangement prior to inverse permutation",
+                        },
+                        round_half: {
+                          title: "REVERSE MID-ROUND STATE",
+                          subtitle: "Inverted through half the round sequence",
+                        },
+                        round_1: {
+                          title: "REVERSE ROUND 1 STATE",
+                          subtitle: "Final inverse round state before plaintext restoration",
                         },
                       };
 
-                      const info = stageLabels[activePipelineStage];
+                      const info = stageLabels[`${selectedAlgo}_${activePipelineStage}`] || stageLabels[activePipelineStage];
                       if (info) {
                         stageTitle = info.title;
                         stageSubtitle = info.subtitle;

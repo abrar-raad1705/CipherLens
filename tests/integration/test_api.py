@@ -205,8 +205,72 @@ def test_arnold_xor_endpoint(client, sample_image_uri):
     assert "stages" in data
     assert "original" in data["stages"]
     assert "arnold_scramble" in data["stages"]
+    assert "bit_mask" in data["stages"]
     assert "xor_diffusion" in data["stages"]
     assert "ciphertext" in data["stages"]
+    # Verify bit mask is distinct from ciphertext and scrambled image
+    assert data["stages"]["bit_mask"] != data["stages"]["ciphertext"]
+    assert data["stages"]["bit_mask"] != data["stages"]["arnold_scramble"]
+
+
+def test_spectral_hybrid_endpoint(client, sample_image_uri):
+    res = client.post(
+        "/api/encryption/spectral-hybrid",
+        json={
+            "image": sample_image_uri,
+            "scramble_seed": 42,
+            "mask_seed": 99,
+            "kernel_seed": 7,
+            "action": "encrypt",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["algorithm"] == "Spectral-Hybrid"
+    assert data["output_image"].startswith("data:image/png;base64,")
+    assert "stages" in data
+    assert "original" in data["stages"]
+    assert "pixel_scramble" in data["stages"]
+    assert "fft_spectrum" in data["stages"]
+    assert "phase_mask" in data["stages"]
+    assert "ciphertext" in data["stages"]
+    # Verify each stage is unique
+    stages_list = [
+        data["stages"]["original"],
+        data["stages"]["pixel_scramble"],
+        data["stages"]["fft_spectrum"],
+        data["stages"]["phase_mask"],
+        data["stages"]["ciphertext"],
+    ]
+    assert len(set(stages_list)) == len(stages_list)
+
+
+def test_feistel_endpoint(client, sample_image_uri):
+    res = client.post(
+        "/api/encryption/feistel",
+        json={
+            "image": sample_image_uri,
+            "seed": 42,
+            "rounds": 8,
+            "action": "encrypt",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["algorithm"] == "Feistel"
+    assert data["output_image"].startswith("data:image/png;base64,")
+    assert "stages" in data
+    assert "original" in data["stages"]
+    assert "round_1" in data["stages"]
+    assert "round_half" in data["stages"]
+    assert "ciphertext" in data["stages"]
+    stages_list = [
+        data["stages"]["original"],
+        data["stages"]["round_1"],
+        data["stages"]["round_half"],
+        data["stages"]["ciphertext"],
+    ]
+    assert len(set(stages_list)) == len(stages_list)
 
 
 # =============================================================================

@@ -506,9 +506,13 @@ def run_arnold_xor(
         output_vis = np.clip(result, 0, 255).astype(np.uint8)
         out_uri = array_to_data_uri(output_vis)
 
+        mask_plane = np.full_like(scrambled, key.xor_value, dtype=np.uint8)
+        mask_uri = array_to_data_uri(mask_plane)
+
         stages = {
             "original": array_to_data_uri(img),
             "arnold_scramble": array_to_data_uri(scrambled),
+            "bit_mask": mask_uri,
             "xor_diffusion": out_uri,
             "ciphertext": out_uri,
         }
@@ -517,8 +521,13 @@ def run_arnold_xor(
         result = arnold_xor.arnold_unscramble(xored, key.itr)
         output_vis = np.clip(result, 0, 255).astype(np.uint8)
         out_uri = array_to_data_uri(output_vis)
+
+        mask_plane = np.full_like(img, key.xor_value, dtype=np.uint8)
+        mask_uri = array_to_data_uri(mask_plane)
+
         stages = {
             "ciphertext": array_to_data_uri(img),
+            "bit_mask": mask_uri,
             "xor_invert": array_to_data_uri(xored),
             "inverse_arnold": out_uri,
             "decrypted": out_uri,
@@ -568,6 +577,7 @@ def run_chaos(
         stages = {
             "original": array_to_data_uri(img),
             "chaotic_scramble": array_to_data_uri(scrambled),
+            "keystream_mask": array_to_data_uri(keystream),
             "xor_diffusion": out_uri,
             "ciphertext": out_uri,
         }
@@ -644,11 +654,13 @@ def run_spectral_hybrid(
         perm = spectral_hybrid.generate_permutation(img.size, key.scramble_seed)
         scrambled = img.flatten()[perm].reshape(img.shape)
         fft_coeffs = np.fft.fft2(scrambled, norm="ortho")
+        phase_mask = spectral_hybrid.generate_phase_mask(img.shape, key.mask_seed)
 
         stages = {
             "original": array_to_data_uri(img),
             "pixel_scramble": array_to_data_uri(scrambled),
             "fft_spectrum": log_spectrum_to_data_uri(fft_coeffs),
+            "phase_mask": phase_to_data_uri(np.angle(phase_mask)),
             "ciphertext": out_uri,
         }
 
@@ -671,8 +683,32 @@ def run_spectral_hybrid(
         cipher_vis = cv2.normalize(
             np.abs(cipher_input).astype(np.float64), None, 0, 255, cv2.NORM_MINMAX
         ).astype(np.uint8)
+
+        # Deconvolution stage
+        kernel = spectral_hybrid.generate_kernel(key.kernel_seed)
+        padded_k = spectral_hybrid.pad_kernel(kernel, cipher_input.shape)
+        fft_k = np.fft.fft2(padded_k)
+        epsilon = 1e-10
+        fft_c = np.fft.fft2(cipher_input)
+        spatial = np.fft.ifft2(fft_c / (fft_k + epsilon))
+        deconv_vis = cv2.normalize(
+            np.abs(spatial).astype(np.float64), None, 0, 255, cv2.NORM_MINMAX
+        ).astype(np.uint8)
+
+        # Demodulated spectrum stage
+        coeffs = np.fft.fft2(spatial, norm="ortho")
+        phase_mask = spectral_hybrid.generate_phase_mask(cipher_input.shape, key.mask_seed)
+        demodulated = coeffs * np.conj(phase_mask)
+
+        # Scrambled spatial stage
+        scrambled_arr = np.real(np.fft.ifft2(demodulated, norm="ortho"))
+        scrambled_vis = np.clip(np.round(scrambled_arr), 0, 255).astype(np.uint8)
+
         stages = {
             "ciphertext": array_to_data_uri(cipher_vis),
+            "deconvolved": array_to_data_uri(deconv_vis),
+            "phase_demod": log_spectrum_to_data_uri(demodulated),
+            "scrambled": array_to_data_uri(scrambled_vis),
             "decrypted": out_uri,
         }
 
@@ -721,34 +757,93 @@ def run_feistel(
     key = feistel.FeistelKey(seed=seed, rounds=rounds)
     img = decode_image_payload(image_payload)
 
+    # Pad row if odd height
+    pad = img.shape[0] % 2
+    if pad != 0:
+        pad_row = np.zeros((1, *img.shape[1:]), dtype=img.dtype)
+        padded_img = np.vstack([img, pad_row])
+    else:
+        padded_img = img.copy()
+
+    h = padded_img.shape[0]
+    half = h // 2
+    sub_keys = feistel.generate_sub_keys(key.seed, key.rounds)
+
     if action.lower() == "encrypt":
         feistel.validate_key(key)
-        result = feistel.encrypt(img, key)
-        output_vis = np.clip(result, 0, 255).astype(np.uint8)
+
+        L = padded_img[:half].copy()
+        R = padded_img[half:].copy()
+
+        round_1_img = None
+        round_half_img = None
+        mid_round = max(1, key.rounds // 2)
+
+        for i in range(key.rounds):
+            f_out = feistel.round_function(R, sub_keys[i])
+            new_L = R
+            new_R = np.bitwise_xor(L.astype(np.uint8), f_out.astype(np.uint8))
+            L, R = new_L, new_R
+
+            if i == 0:
+                round_1_img = np.vstack([L, R])
+            if i == mid_round - 1:
+                round_half_img = np.vstack([L, R])
+
+        cipher_arr = np.vstack([L, R])
+        output_vis = np.clip(cipher_arr, 0, 255).astype(np.uint8)
         out_uri = array_to_data_uri(output_vis)
 
-        # Show intermediate round stages
-        h = img.shape[0]
-        pad = h % 2
-        half = (h + pad) // 2
+        if round_1_img is None:
+            round_1_img = output_vis
+        if round_half_img is None:
+            round_half_img = output_vis
+
         stages = {
             "original": array_to_data_uri(img),
+            "round_1": array_to_data_uri(round_1_img.astype(np.uint8)),
+            "round_half": array_to_data_uri(round_half_img.astype(np.uint8)),
             "left_half": array_to_data_uri(img[:half]),
-            "right_half": array_to_data_uri(img[half:half*2]),
+            "right_half": array_to_data_uri(img[half : half * 2]),
             "ciphertext": out_uri,
         }
     else:
-        result = feistel.decrypt(img, key)
-        output_vis = np.clip(result, 0, 255).astype(np.uint8)
+        # Decryption
+        L = padded_img[:half].copy()
+        R = padded_img[half:].copy()
+
+        round_half_img = None
+        round_1_img = None
+        mid_round = max(1, key.rounds // 2)
+
+        for i in range(key.rounds - 1, -1, -1):
+            f_out = feistel.round_function(L, sub_keys[i])
+            prev_R = L
+            prev_L = np.bitwise_xor(R.astype(np.uint8), f_out.astype(np.uint8))
+            L, R = prev_L, prev_R
+
+            if i == mid_round:
+                round_half_img = np.vstack([L, R])
+            if i == 1:
+                round_1_img = np.vstack([L, R])
+
+        dec_arr = np.vstack([L, R])
+        if pad != 0:
+            dec_arr = dec_arr[: img.shape[0], : img.shape[1]]
+        output_vis = np.clip(dec_arr, 0, 255).astype(np.uint8)
         out_uri = array_to_data_uri(output_vis)
 
-        h = img.shape[0]
-        pad = h % 2
-        half = (h + pad) // 2
+        if round_half_img is None:
+            round_half_img = output_vis
+        if round_1_img is None:
+            round_1_img = output_vis
+
         stages = {
             "ciphertext": array_to_data_uri(img),
+            "round_half": array_to_data_uri(round_half_img.astype(np.uint8)),
+            "round_1": array_to_data_uri(round_1_img.astype(np.uint8)),
             "left_half": array_to_data_uri(img[:half]),
-            "right_half": array_to_data_uri(img[half:half*2]),
+            "right_half": array_to_data_uri(img[half : half * 2]),
             "decrypted": out_uri,
         }
 

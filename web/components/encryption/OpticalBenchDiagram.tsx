@@ -125,9 +125,9 @@ export const PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
       type: "transform",
     },
     {
-      id: "xor_diffusion",
-      tag: "DIFFUSION",
-      primary: "XOR ⊕",
+      id: "bit_mask",
+      tag: "BIT MASK",
+      primary: "MASK",
       secondary: "Bit Mask",
       type: "mask",
     },
@@ -162,6 +162,13 @@ export const PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
       type: "transform",
     },
     {
+      id: "phase_mask",
+      tag: "MASK",
+      primary: "Θ(u, v)",
+      secondary: "Phase Mask",
+      type: "mask",
+    },
+    {
       id: "ciphertext",
       tag: "OUTPUT",
       primary: "Ciphertext",
@@ -178,17 +185,17 @@ export const PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
       type: "source",
     },
     {
-      id: "left_half",
-      tag: "SPLIT L",
-      primary: "L₀",
-      secondary: "Top Half",
-      type: "mask",
+      id: "round_1",
+      tag: "ROUND 01",
+      primary: "R₁",
+      secondary: "Round 1 Mixing",
+      type: "transform",
     },
     {
-      id: "right_half",
-      tag: "SPLIT R",
-      primary: "R₀",
-      secondary: "Bottom Half",
+      id: "round_half",
+      tag: "MID ROUND",
+      primary: "R_mid",
+      secondary: "Cascaded Rounds",
       type: "mask",
     },
     {
@@ -206,8 +213,8 @@ export const PIPELINE_CONNECTORS: Record<string, string[]> = {
   fourier: ["FFT", "Permutation", "IFFT"],
   dct: ["DCT", "Permutation", "IDCT"],
   arnold: ["Pixel Scrambling", "Bit Mask", "XOR Diffusion"],
-  spectral_hybrid: ["Pixel Scramble", "FFT Spectrum", "Kernel Convolution"],
-  feistel: ["Block Splitting", "DCT Round F(R)", "Feistel Concatenation"],
+  spectral_hybrid: ["Pixel Permute", "FFT Transform", "Phase Mask", "Kernel Convolve"],
+  feistel: ["Round 1 Mixing", "Iterative Rounds", "Final Avalanche"],
 };
 
 export const DECRYPTION_PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
@@ -317,18 +324,18 @@ export const DECRYPTION_PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
       type: "source",
     },
     {
-      id: "xor_invert",
-      tag: "DIFFUSION",
-      primary: "XOR ⊕",
-      secondary: "Mask Invert",
+      id: "bit_mask",
+      tag: "BIT MASK",
+      primary: "MASK",
+      secondary: "Bit Mask",
       type: "mask",
     },
     {
-      id: "inverse_arnold",
-      tag: "CHAOS MAP",
-      primary: "CAT⁻¹",
-      secondary: "Toral Unshear",
-      type: "transform",
+      id: "xor_invert",
+      tag: "DIFFUSION",
+      primary: "XOR⁻¹",
+      secondary: "XOR Invert",
+      type: "mask",
     },
     {
       id: "decrypted",
@@ -347,6 +354,27 @@ export const DECRYPTION_PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
       type: "source",
     },
     {
+      id: "deconvolved",
+      tag: "DECONV",
+      primary: "K⁻¹",
+      secondary: "Kernel Deconv",
+      type: "transform",
+    },
+    {
+      id: "phase_demod",
+      tag: "DEMOD",
+      primary: "Θ*",
+      secondary: "Conj Phase",
+      type: "mask",
+    },
+    {
+      id: "scrambled",
+      tag: "INVERSION",
+      primary: "π⁻¹",
+      secondary: "Unscramble",
+      type: "transform",
+    },
+    {
       id: "decrypted",
       tag: "OUTPUT",
       primary: "Decrypted",
@@ -363,6 +391,20 @@ export const DECRYPTION_PIPELINE_SPECS: Record<string, PipelineStageSpec[]> = {
       type: "source",
     },
     {
+      id: "round_half",
+      tag: "MID ROUND",
+      primary: "R_mid⁻¹",
+      secondary: "Reverse Rounds",
+      type: "mask",
+    },
+    {
+      id: "round_1",
+      tag: "ROUND 01",
+      primary: "R₁⁻¹",
+      secondary: "Final Invert",
+      type: "transform",
+    },
+    {
       id: "decrypted",
       tag: "OUTPUT",
       primary: "Decrypted",
@@ -376,9 +418,9 @@ export const DECRYPTION_PIPELINE_CONNECTORS: Record<string, string[]> = {
   drpe: ["Conj R₂*", "Inverse FFT", "Conj R₁*", "Wavefront Readout"],
   fourier: ["FFT2", "Inverse Permute", "IFFT2"],
   dct: ["DCT2", "Inverse Permute", "IDCT2"],
-  arnold: ["XOR Invert", "Toral Unshear", "Decrypted Output"],
-  spectral_hybrid: ["Wiener Deconv", "Conjugate Phase", "Inverse Permute"],
-  feistel: ["Reverse Rounds", "Inverse F(R)", "Decrypted Output"],
+  arnold: ["Apply Mask", "Toral Unshear", "Decrypted Output"],
+  spectral_hybrid: ["Kernel Deconv", "Conj Phase", "IFFT Demod", "Inverse Permute"],
+  feistel: ["Reverse Rounds", "Round 1 Invert", "Decrypted Output"],
 };
 
 interface OpticalBenchDiagramProps {
@@ -464,6 +506,8 @@ export function OpticalBenchDiagram({
             let previewUri: string | undefined = undefined;
             if (stagePreviews?.[st.id]) {
               previewUri = stagePreviews[st.id];
+            } else if (st.id === "bit_mask" && (stagePreviews?.bit_mask || stagePreviews?.xor_diffusion)) {
+              previewUri = stagePreviews.bit_mask || stagePreviews.xor_diffusion;
             } else if (isSource) {
               previewUri = sourcePreviewSrc;
             } else if (isResult) {

@@ -414,10 +414,12 @@ function CompareSliderAfter(props: CompareSliderAfterProps) {
 }
 
 interface CompareSliderHandleProps
-  extends React.ComponentProps<"div">, useRender.ComponentProps<"div"> {}
+  extends React.ComponentProps<"div">, useRender.ComponentProps<"div"> {
+  showKnob?: boolean;
+}
 
 function CompareSliderHandle(props: CompareSliderHandleProps) {
-  const { className, children, style, render, ref, ...handleProps } = props;
+  const { className, children, style, render, ref, showKnob = false, ...handleProps } = props;
 
   const value = useStore((state) => state.value);
   const { interaction, orientation } = useCompareSliderContext(HANDLE_NAME);
@@ -433,9 +435,9 @@ function CompareSliderHandle(props: CompareSliderHandleProps) {
         className: cn(
           "absolute z-50 flex items-center justify-center",
           isVertical
-            ? "left-0 h-10 w-full -translate-y-1/2"
-            : "top-0 h-full w-10 -translate-x-1/2",
-          interaction === "drag" && "cursor-grab active:cursor-grabbing",
+            ? "left-0 h-10 w-full -translate-y-1/2 cursor-ns-resize"
+            : "top-0 h-full w-10 -translate-x-1/2 cursor-ew-resize",
+          interaction === "drag" && (isVertical ? "cursor-ns-resize active:cursor-ns-resize" : "cursor-ew-resize active:cursor-ew-resize"),
           className,
         ),
         style: {
@@ -449,13 +451,13 @@ function CompareSliderHandle(props: CompareSliderHandleProps) {
             <>
               <div
                 className={cn(
-                  "absolute bg-white/90 shadow-md backdrop-blur-xs",
+                  "absolute bg-white/90 shadow-md backdrop-blur-xs pointer-events-none",
                   isVertical
                     ? "top-1/2 h-0.5 w-full -translate-y-1/2"
                     : "left-1/2 h-full w-0.5 -translate-x-1/2",
                 )}
               />
-              {interaction === "drag" && (
+              {showKnob && interaction === "drag" && (
                 <div className="z-50 flex aspect-square size-7 shrink-0 items-center justify-center rounded-full bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/15 shadow-lg text-zinc-700 dark:text-zinc-200 ring-2 ring-white/60 dark:ring-black/60 select-none transition-transform hover:scale-110 active:scale-95 [&_svg]:size-3 [&_svg]:stroke-2">
                   {isVertical ? (
                     <div className="flex flex-col items-center -space-y-1.5">

@@ -650,9 +650,13 @@ class LaboratorySession:
             "square_cropped": h != w,
         }
 
+        mask_plane = np.full_like(scrambled, xor_value, dtype=np.uint8)
+        mask_uri = array_to_base64_png(mask_plane)
+
         stages = {
             "original": array_to_base64_png(img_square),
             "arnold_scramble": array_to_base64_png(scrambled),
+            "bit_mask": mask_uri,
             "xor_diffusion": c_uri,
             "ciphertext": c_uri,
         }
