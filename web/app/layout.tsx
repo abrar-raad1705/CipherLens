@@ -68,7 +68,7 @@ export default function RootLayout({
             <Header />
             <div className="flex flex-1 w-full min-h-0 overflow-hidden">
               <Sidebar />
-              <div id="main-scroll-container" className="flex-1 min-w-0 flex flex-col h-full overflow-y-auto overflow-x-hidden">
+              <div id="main-scroll-container" className="flex-1 min-w-0 flex flex-col h-full overflow-y-auto overflow-x-hidden scroll-smooth">
                 <main className="flex-1 min-w-0 px-4 sm:px-8 py-3 sm:py-5 max-w-7xl w-full">
                   {children}
                 </main>

@@ -9,6 +9,7 @@ export interface SliderProps
   label?: string;
   valueDisplay?: string | number;
   hint?: string;
+  showInput?: boolean;
   value?: number | number[];
   defaultValue?: number | number[];
   onValueChange?: (value: number | number[]) => void;
@@ -20,6 +21,7 @@ function Slider({
   label,
   valueDisplay,
   hint,
+  showInput = true,
   defaultValue,
   value,
   min = 0,
@@ -113,9 +115,11 @@ function Slider({
     }
   };
 
+  const hasHeader = showInput && (label || valueDisplay !== undefined || value !== undefined);
+
   return (
-    <div className="space-y-2 w-full select-none">
-      {(label || valueDisplay !== undefined || value !== undefined) && (
+    <div className={cn(hasHeader ? "space-y-2" : "", "w-full select-none")}>
+      {hasHeader && (
         <div className="flex items-center justify-between text-xs gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
             {label && (

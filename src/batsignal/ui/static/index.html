@@ -112,6 +112,66 @@
       border-radius: 50%;
       box-shadow: 0 0 10px rgba(99, 230, 255, 0.3);
     }
+
+    /* Overview image comparison */
+    .overview-comparison {
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      aspect-ratio: 1;
+      cursor: ew-resize;
+      background: #080A0D;
+    }
+    .overview-comparison img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .overview-original-clip {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 50%;
+      overflow: hidden;
+      border-right: 1px solid #63E6FF;
+      z-index: 2;
+    }
+    .overview-original-clip img { width: 100%; max-width: none; }
+    .overview-divider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 2px;
+      transform: translateX(-1px);
+      background: #63E6FF;
+      z-index: 3;
+      pointer-events: none;
+      box-shadow: 0 0 16px rgba(99, 230, 255, .35);
+    }
+    .overview-divider::after {
+      content: '↔';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 34px;
+      height: 34px;
+      transform: translate(-50%, -50%);
+      display: grid;
+      place-items: center;
+      border: 1px solid #63E6FF;
+      border-radius: 999px;
+      background: #11161B;
+      color: #63E6FF;
+      font: 500 14px/1 'JetBrains Mono', monospace;
+      box-shadow: 0 0 18px rgba(99, 230, 255, .28);
+    }
+    .overview-slider {
+      accent-color: #63E6FF;
+      cursor: ew-resize;
+    }
   </style>
 </head>
 <body class="h-full bg-lab-bg text-lab-text font-sans antialiased flex flex-col selection:bg-lab-accent selection:text-lab-bg">
@@ -310,76 +370,23 @@
         <section id="tab-overview" class="tab-content space-y-6">
           <div class="space-y-1">
             <div class="text-xs font-mono text-lab-accent">00 / LABORATORY OVERVIEW</div>
-            <h2 class="text-2xl font-bold tracking-tight">Active Computational Specimen</h2>
-            <p class="text-xs text-lab-secondaryText">Global image specimen initialized. Ready for spatial convolution, encryption transformations, and cryptanalysis.</p>
+            <h2 class="text-2xl font-bold tracking-tight">Encrypted Image Comparison</h2>
+            <p class="text-xs text-lab-secondaryText">Hover across the image to reveal the original on the left and the encrypted signal on the right.</p>
           </div>
 
-          <!-- Central Specimen Preview -->
-          <div class="flex flex-col lg:flex-row items-start gap-6">
-            <div class="relative bg-lab-surface border border-lab-border rounded p-2 max-w-lg w-full flex flex-col items-center">
-              <div class="relative group">
-                <img id="overview-img" src="" alt="Specimen" class="w-full h-auto rounded object-contain max-h-[440px] block" onmousemove="inspectPixel(event, this)">
-                <div class="absolute top-2 left-2 text-[10px] font-mono bg-lab-bg/80 border border-lab-border px-1.5 py-0.5 rounded text-lab-secondaryText">
-                  ORIGINAL / INPUT
-                </div>
+          <div class="bg-lab-surface border border-lab-border rounded-lg p-3 sm:p-5 max-w-4xl mx-auto w-full">
+            <div id="overview-comparison" class="overview-comparison rounded border border-lab-border" onmousemove="moveOverviewSlider(event)">
+              <img src="/static/ece_encrypted.png" alt="Encrypted ECE image" onmousemove="inspectPixel(event, this)">
+              <div id="overview-original-clip" class="overview-original-clip" style="width: 50%;">
+                <img src="/static/ece.png" alt="Original ECE image">
               </div>
+              <div id="overview-divider" class="overview-divider" style="left: 50%;"></div>
+              <div class="absolute top-3 left-3 z-10 rounded border border-lab-border bg-lab-bg/80 px-2 py-1 text-[10px] font-mono tracking-wider text-lab-text">ORIGINAL</div>
+              <div class="absolute top-3 right-3 z-10 rounded border border-lab-border bg-lab-bg/80 px-2 py-1 text-[10px] font-mono tracking-wider text-lab-text">ENCRYPTED</div>
             </div>
-
-            <!-- Instrument Metadata Readout Panel -->
-            <div class="flex-1 w-full space-y-4">
-              <div class="bg-lab-surface border border-lab-border rounded p-4 space-y-4">
-                <div class="text-xs font-mono text-lab-secondaryText border-b border-lab-border pb-2 flex items-center justify-between">
-                  <span>READOUT INSTRUMENT METRICS</span>
-                  <span class="text-lab-accent">CH-01 (MONOCHROME)</span>
-                </div>
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 font-mono text-xs">
-                  <div>
-                    <div class="text-lab-muted text-[10px]">DIMENSIONS</div>
-                    <div id="meta-dims" class="text-lab-text text-sm font-medium pt-0.5">—</div>
-                  </div>
-                  <div>
-                    <div class="text-lab-muted text-[10px]">TOTAL PIXELS</div>
-                    <div id="meta-pixels" class="text-lab-text text-sm font-medium pt-0.5">—</div>
-                  </div>
-                  <div>
-                    <div class="text-lab-muted text-[10px]">MEAN INTENSITY</div>
-                    <div id="meta-mean" class="text-lab-text text-sm font-medium pt-0.5">—</div>
-                  </div>
-                  <div>
-                    <div class="text-lab-muted text-[10px]">STD DEVIATION</div>
-                    <div id="meta-std" class="text-lab-text text-sm font-medium pt-0.5">—</div>
-                  </div>
-                  <div>
-                    <div class="text-lab-muted text-[10px]">SHANNON ENTROPY</div>
-                    <div id="meta-entropy" class="text-lab-accent text-sm font-medium pt-0.5">—</div>
-                  </div>
-                  <div>
-                    <div class="text-lab-muted text-[10px]">MEMORY DTYPE</div>
-                    <div class="text-lab-text text-sm font-medium pt-0.5">uint8 (0–255)</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Two Major Lab Entry Points -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div onclick="switchTab('convolution')" class="bg-lab-surface border border-lab-border hover:border-lab-accent rounded p-4 cursor-pointer transition-colors space-y-2 group">
-                  <div class="flex items-center justify-between">
-                    <span class="text-xs font-mono text-lab-accent">01 / CONVOLUTION</span>
-                    <i data-lucide="arrow-right" class="w-4 h-4 text-lab-muted group-hover:text-lab-accent transition-colors"></i>
-                  </div>
-                  <div class="font-medium text-sm text-lab-text">Spatial-Domain Filtering</div>
-                  <div class="text-xs text-lab-secondaryText">Apply Gaussian, Median, Sobel edge gradients, or custom 2D convolution kernels.</div>
-                </div>
-
-                <div onclick="switchTab('drpe')" class="bg-lab-surface border border-lab-border hover:border-lab-accent rounded p-4 cursor-pointer transition-colors space-y-2 group">
-                  <div class="flex items-center justify-between">
-                    <span class="text-xs font-mono text-lab-accent">02 / ENCRYPTION</span>
-                    <i data-lucide="arrow-right" class="w-4 h-4 text-lab-muted group-hover:text-lab-accent transition-colors"></i>
-                  </div>
-                  <div class="font-medium text-sm text-lab-text">DRPE Optical Cryptosystem</div>
-                  <div class="text-xs text-lab-secondaryText">Dual random phase encoding, Fourier scrambling, DCT permutation, and key sensitivity testing.</div>
-                </div>
-              </div>
+            <div class="px-2 pt-4">
+              <input id="overview-slider" class="overview-slider w-full" type="range" min="0" max="100" value="50" aria-label="Original and encrypted image split">
+              <div class="mt-2 flex justify-between text-[10px] font-mono uppercase tracking-wider text-lab-muted"><span>Original image</span><span>Move across image to compare</span><span>Encrypted image</span></div>
             </div>
           </div>
         </section>
@@ -991,6 +998,7 @@
       lucide.createIcons();
       initDropZone();
       initSplitSlider();
+      initOverviewSlider();
       initMobileDrawer();
     });
 
@@ -1076,14 +1084,6 @@
       document.getElementById("header-filename").innerText = sessionData.image_name;
       document.getElementById("header-dims").innerText = sessionData.dimensions;
 
-      // Update Overview metrics
-      document.getElementById("overview-img").src = sessionData.original_preview;
-      document.getElementById("meta-dims").innerText = sessionData.dimensions;
-      document.getElementById("meta-pixels").innerText = sessionData.pixel_count.toLocaleString();
-      document.getElementById("meta-mean").innerText = sessionData.mean_intensity;
-      document.getElementById("meta-std").innerText = sessionData.std_intensity;
-      document.getElementById("meta-entropy").innerText = sessionData.entropy;
-
       // Update Convolution initial preview
       document.getElementById("conv-img-before").src = sessionData.original_preview;
       document.getElementById("conv-img-after").src = sessionData.original_preview;
@@ -1148,6 +1148,34 @@
         const pxY = Math.floor(yNorm * currentSession.height);
         document.getElementById("pixel-inspector-coords").innerText = `X: ${pxX} Y: ${pxY}`;
       }
+    }
+
+    // Overview comparison follows the pointer while hovering over the image.
+    function setOverviewSplit(percent) {
+      const value = Math.max(0, Math.min(100, percent));
+      const clip = document.getElementById("overview-original-clip");
+      const divider = document.getElementById("overview-divider");
+      const slider = document.getElementById("overview-slider");
+      if (clip) {
+        clip.style.width = value + "%";
+        const comparison = document.getElementById("overview-comparison");
+        const original = clip.querySelector("img");
+        if (comparison && original) original.style.width = comparison.clientWidth + "px";
+      }
+      if (divider) divider.style.left = value + "%";
+      if (slider) slider.value = value;
+    }
+
+    function moveOverviewSlider(event) {
+      const comparison = document.getElementById("overview-comparison");
+      if (!comparison) return;
+      const rect = comparison.getBoundingClientRect();
+      setOverviewSplit(((event.clientX - rect.left) / rect.width) * 100);
+    }
+
+    function initOverviewSlider() {
+      const slider = document.getElementById("overview-slider");
+      if (slider) slider.addEventListener("input", () => setOverviewSplit(slider.value));
     }
 
     // =========================================================================
