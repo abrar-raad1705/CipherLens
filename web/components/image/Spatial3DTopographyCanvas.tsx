@@ -92,7 +92,11 @@ export function Spatial3DTopographyCanvas({
       document.removeEventListener("mousedown", handleOutsideClick);
     };
   }, [isColormapOpen]);
+
   const [elevationScale, setElevationScale] = useState<number>(40);
+  const elevationScaleRef = useRef<number>(40);
+  elevationScaleRef.current = elevationScale;
+
   const [gridResolution] = useState<number>(128); // 128x128 grid density
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -101,9 +105,18 @@ export function Spatial3DTopographyCanvas({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
+  const gridHelperRef = useRef<THREE.GridHelper | null>(null);
   const meshBeforeRef = useRef<THREE.Mesh | THREE.Points | null>(null);
   const meshAfterRef = useRef<THREE.Mesh | THREE.Points | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
+
+  // Intensity cache & camera tracking refs
+  const intensityCacheRef = useRef<Map<string, Float32Array>>(new Map());
+  const hasInitializedCameraRef = useRef(false);
+  const prevDisplayTargetRef = useRef<DisplayTarget>(displayTarget);
+  const intensitiesBeforeRef = useRef<Float32Array | null>(null);
+  const intensitiesAfterRef = useRef<Float32Array | null>(null);
 
   // Helper to calculate vertex colors based on height z (normalized 0..1)
   const getVertexColor = (normZ: number, cmap: ColormapPreset): THREE.Color => {
@@ -136,6 +149,12 @@ export function Spatial3DTopographyCanvas({
     imageUri: string,
     targetRes: number
   ): Promise<Float32Array> => {
+    const cacheKey = `${imageUri}_${targetRes}`;
+    const cached = intensityCacheRef.current.get(cacheKey);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -145,7 +164,8 @@ export function Spatial3DTopographyCanvas({
         canvas.height = targetRes;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
-          resolve(new Float32Array(targetRes * targetRes));
+          const fallback = new Float32Array(targetRes * targetRes);
+          resolve(fallback);
           return;
         }
 
@@ -160,6 +180,12 @@ export function Spatial3DTopographyCanvas({
           // Grayscale luminance formula
           intensities[i] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
         }
+
+        if (intensityCacheRef.current.size > 40) {
+          const firstKey = intensityCacheRef.current.keys().next().value;
+          if (firstKey) intensityCacheRef.current.delete(firstKey);
+        }
+        intensityCacheRef.current.set(cacheKey, intensities);
         resolve(intensities);
       };
       img.onerror = () => resolve(new Float32Array(targetRes * targetRes));
@@ -167,7 +193,7 @@ export function Spatial3DTopographyCanvas({
     });
   };
 
-  // Create or Update 3D Geometry for an intensity map
+  // Create 3D Geometry for an intensity map
   const createTopographyMesh = (
     intensities: Float32Array,
     res: number,
@@ -176,7 +202,6 @@ export function Spatial3DTopographyCanvas({
     style: RenderStyle,
     xOffset: number = 0
   ): THREE.Mesh | THREE.Points => {
-    // 20% enlarged from 100 to 120 for commanding hero presence
     const planeSize = 120;
     const geometry = new THREE.PlaneGeometry(planeSize, planeSize, res - 1, res - 1);
     geometry.rotateX(-Math.PI / 2); // Orient plane horizontally on XZ plane
@@ -186,7 +211,6 @@ export function Spatial3DTopographyCanvas({
 
     for (let i = 0; i < posAttr.count; i++) {
       const normZ = intensities[i] || 0;
-      // Height elevation z = normZ * scale
       posAttr.setY(i, normZ * scale);
 
       const col = getVertexColor(normZ, cmap);
@@ -223,7 +247,18 @@ export function Spatial3DTopographyCanvas({
     return mesh;
   };
 
-  // Primary WebGL Initialization and Render Loop
+  // Helper to safely dispose a mesh or points object
+  const disposeMesh = (obj: THREE.Mesh | THREE.Points | null) => {
+    if (!obj) return;
+    obj.geometry?.dispose();
+    if (Array.isArray(obj.material)) {
+      obj.material.forEach((m) => m.dispose());
+    } else {
+      obj.material?.dispose();
+    }
+  };
+
+  // Primary WebGL Initialization and Render Loop (Runs once on mount)
   useEffect(() => {
     const mountNode = mountRef.current;
     if (!mountNode) return;
@@ -246,6 +281,11 @@ export function Spatial3DTopographyCanvas({
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
+    renderer.domElement.style.touchAction = "none";
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
+    renderer.domElement.style.outline = "none";
     rendererRef.current = renderer;
 
     mountNode.appendChild(renderer.domElement);
@@ -254,15 +294,19 @@ export function Spatial3DTopographyCanvas({
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.maxPolarAngle = Math.PI / 2 - 0.04; // Prevent camera sinking under grid
-    controls.minDistance = 25;
-    controls.maxDistance = 350;
+    controls.maxPolarAngle = Math.PI / 2 - 0.02; // Prevent camera sinking under grid
+    controls.minDistance = 5; // Allow zooming in close to inspect terrain peaks
+    controls.maxDistance = 500;
+    controls.enableZoom = true;
+    controls.enableRotate = true;
+    controls.enablePan = true;
     controls.target.set(0, 10, 0);
     controlsRef.current = controls;
 
     // Lighting: Precision scientific directional + subtle fill
     const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 0.75 : 0.9);
     scene.add(ambientLight);
+    ambientLightRef.current = ambientLight;
 
     const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.25);
     dirLight1.position.set(70, 110, 70);
@@ -282,9 +326,10 @@ export function Spatial3DTopographyCanvas({
     gridHelper.position.y = -0.5;
     if (gridHelper.material instanceof THREE.LineBasicMaterial) {
       gridHelper.material.transparent = true;
-      gridHelper.material.opacity = isDark ? 0.75 : 0.75;
+      gridHelper.material.opacity = 0.75;
     }
     scene.add(gridHelper);
+    gridHelperRef.current = gridHelper;
 
     // Render Animation Loop
     let isActive = true;
@@ -319,37 +364,73 @@ export function Spatial3DTopographyCanvas({
       isActive = false;
       if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
       resizeObserver.disconnect();
-      if (mountNode && renderer.domElement) {
+      controls.dispose();
+      disposeMesh(meshBeforeRef.current);
+      disposeMesh(meshAfterRef.current);
+      meshBeforeRef.current = null;
+      meshAfterRef.current = null;
+      if (gridHelperRef.current) {
+        gridHelperRef.current.geometry.dispose();
+        if (Array.isArray(gridHelperRef.current.material)) {
+          gridHelperRef.current.material.forEach((m) => m.dispose());
+        } else {
+          gridHelperRef.current.material.dispose();
+        }
+        gridHelperRef.current = null;
+      }
+      if (mountNode && renderer.domElement && mountNode.contains(renderer.domElement)) {
         mountNode.removeChild(renderer.domElement);
       }
       renderer.dispose();
     };
+  }, []);
+
+  // Update theme colors dynamically without tearing down WebGL canvas, camera, or OrbitControls
+  useEffect(() => {
+    if (sceneRef.current) {
+      sceneRef.current.background = new THREE.Color(isDark ? 0x141414 : 0xfafaf8);
+    }
+    if (ambientLightRef.current) {
+      ambientLightRef.current.intensity = isDark ? 0.75 : 0.9;
+    }
+    if (gridHelperRef.current && sceneRef.current) {
+      sceneRef.current.remove(gridHelperRef.current);
+      gridHelperRef.current.geometry.dispose();
+      if (Array.isArray(gridHelperRef.current.material)) {
+        gridHelperRef.current.material.forEach((m) => m.dispose());
+      } else {
+        gridHelperRef.current.material.dispose();
+      }
+      const newGrid = new THREE.GridHelper(
+        260,
+        26,
+        isDark ? 0x5a5a5a : 0x787870,
+        isDark ? 0x383838 : 0xc0c0b8
+      );
+      newGrid.position.y = -0.5;
+      if (newGrid.material instanceof THREE.LineBasicMaterial) {
+        newGrid.material.transparent = true;
+        newGrid.material.opacity = 0.75;
+      }
+      sceneRef.current.add(newGrid);
+      gridHelperRef.current = newGrid;
+    }
   }, [isDark]);
 
-  // Keep references to current sampled intensities for fast height scaling without re-sampling/rebuilding
-  const intensitiesBeforeRef = useRef<Float32Array | null>(null);
-  const intensitiesAfterRef = useRef<Float32Array | null>(null);
-
-  // Load Image Data & Build 3D Meshes (Only when source, target, colormap, style, or resolution changes)
+  // Load Image Data & Build 3D Meshes seamlessly (Zero flickering, preserves camera position & zoom)
   useEffect(() => {
     let isCancelled = false;
-    setLoading(true);
+
+    // Only show shimmer if we don't have any mesh loaded yet
+    if (!meshAfterRef.current && !meshBeforeRef.current) {
+      setLoading(true);
+    }
 
     const buildMeshes = async () => {
       const scene = sceneRef.current;
       if (!scene) return;
 
-      // Remove existing topography meshes
-      if (meshBeforeRef.current) {
-        scene.remove(meshBeforeRef.current);
-        meshBeforeRef.current.geometry.dispose();
-        meshBeforeRef.current = null;
-      }
-      if (meshAfterRef.current) {
-        scene.remove(meshAfterRef.current);
-        meshAfterRef.current.geometry.dispose();
-        meshAfterRef.current = null;
-      }
+      const currentScale = elevationScaleRef.current;
 
       const activeSrc =
         displayTarget === "original"
@@ -371,7 +452,7 @@ export function Spatial3DTopographyCanvas({
         const meshB = createTopographyMesh(
           intBefore,
           gridResolution,
-          elevationScale,
+          currentScale,
           colormap,
           renderStyle,
           -70
@@ -379,21 +460,41 @@ export function Spatial3DTopographyCanvas({
         const meshA = createTopographyMesh(
           intAfter,
           gridResolution,
-          elevationScale,
+          currentScale,
           colormap,
           renderStyle,
           70
         );
+
+        if (isCancelled) {
+          disposeMesh(meshB);
+          disposeMesh(meshA);
+          return;
+        }
+
+        // Seamless swap: Remove old meshes only after new ones are created (never leave scene empty)
+        if (meshBeforeRef.current) {
+          scene.remove(meshBeforeRef.current);
+          disposeMesh(meshBeforeRef.current);
+        }
+        if (meshAfterRef.current) {
+          scene.remove(meshAfterRef.current);
+          disposeMesh(meshAfterRef.current);
+        }
 
         meshBeforeRef.current = meshB;
         meshAfterRef.current = meshA;
         scene.add(meshB);
         scene.add(meshA);
 
-        if (controlsRef.current && cameraRef.current) {
-          controlsRef.current.target.set(0, 10, 0);
-          cameraRef.current.position.set(0, 68, 160);
-          controlsRef.current.update();
+        const isSwitchingLayout =
+          prevDisplayTargetRef.current !== "split-compare" && displayTarget === "split-compare";
+
+        if (!hasInitializedCameraRef.current || isSwitchingLayout) {
+          hasInitializedCameraRef.current = true;
+          cameraRef.current?.position.set(0, 68, 160);
+          controlsRef.current?.target.set(0, 10, 0);
+          controlsRef.current?.update();
         }
       } else if (activeSrc) {
         const intensities = await sampleImageIntensity(activeSrc, gridResolution);
@@ -405,22 +506,43 @@ export function Spatial3DTopographyCanvas({
         const mesh = createTopographyMesh(
           intensities,
           gridResolution,
-          elevationScale,
+          currentScale,
           colormap,
           renderStyle,
           0
         );
 
+        if (isCancelled) {
+          disposeMesh(mesh);
+          return;
+        }
+
+        // Seamless swap: Remove old meshes only after new one is ready
+        if (meshBeforeRef.current) {
+          scene.remove(meshBeforeRef.current);
+          disposeMesh(meshBeforeRef.current);
+          meshBeforeRef.current = null;
+        }
+        if (meshAfterRef.current) {
+          scene.remove(meshAfterRef.current);
+          disposeMesh(meshAfterRef.current);
+        }
+
         meshAfterRef.current = mesh;
         scene.add(mesh);
 
-        if (controlsRef.current && cameraRef.current) {
-          controlsRef.current.target.set(0, 10, 0);
-          cameraRef.current.position.set(0, 56, 120);
-          controlsRef.current.update();
+        const isSwitchingLayout =
+          prevDisplayTargetRef.current === "split-compare" && displayTarget !== "split-compare";
+
+        if (!hasInitializedCameraRef.current || isSwitchingLayout) {
+          hasInitializedCameraRef.current = true;
+          cameraRef.current?.position.set(0, 56, 120);
+          controlsRef.current?.target.set(0, 10, 0);
+          controlsRef.current?.update();
         }
       }
 
+      prevDisplayTargetRef.current = displayTarget;
       setLoading(false);
     };
 
@@ -440,6 +562,8 @@ export function Spatial3DTopographyCanvas({
 
   // Fast In-Place Elevation Scale Update (Zero stutter / lag when dragging height slider)
   useEffect(() => {
+    elevationScaleRef.current = elevationScale;
+
     const updateMeshHeight = (
       mesh: THREE.Mesh | THREE.Points | null,
       intensities: Float32Array | null
@@ -459,8 +583,6 @@ export function Spatial3DTopographyCanvas({
     if (displayTarget === "split-compare") {
       updateMeshHeight(meshBeforeRef.current, intensitiesBeforeRef.current);
       updateMeshHeight(meshAfterRef.current, intensitiesAfterRef.current);
-    } else if (displayTarget === "original") {
-      updateMeshHeight(meshBeforeRef.current, intensitiesBeforeRef.current);
     } else {
       updateMeshHeight(meshAfterRef.current, intensitiesAfterRef.current);
     }
@@ -646,21 +768,21 @@ export function Spatial3DTopographyCanvas({
 
       {/* Main 3D WebGL Canvas Surface */}
       <div className={`relative w-full overflow-hidden ${isFullscreen ? "flex-1 min-h-0" : "h-[500px] sm:h-[560px]"}`}>
-        <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing select-none" />
+        <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing select-none overflow-hidden touch-none" />
 
-        {/* Minimalist Shimmer Overlay - Sweeps across viewing window when loading / switching options */}
-        {loading && (
+        {/* Minimalist Shimmer Overlay - Only when first loading without meshes */}
+        {loading && !meshAfterRef.current && !meshBeforeRef.current && (
           <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden">
             <div className="absolute -inset-[100%] bg-gradient-to-r from-transparent via-white/25 dark:via-white/15 to-transparent skew-x-12 animate-shimmer-sweep" />
           </div>
         )}
 
-        {/* Bottom-Left Scientific Interaction HUD - Horizontally Centered, No Dot */}
+        {/* Bottom-Left Scientific Interaction HUD */}
         <div className="absolute bottom-3 left-3 pointer-events-none select-none flex items-center justify-center text-center px-3 py-1.5 rounded-md bg-[#101010]/75 dark:bg-[#0A0A0A]/80 border border-white/10 text-white/70 backdrop-blur-md shadow-xs font-mono text-[10px] tracking-tight">
-          <span>Rotate: Drag · Zoom: Scroll</span>
+          <span>Rotate: Drag · Zoom: Scroll · Pan: Right-Click</span>
         </div>
 
-        {/* Bottom-Right Compact Floating Height Scale HUD - Website Blue Accent */}
+        {/* Bottom-Right Compact Floating Height Scale HUD */}
         <div className="absolute bottom-3 right-3 select-none flex items-center gap-2.5 px-3 py-1.5 rounded-md bg-[#101010]/75 dark:bg-[#0A0A0A]/80 border border-white/10 text-white/80 backdrop-blur-md shadow-xs font-mono text-[11px]">
           <span className="text-white/50 text-[10px] uppercase tracking-wider font-medium">Height</span>
           <div className="w-24 sm:w-28 flex items-center">

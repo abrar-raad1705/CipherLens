@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   Suspense,
   useRef,
 } from "react";
@@ -111,17 +112,6 @@ const PRESET_CATALOGUE: PresetEntry[] = [
     ],
   },
   {
-    id: "sharpen",
-    label: "Sharpen",
-    tag: "HIGH-PASS",
-    serverOp: "custom",
-    matrix: [
-      [0, -1, 0],
-      [-1, 5, -1],
-      [0, -1, 0],
-    ],
-  },
-  {
     id: "laplacian",
     label: "Laplacian",
     tag: "2nd DERIVATIVE",
@@ -163,28 +153,6 @@ const PRESET_CATALOGUE: PresetEntry[] = [
       [0, 1, 0],
       [1, -4, 1],
       [0, 1, 0],
-    ],
-  },
-  {
-    id: "high_pass",
-    label: "High Pass",
-    tag: "FREQUENCY",
-    serverOp: "custom",
-    matrix: [
-      [-1, -1, -1],
-      [-1, 9, -1],
-      [-1, -1, -1],
-    ],
-  },
-  {
-    id: "low_pass",
-    label: "Low Pass",
-    tag: "SMOOTHING",
-    serverOp: "custom",
-    matrix: [
-      [1, 2, 1],
-      [2, 4, 2],
-      [1, 2, 1],
     ],
   },
 ];
@@ -284,11 +252,25 @@ function ConvolutionBenchContent() {
     setSelectedPresetId(null);
     setPresetMatrix(PRESET_CATALOGUE[0].matrix);
     setCustomMatrix(DEFAULT_CUSTOM_MATRIX);
+    if (brightness === 0 && contrast === 0) {
+      if (outputUrlRef.current) {
+        URL.revokeObjectURL(outputUrlRef.current);
+        outputUrlRef.current = null;
+      }
+      setLiveCanvasResult(null);
+    }
   };
 
   const handleResetBC = () => {
     setBrightness(0);
     setContrast(0);
+    if (filterMode === null && selectedPresetId === null) {
+      if (outputUrlRef.current) {
+        URL.revokeObjectURL(outputUrlRef.current);
+        outputUrlRef.current = null;
+      }
+      setLiveCanvasResult(null);
+    }
   };
 
   const handleResetAll = () => {
@@ -298,10 +280,15 @@ function ConvolutionBenchContent() {
     setCustomMatrix(DEFAULT_CUSTOM_MATRIX);
     setBrightness(0);
     setContrast(0);
+    if (outputUrlRef.current) {
+      URL.revokeObjectURL(outputUrlRef.current);
+      outputUrlRef.current = null;
+    }
+    setLiveCanvasResult(null);
   };
 
   // ── Build effective float kernel (contrast multiplier applied to spatial weights)
-  const buildEffectiveKernel = useCallback((): number[][] => {
+  const effectiveKernel = useMemo((): number[][] => {
     const contrastMult = 1 + contrast;
     const norm = normaliseKernel(activeMatrix);
     return norm.map((row) =>
@@ -309,7 +296,6 @@ function ConvolutionBenchContent() {
     );
   }, [activeMatrix, contrast]);
 
-  const effectiveKernel = buildEffectiveKernel();
   // DC Pixel Bias Offset: Brightness offset - mid-gray contrast pivot (128 * contrast)
   const effectiveBiasOffset = brightness - 128 * contrast;
 
@@ -393,6 +379,22 @@ function ConvolutionBenchContent() {
         dst[outIdx + 3] = 255;
       }
     }
+
+    const isUnfiltered =
+      filterMode === null &&
+      selectedPresetId === null &&
+      brightness === 0 &&
+      contrast === 0;
+
+    if (isUnfiltered) {
+      if (outputUrlRef.current) {
+        URL.revokeObjectURL(outputUrlRef.current);
+        outputUrlRef.current = null;
+      }
+      setLiveCanvasResult(null);
+      return;
+    }
+
     ctx.putImageData(dstData, 0, 0);
     canvas.toBlob((blob) => {
       if (!blob || renderVersion !== renderVersionRef.current) return;
@@ -401,7 +403,7 @@ function ConvolutionBenchContent() {
       outputUrlRef.current = nextUrl;
       setLiveCanvasResult(nextUrl);
     }, "image/jpeg", 0.88);
-  }, [activeMatrix, effectiveKernel, effectiveBiasOffset, filterMode]);
+  }, [activeMatrix, effectiveKernel, effectiveBiasOffset, filterMode, selectedPresetId, brightness, contrast]);
 
   useEffect(() => {
     realtimeUpdaterRef.current = updateRealtimeCanvas;
@@ -477,9 +479,15 @@ function ConvolutionBenchContent() {
     a.click();
   };
 
-  const currentOutputImage =
-    liveCanvasResult ||
-    (result ? result.output_image : activeArtifact?.dataUri);
+  const hasActiveFilter =
+    filterMode !== null ||
+    selectedPresetId !== null ||
+    brightness !== 0 ||
+    contrast !== 0;
+
+  const currentOutputImage = hasActiveFilter
+    ? (liveCanvasResult || (result ? result.output_image : activeArtifact?.dataUri))
+    : activeArtifact?.dataUri;
 
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -600,7 +608,7 @@ function ConvolutionBenchContent() {
                   {
                     id: "presets",
                     label: "Convolution Presets",
-                    description: "Blur, sharpen & detect edges",
+                    description: "Blur, emboss & detect edges",
                     icon: Squares2X2Icon,
                   },
                   {

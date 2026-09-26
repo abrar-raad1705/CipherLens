@@ -370,23 +370,23 @@
         <section id="tab-overview" class="tab-content space-y-6">
           <div class="space-y-1">
             <div class="text-xs font-mono text-lab-accent">00 / LABORATORY OVERVIEW</div>
-            <h2 class="text-2xl font-bold tracking-tight">Encrypted Image Comparison</h2>
-            <p class="text-xs text-lab-secondaryText">Hover across the image to reveal the original on the left and the encrypted signal on the right.</p>
+            <h2 class="text-2xl font-bold tracking-tight">2D Fourier Domain Comparison</h2>
+            <p class="text-xs text-lab-secondaryText">Hover across the image to reveal the original spatial signal on the left and the 2D Fourier spectrum on the right.</p>
           </div>
 
           <div class="bg-lab-surface border border-lab-border rounded-lg p-3 sm:p-5 max-w-4xl mx-auto w-full">
             <div id="overview-comparison" class="overview-comparison rounded border border-lab-border" onmousemove="moveOverviewSlider(event)">
-              <img src="/static/ece_encrypted.png" alt="Encrypted ECE image" onmousemove="inspectPixel(event, this)">
+              <img src="/static/ece_fourier.png" alt="2D Fourier domain of ECE image" onmousemove="inspectPixel(event, this)">
               <div id="overview-original-clip" class="overview-original-clip" style="width: 50%;">
                 <img src="/static/ece.png" alt="Original ECE image">
               </div>
               <div id="overview-divider" class="overview-divider" style="left: 50%;"></div>
-              <div class="absolute top-3 left-3 z-10 rounded border border-lab-border bg-lab-bg/80 px-2 py-1 text-[10px] font-mono tracking-wider text-lab-text">ORIGINAL</div>
-              <div class="absolute top-3 right-3 z-10 rounded border border-lab-border bg-lab-bg/80 px-2 py-1 text-[10px] font-mono tracking-wider text-lab-text">ENCRYPTED</div>
+              <div class="absolute top-3 left-3 z-10 rounded border border-lab-border bg-lab-bg/80 px-2 py-1 text-[10px] font-mono tracking-wider text-lab-text">SPATIAL</div>
+              <div class="absolute top-3 right-3 z-10 rounded border border-lab-border bg-lab-bg/80 px-2 py-1 text-[10px] font-mono tracking-wider text-lab-text">2D FOURIER</div>
             </div>
             <div class="px-2 pt-4">
-              <input id="overview-slider" class="overview-slider w-full" type="range" min="0" max="100" value="50" aria-label="Original and encrypted image split">
-              <div class="mt-2 flex justify-between text-[10px] font-mono uppercase tracking-wider text-lab-muted"><span>Original image</span><span>Move across image to compare</span><span>Encrypted image</span></div>
+              <input id="overview-slider" class="overview-slider w-full" type="range" min="0" max="100" value="50" aria-label="Original and Fourier image split">
+              <div class="mt-2 flex justify-between text-[10px] font-mono uppercase tracking-wider text-lab-muted"><span>Spatial domain</span><span>Move across image to compare</span><span>Fourier domain</span></div>
             </div>
           </div>
         </section>
