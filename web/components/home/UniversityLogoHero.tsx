@@ -200,16 +200,11 @@ export function UniversityLogoHero() {
           </div>
         )}
 
-        {/* Split View Divider Line & Drag Handle */}
+        {/* Split View Divider Line */}
         <div
           className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_10px_rgba(255,255,255,0.9)] pointer-events-none z-10 will-change-[left]"
           style={{ left: `${displaySplitPos}%` }}
-        >
-          <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-9 rounded-full bg-white dark:bg-[#1A1A1C] border border-black/20 dark:border-white/20 shadow-md flex items-center justify-center gap-0.5">
-            <div className="w-0.5 h-3 bg-[#555550] dark:bg-[#888880] rounded-full" />
-            <div className="w-0.5 h-3 bg-[#555550] dark:bg-[#888880] rounded-full" />
-          </div>
-        </div>
+        />
       </div>
     </div>
   );
