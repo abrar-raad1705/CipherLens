@@ -669,6 +669,7 @@ export function Spatial3DTopographyCanvas({
               max={90}
               step={1}
               value={elevationScale}
+              showInput={false}
               onChange={(e) => setElevationScale(Number(e.target.value))}
               className="py-0.5 [&_[data-slot=slider-range]]:bg-[#2563EB] dark:[&_[data-slot=slider-range]]:bg-[#5B8CFF] [&_[data-slot=slider-thumb]]:border-[#2563EB] dark:[&_[data-slot=slider-thumb]]:border-[#5B8CFF]"
             />

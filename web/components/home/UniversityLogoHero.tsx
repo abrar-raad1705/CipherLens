@@ -1,213 +1,48 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import { cn } from "@/lib/utils/cn";
-import {
-  SparklesIcon,
-  LockClosedIcon,
-  AdjustmentsHorizontalIcon,
-} from "@heroicons/react/24/outline";
+import { useCallback, useRef, useState } from "react";
 
-type DisplayMode = "fourier" | "convolution" | "dct";
-
+/** Original/encrypted image comparison used on the overview page. */
 export function UniversityLogoHero() {
-  const [mode, setMode] = useState<DisplayMode>("fourier");
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-
-  // Pos states (0 to 100)
-  const targetPosRef = useRef<number>(50);
-  const currentPosRef = useRef<number>(50);
-  const [displaySplitPos, setDisplaySplitPos] = useState<number>(50);
-
   const containerRef = useRef<HTMLDivElement>(null);
-  const animFrameRef = useRef<number | null>(null);
+  const [split, setSplit] = useState(50);
 
-  // Smooth rAF loop for 60fps / 120fps physics
-  useEffect(() => {
-    const updatePhysics = () => {
-      const diffPos = targetPosRef.current - currentPosRef.current;
-      if (Math.abs(diffPos) > 0.05) {
-        currentPosRef.current += diffPos * 0.25;
-        setDisplaySplitPos(currentPosRef.current);
-      } else if (currentPosRef.current !== targetPosRef.current) {
-        currentPosRef.current = targetPosRef.current;
-        setDisplaySplitPos(currentPosRef.current);
-      }
-
-      animFrameRef.current = requestAnimationFrame(updatePhysics);
-    };
-
-    animFrameRef.current = requestAnimationFrame(updatePhysics);
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    };
+  const updateFromPointer = useCallback((clientX: number) => {
+    const bounds = containerRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const next = ((clientX - bounds.left) / bounds.width) * 100;
+    setSplit(Math.max(0, Math.min(100, next)));
   }, []);
-
-  const updatePosition = useCallback((clientX: number) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
-    const pctX = (x / rect.width) * 100;
-
-    targetPosRef.current = Math.max(2, Math.min(98, pctX));
-  }, []);
-
-  // Global mousemove / touchmove during drag
-  useEffect(() => {
-    const handleGlobalMouseMove = (e: MouseEvent) => {
-      if (isDragging) {
-        updatePosition(e.clientX);
-      }
-    };
-
-    const handleGlobalTouchMove = (e: TouchEvent) => {
-      if (isDragging && e.touches[0]) {
-        updatePosition(e.touches[0].clientX);
-      }
-    };
-
-    const handleGlobalMouseUp = () => setIsDragging(false);
-
-    if (isDragging) {
-      window.addEventListener("mousemove", handleGlobalMouseMove, { passive: true });
-      window.addEventListener("touchmove", handleGlobalTouchMove, { passive: true });
-      window.addEventListener("mouseup", handleGlobalMouseUp);
-      window.addEventListener("touchend", handleGlobalMouseUp);
-    }
-
-    return () => {
-      window.removeEventListener("mousemove", handleGlobalMouseMove);
-      window.removeEventListener("touchmove", handleGlobalTouchMove);
-      window.removeEventListener("mouseup", handleGlobalMouseUp);
-      window.removeEventListener("touchend", handleGlobalMouseUp);
-    };
-  }, [isDragging, updatePosition]);
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    setIsDragging(true);
-    updatePosition(e.clientX);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    updatePosition(e.clientX);
-  };
 
   return (
-    <div className="w-full max-w-[290px] sm:max-w-[300px] select-none space-y-1.5">
-      {/* Thin Mode Selector Header Tabs */}
-      <div className="flex items-center justify-between p-0.5 rounded-lg bg-[#F0F0ED] dark:bg-[#1A1A1A] border border-[#E2E2DC] dark:border-[#2C2C2C]">
-        <button
-          onClick={() => setMode("fourier")}
-          className={cn(
-            "flex-1 py-1 px-1.5 rounded-md text-[11px] font-medium transition-all flex items-center justify-center gap-1 cursor-pointer",
-            mode === "fourier"
-              ? "bg-white dark:bg-[#252525] text-[#181818] dark:text-[#F2F2F0] shadow-2xs border border-black/5 dark:border-white/10"
-              : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
-          )}
-        >
-          <SparklesIcon className="h-3 w-3 text-[#2563EB] dark:text-[#5B8CFF]" />
-          <span>Fourier Plane</span>
-        </button>
-
-        <button
-          onClick={() => setMode("convolution")}
-          className={cn(
-            "flex-1 py-1 px-1.5 rounded-md text-[11px] font-medium transition-all flex items-center justify-center gap-1 cursor-pointer",
-            mode === "convolution"
-              ? "bg-white dark:bg-[#252525] text-[#181818] dark:text-[#F2F2F0] shadow-2xs border border-black/5 dark:border-white/10"
-              : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
-          )}
-        >
-          <AdjustmentsHorizontalIcon className="h-3 w-3 text-[#2563EB] dark:text-[#5B8CFF]" />
-          <span>Convolution</span>
-        </button>
-
-        <button
-          onClick={() => setMode("dct")}
-          className={cn(
-            "flex-1 py-1 px-1.5 rounded-md text-[11px] font-medium transition-all flex items-center justify-center gap-1 cursor-pointer",
-            mode === "dct"
-              ? "bg-white dark:bg-[#252525] text-[#181818] dark:text-[#F2F2F0] shadow-2xs border border-black/5 dark:border-white/10"
-              : "text-[#6F6F6A] dark:text-[#A0A09B] hover:text-[#181818] dark:hover:text-[#F2F2F0]"
-          )}
-        >
-          <LockClosedIcon className="h-3 w-3 text-[#2563EB] dark:text-[#5B8CFF]" />
-          <span>DCT Cipher</span>
-        </button>
-      </div>
-
-      {/* Main Clean Interactive Display Box */}
+    <div className="w-full max-w-[480px] lg:max-w-[500px] select-none">
       <div
         ref={containerRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        className="relative aspect-square w-full rounded-xl overflow-hidden border border-[#DCDCD6] dark:border-[#2C2C2C] bg-[#0A0A0B] shadow-lg group cursor-col-resize touch-none select-none"
+        onPointerMove={(event) => updateFromPointer(event.clientX)}
+        className="relative aspect-square w-full overflow-hidden bg-transparent cursor-ew-resize touch-none"
       >
-        {/* Layer 1: Base Spatial Logo */}
-        <div className="absolute inset-0 flex items-center justify-center p-3.5 bg-black">
-          <img
-            src="/university_logo.png"
-            alt="University Logo Spatial Domain"
-            className="w-full h-full object-contain pointer-events-none"
-          />
-        </div>
-
-        {/* Layer 2: Transform Overlay (Fourier Spectrum) */}
-        {mode === "fourier" && (
-          <div
-            className="absolute inset-0 overflow-hidden bg-black will-change-[clip-path]"
-            style={{ clipPath: `inset(0 0 0 ${displaySplitPos}%)` }}
-          >
-            <div className="absolute inset-0 flex items-center justify-center p-3.5">
-              <img
-                src="/university_logo_fourier.png"
-                alt="2D Fourier Spectrum"
-                className="w-full h-full object-contain pointer-events-none"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Layer 2: Transform Overlay (Convolution Filter) */}
-        {mode === "convolution" && (
-          <div
-            className="absolute inset-0 overflow-hidden bg-black will-change-[clip-path]"
-            style={{ clipPath: `inset(0 0 0 ${displaySplitPos}%)` }}
-          >
-            <div className="absolute inset-0 flex items-center justify-center p-3.5">
-              <img
-                src="/university_logo_convoluted.png"
-                alt="Convoluted Spatial Filter"
-                className="w-full h-full object-contain pointer-events-none"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Layer 2: Transform Overlay (Permuted DCT Energy Cipher) */}
-        {mode === "dct" && (
-          <div
-            className="absolute inset-0 overflow-hidden bg-black will-change-[clip-path]"
-            style={{ clipPath: `inset(0 0 0 ${displaySplitPos}%)` }}
-          >
-            <div className="absolute inset-0 flex items-center justify-center p-3.5">
-              <img
-                src="/university_logo_dct.png"
-                alt="Permuted DCT Energy Cipher"
-                className="w-full h-full object-contain pointer-events-none"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Split View Divider Line & Drag Handle */}
         <div
-          className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_10px_rgba(255,255,255,0.9)] pointer-events-none z-10 will-change-[left]"
-          style={{ left: `${displaySplitPos}%` }}
+          className="absolute inset-0"
+          style={{
+            maskImage: "radial-gradient(ellipse at center, black 58%, transparent 100%)",
+            WebkitMaskImage: "radial-gradient(ellipse at center, black 58%, transparent 100%)",
+          }}
         >
-          <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-9 rounded-full bg-white dark:bg-[#1A1A1C] border border-black/20 dark:border-white/20 shadow-md flex items-center justify-center gap-0.5">
-            <div className="w-0.5 h-3 bg-[#555550] dark:bg-[#888880] rounded-full" />
-            <div className="w-0.5 h-3 bg-[#555550] dark:bg-[#888880] rounded-full" />
+          <img src="/ece_encrypted.png" alt="Encrypted ECE image" className="absolute inset-0 h-full w-full object-cover" />
+        </div>
+        <div className="absolute inset-0 overflow-hidden bg-[#101010] dark:bg-[#101010]" style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}>
+          <img src="/ece.png" alt="Original ECE image" className="absolute inset-0 h-full w-full object-cover" />
+        </div>
+        <div className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]" style={{ left: `${split}%` }}>
+          <div className="absolute left-1/2 top-1/2 flex h-7 w-4.5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md bg-white shadow-[0_1px_5px_rgba(0,0,0,0.3)] select-none">
+            <div className="grid grid-cols-2 gap-x-[3px] gap-y-[3px]">
+              <span className="size-[2.5px] rounded-full bg-[#71717A]" />
+              <span className="size-[2.5px] rounded-full bg-[#71717A]" />
+              <span className="size-[2.5px] rounded-full bg-[#71717A]" />
+              <span className="size-[2.5px] rounded-full bg-[#71717A]" />
+              <span className="size-[2.5px] rounded-full bg-[#71717A]" />
+              <span className="size-[2.5px] rounded-full bg-[#71717A]" />
+            </div>
           </div>
         </div>
       </div>
