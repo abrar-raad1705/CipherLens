@@ -372,41 +372,15 @@ function AnalysisBenchContent() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col h-full space-y-2">
-              <div className="flex-1 [&>div]:h-full">
-                <DriveDropzone
-                  title="Drop original image here"
-                  description=""
-                  actionLabel="Browse"
-                  compact={true}
-                  titleClassName="text-sm sm:text-base lg:text-[17px] font-semibold whitespace-nowrap"
-                  onImageUploaded={(img) => setPlainImage(img)}
-                />
-              </div>
-              {artifacts.length > 0 && (
-                <div className="flex items-center justify-between px-1 text-xs">
-                  <span className="text-[#8E8E93] dark:text-[#6A6A6A] font-mono text-[11px] uppercase">
-                    Workspace:
-                  </span>
-                  <select
-                    onChange={(e) => {
-                      const art = artifacts.find((a) => a.id === e.target.value);
-                      if (art) {
-                        setPlainImage({ name: art.name, dataUri: art.dataUri, width: art.width, height: art.height });
-                      }
-                    }}
-                    defaultValue=""
-                    className="bg-transparent border border-[#E0E0DA] dark:border-[#282828] rounded px-2.5 py-1 text-xs text-[#181818] dark:text-[#F2F2F0] max-w-[180px] truncate"
-                  >
-                    <option value="" disabled>Pick from workspace</option>
-                    {artifacts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+            <div className="h-full [&>div]:h-full">
+              <DriveDropzone
+                title="Drop original image here"
+                description=""
+                actionLabel="Browse"
+                compact={true}
+                titleClassName="text-sm sm:text-base lg:text-[17px] font-semibold whitespace-nowrap"
+                onImageUploaded={(img) => setPlainImage(img)}
+              />
             </div>
           )}
         </div>
@@ -450,41 +424,15 @@ function AnalysisBenchContent() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col h-full space-y-2">
-              <div className="flex-1 [&>div]:h-full">
-                <DriveDropzone
-                  title="Drop ciphertext image here"
-                  description=""
-                  actionLabel="Browse"
-                  compact={true}
-                  titleClassName="text-sm sm:text-base lg:text-[17px] font-semibold whitespace-nowrap"
-                  onImageUploaded={(img) => setCipherImage(img)}
-                />
-              </div>
-              {artifacts.length > 0 && (
-                <div className="flex items-center justify-between px-1 text-xs">
-                  <span className="text-[#8E8E93] dark:text-[#6A6A6A] font-mono text-[11px] uppercase">
-                    Workspace:
-                  </span>
-                  <select
-                    onChange={(e) => {
-                      const art = artifacts.find((a) => a.id === e.target.value);
-                      if (art) {
-                        setCipherImage({ name: art.name, dataUri: art.dataUri, width: art.width, height: art.height });
-                      }
-                    }}
-                    defaultValue=""
-                    className="bg-transparent border border-[#E0E0DA] dark:border-[#282828] rounded px-2.5 py-1 text-xs text-[#181818] dark:text-[#F2F2F0] max-w-[180px] truncate"
-                  >
-                    <option value="" disabled>Pick from workspace</option>
-                    {artifacts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+            <div className="h-full [&>div]:h-full">
+              <DriveDropzone
+                title="Drop ciphertext image here"
+                description=""
+                actionLabel="Browse"
+                compact={true}
+                titleClassName="text-sm sm:text-base lg:text-[17px] font-semibold whitespace-nowrap"
+                onImageUploaded={(img) => setCipherImage(img)}
+              />
             </div>
           )}
         </div>
@@ -528,41 +476,15 @@ function AnalysisBenchContent() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col h-full space-y-2">
-              <div className="flex-1 [&>div]:h-full">
-                <DriveDropzone
-                  title="Drop reconstructed image here"
-                  description=""
-                  actionLabel="Browse"
-                  compact={true}
-                  titleClassName="text-sm sm:text-base lg:text-[17px] font-semibold whitespace-nowrap"
-                  onImageUploaded={(img) => setRecoveredImage(img)}
-                />
-              </div>
-              {artifacts.length > 0 && (
-                <div className="flex items-center justify-between px-1 text-xs">
-                  <span className="text-[#8E8E93] dark:text-[#6A6A6A] font-mono text-[11px] uppercase">
-                    Workspace:
-                  </span>
-                  <select
-                    onChange={(e) => {
-                      const art = artifacts.find((a) => a.id === e.target.value);
-                      if (art) {
-                        setRecoveredImage({ name: art.name, dataUri: art.dataUri, width: art.width, height: art.height });
-                      }
-                    }}
-                    defaultValue=""
-                    className="bg-transparent border border-[#E0E0DA] dark:border-[#282828] rounded px-2.5 py-1 text-xs text-[#181818] dark:text-[#F2F2F0] max-w-[180px] truncate"
-                  >
-                    <option value="" disabled>Pick from workspace</option>
-                    {artifacts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+            <div className="h-full [&>div]:h-full">
+              <DriveDropzone
+                title="Drop reconstructed image here"
+                description=""
+                actionLabel="Browse"
+                compact={true}
+                titleClassName="text-sm sm:text-base lg:text-[17px] font-semibold whitespace-nowrap"
+                onImageUploaded={(img) => setRecoveredImage(img)}
+              />
             </div>
           )}
         </div>
