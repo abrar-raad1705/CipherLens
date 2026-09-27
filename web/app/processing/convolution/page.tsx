@@ -90,14 +90,14 @@ const PRESET_CATALOGUE: PresetEntry[] = [
     ],
   },
   {
-    id: "median",
-    label: "Median Filter",
-    tag: "NOISE REDUCTION",
-    serverOp: "median",
+    id: "sharpen",
+    label: "Sharpen",
+    tag: "HIGH-BOOST",
+    serverOp: "custom",
     matrix: [
-      [1, 1, 1],
-      [1, 1, 1],
-      [1, 1, 1],
+      [0, -1, 0],
+      [-1, 5, -1],
+      [0, -1, 0],
     ],
   },
   {
@@ -120,17 +120,6 @@ const PRESET_CATALOGUE: PresetEntry[] = [
       [-1, -1, -1],
       [-1, 8, -1],
       [-1, -1, -1],
-    ],
-  },
-  {
-    id: "emboss",
-    label: "Emboss",
-    tag: "RELIEF",
-    serverOp: "custom",
-    matrix: [
-      [-2, -1, 0],
-      [-1, 1, 1],
-      [0, 1, 2],
     ],
   },
   {
@@ -338,9 +327,10 @@ function ConvolutionBenchContent() {
           g = 0,
           b = 0;
         if (isPlainAdjustment) {
-          r = src[outIdx];
-          g = src[outIdx + 1];
-          b = src[outIdx + 2];
+          const mult = 1 + contrast;
+          r = src[outIdx] * mult;
+          g = src[outIdx + 1] * mult;
+          b = src[outIdx + 2] * mult;
         } else {
           for (let ky = 0; ky < kLen; ky++) {
             const iy = Math.min(Math.max(y + ky - half, 0), height - 1);
@@ -869,50 +859,71 @@ function ConvolutionBenchContent() {
                                 onChange={(e) => setContrast(Number(e.target.value))}
                               />
 
-                              {/* Effective Kernel Weights & Pixel Bias */}
-                              <div className="space-y-2 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
-                                <div className="flex items-baseline justify-between gap-3">
-                                  <span className="text-[11px] font-mono tracking-wider uppercase font-semibold text-[#181818] dark:text-[#E8E8E3]">
-                                    EFFECTIVE KERNEL WEIGHTS
-                                  </span>
-                                  <span className="shrink-0 text-[11px] font-mono tracking-wider uppercase font-semibold text-[#2563EB] dark:text-[#7EA2FF]">
-                                    SCALE: ×{(1 + contrast).toFixed(2)}
-                                  </span>
-                                </div>
+                              {/* Brightness & Contrast Transfer Equation */}
+                              {(() => {
+                                const bVal = brightness;
+                                const cVal = contrast;
+                                const bStr = bVal > 0 ? `+${bVal}` : `${bVal}`;
+                                const cStr = cVal > 0 ? `+${cVal.toFixed(2)}` : `${cVal.toFixed(2)}`;
+                                const scale = Number((1 + cVal).toFixed(2));
+                                const biasNum = Number(effectiveBiasOffset.toFixed(1));
+                                const biasFormatted = biasNum % 1 === 0 ? biasNum : biasNum.toFixed(1);
+                                const biasSignStr = biasNum >= 0 ? `+ ${biasFormatted}` : `− ${Math.abs(Number(biasFormatted))}`;
 
-                                <div className="grid grid-cols-3 gap-1.5 rounded-lg bg-[#F5F5F0] dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2F2F2F] p-1.5">
-                                  {effectiveKernel.map((row, r) =>
-                                    row.map((cell, c) => {
-                                      const sz = effectiveKernel.length;
-                                      const isCenter =
-                                        r === Math.floor(sz / 2) && c === Math.floor(sz / 2);
-                                      return (
-                                        <div
-                                          key={`ek-${r}-${c}`}
-                                          className={[
-                                            "w-full h-8 flex items-center justify-center font-mono text-sm font-semibold rounded-md border transition-colors select-none",
-                                            isCenter
-                                              ? "bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 border-[#2563EB]/40 dark:border-[#5B8CFF]/40 text-[#2563EB] dark:text-[#5B8CFF]"
-                                              : "bg-white dark:bg-[#242424] border-[#D7D7D1] dark:border-[#383838] text-[#181818] dark:text-[#F2F2F0]",
-                                          ].join(" ")}
-                                        >
-                                          {parseFloat(cell.toFixed(3))}
-                                        </div>
-                                      );
-                                    }),
-                                  )}
-                                </div>
+                                const stateLabel =
+                                  bVal === 0 && cVal === 0
+                                    ? "Baseline Identity"
+                                    : bVal >= 0 && cVal >= 0
+                                      ? "High Brightness + High Contrast"
+                                      : bVal >= 0 && cVal < 0
+                                        ? "High Brightness + Low Contrast"
+                                        : bVal < 0 && cVal >= 0
+                                          ? "Low Brightness + High Contrast"
+                                          : "Low Brightness + Low Contrast";
 
-                                <div className="flex items-center justify-between text-[11px] font-mono pt-1 text-[#444440] dark:text-[#C5C5C0] font-medium">
-                                  <span>Brightness Pixel Bias:</span>
-                                  <span className="font-semibold text-[#181818] dark:text-[#F2F2F0]">
-                                    {effectiveBiasOffset >= 0
-                                      ? `+${effectiveBiasOffset.toFixed(1)}`
-                                      : effectiveBiasOffset.toFixed(1)}{" "}
-                                    px
-                                  </span>
-                                </div>
-                              </div>
+                                return (
+                                  <div className="space-y-2.5 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
+                                    <div className="flex items-baseline justify-between gap-3">
+                                      <span className="text-[11px] font-mono tracking-wider uppercase font-semibold text-[#181818] dark:text-[#E8E8E3]">
+                                        TRANSFER EQUATION
+                                      </span>
+                                      <span className="shrink-0 text-[11px] font-mono tracking-wider uppercase font-semibold text-[#2563EB] dark:text-[#7EA2FF]">
+                                        {stateLabel} (B = {bStr}, C = {cStr})
+                                      </span>
+                                    </div>
+
+                                    <div className="rounded-lg bg-[#F5F5F0] dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2F2F2F] p-3 space-y-2 text-xs font-mono">
+                                      <div className="text-[#6F6F6A] dark:text-[#A0A09B] text-[11px]">
+                                        Here, the parameters are:
+                                      </div>
+
+                                      <ul className="space-y-1.5 pl-1 text-[#181818] dark:text-[#F2F2F0]">
+                                        <li className="flex items-start gap-2">
+                                          <span className="text-[#2563EB] dark:text-[#7EA2FF]">•</span>
+                                          <span>
+                                            <span className="text-[#6F6F6A] dark:text-[#A0A09B]">effectiveBiasOffset</span> = {bVal} − (128 × {cVal.toFixed(2)}) = <strong className="font-semibold text-[#2563EB] dark:text-[#7EA2FF]">{biasFormatted}</strong>
+                                          </span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                          <span className="text-[#2563EB] dark:text-[#7EA2FF]">•</span>
+                                          <span>
+                                            <span className="text-[#6F6F6A] dark:text-[#A0A09B]">Scale factor:</span> 1 + C = <strong className="font-semibold text-[#2563EB] dark:text-[#7EA2FF]">{scale}</strong>
+                                          </span>
+                                        </li>
+                                        <li className="flex items-start gap-2 pt-1 border-t border-[#E8E8E3]/60 dark:border-[#2F2F2F]">
+                                          <span className="text-[#2563EB] dark:text-[#7EA2FF]">•</span>
+                                          <span className="font-medium text-[#181818] dark:text-[#F2F2F0] flex flex-wrap items-center gap-1.5">
+                                            <span>Formula:</span>
+                                            <span className="bg-white dark:bg-[#121212] px-2 py-0.5 rounded border border-[#E8E8E3] dark:border-[#333] text-[#2563EB] dark:text-[#5B8CFF] font-semibold">
+                                              Pixel<sub>out</sub> = clamp<sub>[0, 255]</sub>({scale} × Pixel<sub>in</sub> {biasSignStr})
+                                            </span>
+                                          </span>
+                                        </li>
+                                      </ul>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
 

@@ -34,16 +34,6 @@ const PRESET_KERNELS: PresetKernel[] = [
     ],
   },
   {
-    name: "Emboss",
-    desc: "Directional 3D topographical relief",
-    size: 3,
-    matrix: [
-      [-2, -1, 0],
-      [-1, 1, 1],
-      [0, 1, 2],
-    ],
-  },
-  {
     name: "Box Blur",
     desc: "Uniform unweighted spatial averaging",
     size: 3,
@@ -117,9 +107,11 @@ export function CustomKernelInput({ kernelStr, onChange }: CustomKernelInputProp
   const setMatrixSize = (size: 3 | 5) => {
     if (size === currentSize) return;
     if (size === 3) {
-      onChange(JSON.stringify(PRESET_KERNELS[0].matrix));
+      const p3 = PRESET_KERNELS.find((p) => p.size === 3) ?? PRESET_KERNELS[0];
+      onChange(JSON.stringify(p3.matrix));
     } else {
-      onChange(JSON.stringify(PRESET_KERNELS[5].matrix));
+      const p5 = PRESET_KERNELS.find((p) => p.size === 5);
+      if (p5) onChange(JSON.stringify(p5.matrix));
     }
   };
 
