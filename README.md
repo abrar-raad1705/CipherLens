@@ -43,13 +43,11 @@ CipherLens/
 │   ├── hooks/                 # Workspace and operation state
 │   ├── lib/api/               # Typed FastAPI client
 │   ├── public/                # Images used by the live interface
-│   ├── Dockerfile
 │   └── package.json
 ├── backend/                   # Independently deployable Python application
 │   ├── api/                   # Routes, schemas, and services
 │   ├── src/batsignal/         # Processing, encryption, I/O, and analysis core
 │   ├── tests/                 # Unit and API integration tests
-│   ├── Dockerfile
 │   ├── pyproject.toml
 │   └── uv.lock
 ├── docs/                      # API, architecture, and core contracts
@@ -103,24 +101,6 @@ Open `http://localhost:3000`.
 | `CORS_ORIGINS` | Yes | Comma-separated frontend origins, for example `https://cipherlens.example.com,https://www.cipherlens.example.com`. |
 
 Do not add a trailing slash to either origin. Never place secrets in a `NEXT_PUBLIC_` variable.
-
-## Quality checks
-
-Backend:
-
-```bash
-cd backend
-uv run pytest
-uv run ruff check .
-```
-
-Frontend:
-
-```bash
-cd frontend
-npm run lint
-npm run build
-```
 
 ## Documentation
 

@@ -106,5 +106,4 @@ Images cross the HTTP boundary as PNG data URIs. Exact floating-point or complex
 
 - `frontend/package.json` and `frontend/package-lock.json` define the Node.js application.
 - `backend/pyproject.toml` and `backend/uv.lock` define the Python application.
-- Each application has its own Dockerfile and build context.
 - Backend unit and integration tests live under `backend/tests/`.
