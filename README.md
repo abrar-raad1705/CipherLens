@@ -1,116 +1,172 @@
-# BAT SIGNAL
+# CipherLens
 
-> An interactive 2D signal processing and optical image encryption laboratory.
+CipherLens is an interactive laboratory for studying two-dimensional signals through image processing, transform-domain encryption, decryption, and quantitative cryptanalysis. It was developed as a **CSE220: Signals and Linear Systems Sessional** project.
 
-BAT SIGNAL pairs a research-grade Python computational imaging engine with a minimalist, modern Next.js 16 laboratory interface. It provides real-time exploration of spatial filtering operators, 4f Double Random Phase Encoding (DRPE), optical phase transformations, and quantitative cryptanalysis.
+The repository is organized as two independently deployable applications:
 
----
+- `frontend/` - Next.js 16 and TypeScript user interface
+- `backend/` - FastAPI REST API and the Python numerical engine
 
-## 1. Technology Stack
+## Features
 
-- **Frontend**: Next.js 16, TypeScript, Tailwind CSS, customized minimalist UI primitives, Motion, Lucide icons
-- **Visualizations**: Native HTML Canvas (split-comparison & pixel loupe), SVG (4f optical bench diagrams), Apache ECharts (intensity histograms & correlation scatter plots)
-- **Backend**: FastAPI, Uvicorn, Pydantic schemas
-- **Computational Core**: Pure Python `batsignal` package (NumPy, SciPy, OpenCV, Pillow, scikit-image)
+- Custom 2D convolution, Gaussian and median filtering, Sobel edge detection, and Wiener deconvolution
+- DRPE, Fourier, DCT, Arnold-XOR, chaos, Feistel, and spectral-hybrid encryption workflows
+- Matching decryption workflows and downloadable key files
+- Entropy, adjacent-pixel correlation, histogram, MSE, PSNR, SSIM, NPCR, and UACI analysis
+- Interactive pixel inspection, split comparison, 3D image topography, charts, and optical pipeline diagrams
+- Built-in benchmark and synthetic test images
 
----
-
-## 2. Quick Start & Development Commands
-
-### Prerequisites
-- Python >= 3.12 with [uv](https://github.com/astral-sh/uv)
-- Node.js >= 20 with npm
-
-### 1. Python Environment & API Server
-```bash
-# Sync Python dependencies
-uv sync
-
-# Run FastAPI Application Server
-uv run uvicorn api.main:app --reload --port 8000
-```
-Interactive API docs available at `http://127.0.0.1:8000/docs`.
-
-### 2. Next.js Frontend
-```bash
-# Install frontend dependencies
-cd web
-npm install
-
-# Run Next.js Development Server
-npm run dev
-```
-Laboratory interface available at `http://localhost:3000`.
-
----
-
-## 3. Repository Structure
+## Architecture
 
 ```text
-Bat_Signal/
-├── src/
-│   └── batsignal/              # Pure computational core
-│       ├── analysis/           # Entropy, correlation, NPCR, UACI, MSE, PSNR, SSIM
-│       ├── encryption/         # DRPE, Fourier, DCT, Arnold-XOR
-│       ├── io/                 # Image reading/writing
-│       ├── processing/         # Convolution, Gaussian, Median, Sobel, Deconvolution
-│       └── pipeline/           # Benchmark imagery (cat512.png)
-│
-├── api/                        # FastAPI REST layer
-│   ├── main.py                 # FastAPI application entrypoint
-│   ├── routes/                 # Thin endpoint handlers
-│   │   ├── health.py
-│   │   ├── processing.py
-│   │   ├── encryption.py
-│   │   └── analysis.py
-│   ├── schemas/                # Typed Pydantic request/response models
-│   └── services/               # Orchestration & centralized serialization
-│
-├── web/                        # Next.js 16 Laboratory UI
-│   ├── app/                    # App Router pages
-│   │   ├── workspace/          # Ingestion & reusable artifact manager
-│   │   ├── processing/         # Spatial filtering & deconvolution
-│   │   ├── encryption/         # 4f DRPE & optical transforms
-│   │   └── analysis/           # Quantitative cryptanalysis & charts
-│   ├── components/
-│   │   ├── ui/                 # Minimalist dark UI primitives
-│   │   ├── image/              # Native Canvas split-comparators & pixel inspectors
-│   │   ├── encryption/         # SVG 4f optical schematics
-│   │   └── analysis/           # Apache ECharts (histograms & scatter plots)
-│   ├── hooks/                  # Global artifact store & API hooks
-│   └── lib/api/                # Typed API client
-│
-├── tests/
-│   ├── unit/                   # Computational core unit tests
-│   └── integration/            # FastAPI integration tests
-│
-├── docs/
-│   ├── Core_Contracts.md       # Data types and mathematical contracts
-│   ├── API.md                  # REST endpoint specifications
-│   └── Architecture.md         # Monorepo architecture & artifact pipeline
-│
-├── pyproject.toml
+Browser
+   |
+   | HTTPS / JSON and image data URIs
+   v
+frontend/                         backend/
+Next.js 16                        FastAPI
+   |                                 |
+   | NEXT_PUBLIC_API_URL             v
+   +--------------------------> src/batsignal/
+                                  NumPy/SciPy/OpenCV engine
+```
+
+The frontend knows the backend only through `NEXT_PUBLIC_API_URL`. The backend accepts browser requests only from the origins configured in `CORS_ORIGINS`, so the two applications can be hosted on different domains without sharing a filesystem or process.
+
+## Repository layout
+
+```text
+CipherLens/
+├── frontend/                  # Independently deployable Next.js application
+│   ├── app/                   # Pages and layouts
+│   ├── components/            # UI, charts, image viewers, and diagrams
+│   ├── hooks/                 # Workspace and operation state
+│   ├── lib/api/               # Typed FastAPI client
+│   ├── public/                # Images used by the live interface
+│   ├── Dockerfile
+│   └── package.json
+├── backend/                   # Independently deployable Python application
+│   ├── api/                   # Routes, schemas, and services
+│   ├── src/batsignal/         # Processing, encryption, I/O, and analysis core
+│   ├── tests/                 # Unit and API integration tests
+│   ├── Dockerfile
+│   ├── pyproject.toml
+│   └── uv.lock
+├── docs/                      # API, architecture, and core contracts
 └── README.md
 ```
 
----
+## Local development
 
-## 4. Testing
+### Prerequisites
 
-Run all unit and API integration tests:
+- Python 3.12 or newer
+- [uv](https://docs.astral.sh/uv/)
+- Node.js 20 or newer
+- npm
+
+### 1. Start the backend
 
 ```bash
-uv run pytest tests/unit tests/integration
+cd backend
+uv sync
+uv run uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Linting:
+The API is available at `http://127.0.0.1:8000`; interactive OpenAPI documentation is at `http://127.0.0.1:8000/docs`.
+
+### 2. Start the frontend
+
+In a second terminal:
 
 ```bash
+cd frontend
+cp .env.example .env.local
+npm ci
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+## Environment variables
+
+### Frontend
+
+| Variable | Required in production | Description |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | Yes | Public backend origin, for example `https://api.example.com`. It is embedded at build time. |
+
+### Backend
+
+| Variable | Required in production | Description |
+| --- | --- | --- |
+| `CORS_ORIGINS` | Yes | Comma-separated frontend origins, for example `https://cipherlens.example.com,https://www.cipherlens.example.com`. |
+
+Do not add a trailing slash to either origin. Never place secrets in a `NEXT_PUBLIC_` variable.
+
+## Deploying on separate servers
+
+### Backend server
+
+Set the service root directory to `backend/`, set `CORS_ORIGINS` to the deployed frontend URL, and run:
+
+```bash
+uv sync --frozen --no-dev
+uv run uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}
+```
+
+Alternatively, build `backend/Dockerfile` with `backend/` as the Docker build context.
+
+### Frontend server
+
+Set the service root directory to `frontend/`. Configure `NEXT_PUBLIC_API_URL` before the production build, then run:
+
+```bash
+npm ci
+npm run build
+npm run start
+```
+
+Alternatively, build `frontend/Dockerfile` with `frontend/` as the Docker build context and pass the backend URL at build time:
+
+```bash
+docker build --build-arg NEXT_PUBLIC_API_URL=https://api.example.com -t cipherlens-frontend frontend
+```
+
+Because `NEXT_PUBLIC_API_URL` is compiled into the browser bundle, changing it requires rebuilding the frontend.
+
+## Quality checks
+
+Backend:
+
+```bash
+cd backend
+uv run pytest
 uv run ruff check .
 ```
 
-Frontend production build check:
+Frontend:
 
 ```bash
-cd web && npm run build
+cd frontend
+npm run lint
+npm run build
 ```
+
+## Documentation
+
+- [REST API reference](docs/API.md)
+- [Architecture](docs/Architecture.md)
+- [Core contracts](docs/Core_Contracts.md)
+
+## Team
+
+| Name | Roll | GitHub |
+| --- | --- | --- |
+| Abrar Ryan | 2305149 | [abrar-raad1705](https://github.com/abrar-raad1705) |
+| Muhab Ahmed Abir | 2305121 | [Muhab2004](https://github.com/Muhab2004) |
+
+## Academic context
+
+- **Course:** CSE220 - Signals and Linear Systems Sessional
+- **Project:** CipherLens

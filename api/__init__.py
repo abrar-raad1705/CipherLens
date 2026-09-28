@@ -1,1 +1,0 @@
-"""Bat Signal API package."""

@@ -1,6 +1,6 @@
-# Bat Signal REST API Reference
+# CipherLens REST API Reference
 
-The Bat Signal API is a high-performance REST application layer built on FastAPI that interfaces the Next.js laboratory frontend with the computational Python imaging library (`batsignal`).
+The CipherLens API is a high-performance REST application layer built on FastAPI that interfaces the Next.js laboratory frontend with the computational Python imaging library (`batsignal`).
 
 Base URL: `http://127.0.0.1:8000/api`
 Interactive OpenAPI Docs: `http://127.0.0.1:8000/docs`
@@ -16,7 +16,7 @@ Retrieves API operational status and computational library availability.
 ```json
 {
   "status": "healthy",
-  "service": "Bat Signal Computational Imaging Core",
+  "service": "CipherLens Computational Imaging Core",
   "version": "0.1.0",
   "engine": "FastAPI + NumPy/SciPy"
 }

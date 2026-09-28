@@ -1,26 +1,26 @@
-# Bat Signal Repository & System Architecture
+# CipherLens Repository & System Architecture
 
 ## 1. Architectural Principles
 
-Bat Signal implements a strict **three-tier architecture** with unambiguous separation between Presentation, Application API, and Scientific Computation:
+CipherLens implements a strict **three-tier architecture** with unambiguous separation between Presentation, Application API, and Scientific Computation:
 
 ```text
                     ┌─────────────────────────┐
-                    │     Next.js 16 (web)    │
+                    │  Next.js 16 (frontend)  │
                     │   Minimalist Lab UI     │
                     └────────────┬────────────┘
                                  │
                                  │ HTTP / JSON / Base64 URIs
                                  ▼
                     ┌─────────────────────────┐
-                    │      FastAPI (api)      │
+                    │ FastAPI (backend/api)   │
                     │   Application REST API  │
                     └────────────┬────────────┘
                                  │
                                  │ Python Objects / NumPy arrays
                                  ▼
                     ┌─────────────────────────┐
-                    │   BatSignal Core (src)  │
+                    │ Core (backend/src)      │
                     │    Pure Python Engine   │
                     ├─────────────────────────┤
                     │ processing              │
@@ -31,9 +31,9 @@ Bat Signal implements a strict **three-tier architecture** with unambiguous sepa
 ```
 
 ### Separation of Concerns
-1. **Computational Core (`src/batsignal/`)**: Pure Python numerical packages (`processing`, `encryption`, `analysis`, `io`). Has zero dependencies on FastAPI, web frameworks, or UI state. Remains the computational source of truth.
-2. **Application / REST Layer (`api/`)**: Built on FastAPI. Validates requests via Pydantic schemas, centralizes image encoding/decoding, orchestrates laboratory routines through dedicated service modules, and returns typed responses.
-3. **Presentation Layer (`web/`)**: Next.js 16 application with TypeScript, Tailwind CSS, customized minimalist UI primitives, Native Canvas for split comparisons and inspection, SVG technical diagrams, and Apache ECharts for quantitative metrics.
+1. **Computational Core (`backend/src/batsignal/`)**: Pure Python numerical packages (`processing`, `encryption`, `analysis`, `io`). Has zero dependencies on FastAPI, web frameworks, or UI state. Remains the computational source of truth.
+2. **Application / REST Layer (`backend/api/`)**: Built on FastAPI. Validates requests via Pydantic schemas, centralizes image encoding/decoding, orchestrates laboratory routines through dedicated service modules, and returns typed responses.
+3. **Presentation Layer (`frontend/`)**: Next.js 16 application with TypeScript, Tailwind CSS, customized minimalist UI primitives, Native Canvas for split comparisons and inspection, SVG technical diagrams, and Apache ECharts for quantitative metrics.
 
 ---
 

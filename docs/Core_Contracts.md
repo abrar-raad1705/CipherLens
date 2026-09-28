@@ -1,4 +1,4 @@
-# Bat_Signal Core Contracts
+# CipherLens Core Contracts
 
 ## 1. Image Representation
 
