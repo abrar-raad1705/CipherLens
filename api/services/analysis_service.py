@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+import cv2
 import numpy as np
 
 from api.schemas.analysis import (
@@ -73,8 +74,8 @@ def run_metrics(
     target = decode_image_payload(target_payload)
 
     if orig.shape != target.shape:
-        raise ValueError(
-            f"Image dimensions must match for metrics calculation: {orig.shape} vs {target.shape}"
+        target = cv2.resize(
+            target, (orig.shape[1], orig.shape[0]), interpolation=cv2.INTER_AREA
         )
 
     mse_val = float(calculate_mse(orig, target))
@@ -174,15 +175,22 @@ def run_full_analysis(
 
     # 5. Quality (plain vs recovered preferred, else plain vs cipher)
     eval_target = recovered if recovered is not None else cipher
-    if eval_target is not None and plain.shape == eval_target.shape:
-        mse_val = round(float(calculate_mse(plain, eval_target)), 4)
-        p_val = calculate_psnr(plain, eval_target)
+    if eval_target is not None:
+        if plain.shape != eval_target.shape:
+            eval_target_aligned = cv2.resize(
+                eval_target, (plain.shape[1], plain.shape[0]), interpolation=cv2.INTER_AREA
+            )
+        else:
+            eval_target_aligned = eval_target
+
+        mse_val = round(float(calculate_mse(plain, eval_target_aligned)), 4)
+        p_val = calculate_psnr(plain, eval_target_aligned)
         psnr_val = "inf" if np.isinf(p_val) else round(float(p_val), 2)
-        ssim_val = round(float(calculate_ssim(plain, eval_target)), 4)
+        ssim_val = round(float(calculate_ssim(plain, eval_target_aligned)), 4)
     else:
         mse_val = 0.0
         psnr_val = 0.0
-        ssim_val = 1.0 if eval_target is None else 0.0
+        ssim_val = 1.0
 
     quality = {"mse": mse_val, "psnr": psnr_val, "ssim": ssim_val}
 

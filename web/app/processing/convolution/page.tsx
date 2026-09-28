@@ -873,53 +873,62 @@ function ConvolutionBenchContent() {
                                 const stateLabel =
                                   bVal === 0 && cVal === 0
                                     ? "Baseline Identity"
-                                    : bVal >= 0 && cVal >= 0
-                                      ? "High Brightness + High Contrast"
-                                      : bVal >= 0 && cVal < 0
-                                        ? "High Brightness + Low Contrast"
-                                        : bVal < 0 && cVal >= 0
-                                          ? "Low Brightness + High Contrast"
-                                          : "Low Brightness + Low Contrast";
+                                    : bVal === 0
+                                      ? cVal > 0 ? "High Contrast" : "Low Contrast"
+                                      : cVal === 0
+                                        ? bVal > 0 ? "High Brightness" : "Low Brightness"
+                                        : bVal > 0 && cVal > 0
+                                          ? "High Brightness + High Contrast"
+                                          : bVal > 0 && cVal < 0
+                                            ? "High Brightness + Low Contrast"
+                                            : bVal < 0 && cVal > 0
+                                              ? "Low Brightness + High Contrast"
+                                              : "Low Brightness + Low Contrast";
 
                                 return (
-                                  <div className="space-y-2.5 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
-                                    <div className="flex items-baseline justify-between gap-3">
+                                  <div className="space-y-2 pt-3 border-t border-[#E8E8E3] dark:border-[#292929]">
+                                    <div className="flex items-center justify-between gap-2">
                                       <span className="text-[11px] font-mono tracking-wider uppercase font-semibold text-[#181818] dark:text-[#E8E8E3]">
                                         TRANSFER EQUATION
                                       </span>
-                                      <span className="shrink-0 text-[11px] font-mono tracking-wider uppercase font-semibold text-[#2563EB] dark:text-[#7EA2FF]">
-                                        {stateLabel} (B = {bStr}, C = {cStr})
+                                      <span className="shrink-0 text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#2563EB]/10 dark:bg-[#5B8CFF]/15 text-[#2563EB] dark:text-[#7EA2FF] font-semibold border border-[#2563EB]/20 dark:border-[#5B8CFF]/20">
+                                        B: {bStr} · C: {cStr}
                                       </span>
                                     </div>
 
                                     <div className="rounded-lg bg-[#F5F5F0] dark:bg-[#1A1A1A] border border-[#E8E8E3] dark:border-[#2F2F2F] p-3 space-y-2 text-xs font-mono">
-                                      <div className="text-[#6F6F6A] dark:text-[#A0A09B] text-[11px]">
-                                        Here, the parameters are:
+                                      <div className="flex items-center justify-between gap-2 border-b border-[#E8E8E3]/70 dark:border-[#282828] pb-1.5">
+                                        <span className="text-[#6F6F6A] dark:text-[#A0A09B] text-[11px]">
+                                          Active State:
+                                        </span>
+                                        <span className="text-[11px] font-semibold text-[#2563EB] dark:text-[#7EA2FF] text-right truncate">
+                                          {stateLabel}
+                                        </span>
                                       </div>
 
-                                      <ul className="space-y-1.5 pl-1 text-[#181818] dark:text-[#F2F2F0]">
-                                        <li className="flex items-start gap-2">
+                                      <ul className="space-y-1.5 pl-0.5 text-[#181818] dark:text-[#F2F2F0]">
+                                        <li className="flex items-start gap-1.5">
                                           <span className="text-[#2563EB] dark:text-[#7EA2FF]">•</span>
-                                          <span>
+                                          <span className="leading-snug">
                                             <span className="text-[#6F6F6A] dark:text-[#A0A09B]">effectiveBiasOffset</span> = {bVal} − (128 × {cVal.toFixed(2)}) = <strong className="font-semibold text-[#2563EB] dark:text-[#7EA2FF]">{biasFormatted}</strong>
                                           </span>
                                         </li>
-                                        <li className="flex items-start gap-2">
+                                        <li className="flex items-start gap-1.5">
                                           <span className="text-[#2563EB] dark:text-[#7EA2FF]">•</span>
-                                          <span>
+                                          <span className="leading-snug">
                                             <span className="text-[#6F6F6A] dark:text-[#A0A09B]">Scale factor:</span> 1 + C = <strong className="font-semibold text-[#2563EB] dark:text-[#7EA2FF]">{scale}</strong>
                                           </span>
                                         </li>
-                                        <li className="flex items-start gap-2 pt-1 border-t border-[#E8E8E3]/60 dark:border-[#2F2F2F]">
-                                          <span className="text-[#2563EB] dark:text-[#7EA2FF]">•</span>
-                                          <span className="font-medium text-[#181818] dark:text-[#F2F2F0] flex flex-wrap items-center gap-1.5">
-                                            <span>Formula:</span>
-                                            <span className="bg-white dark:bg-[#121212] px-2 py-0.5 rounded border border-[#E8E8E3] dark:border-[#333] text-[#2563EB] dark:text-[#5B8CFF] font-semibold">
-                                              Pixel<sub>out</sub> = clamp<sub>[0, 255]</sub>({scale} × Pixel<sub>in</sub> {biasSignStr})
-                                            </span>
-                                          </span>
-                                        </li>
                                       </ul>
+
+                                      <div className="pt-2 border-t border-[#E8E8E3]/70 dark:border-[#282828] space-y-1">
+                                        <div className="text-[10px] text-[#6F6F6A] dark:text-[#A0A09B] uppercase tracking-wider font-semibold">
+                                          Formula:
+                                        </div>
+                                        <div className="bg-white dark:bg-[#121212] px-2.5 py-1.5 rounded-md border border-[#E8E8E3] dark:border-[#2F2F2F] text-[#2563EB] dark:text-[#5B8CFF] font-semibold text-[11px] break-words leading-relaxed">
+                                          Pixel<sub>out</sub> = clamp<sub>[0, 255]</sub>({scale} × Pixel<sub>in</sub> {biasSignStr})
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
                                 );

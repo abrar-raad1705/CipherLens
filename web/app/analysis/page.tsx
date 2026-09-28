@@ -571,7 +571,7 @@ function AnalysisBenchContent() {
                   <ComparisonTablet rightLabel="RECONSTRUCTED" />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                   <FidelityStatCard
                     label="Structural similarity"
                     value={fullAnalysis.quality.ssim.toFixed(4)}
@@ -593,21 +593,6 @@ function AnalysisBenchContent() {
                     label="Mean squared error"
                     value={fullAnalysis.quality.mse.toFixed(4)}
                     detail="Ideal match: 0.0000"
-                  />
-
-                  <FidelityStatCard
-                    label="Recovery quality"
-                    value={
-                      fullAnalysis.quality.mse === 0
-                        ? "Exact"
-                        : fullAnalysis.quality.ssim >= 0.99
-                        ? "Excellent"
-                        : fullAnalysis.quality.ssim >= 0.9
-                        ? "Good"
-                        : "Degraded"
-                    }
-                    detail={`Analysis time: ${fullAnalysis.latency_ms} ms`}
-                    emphasis={fullAnalysis.quality.ssim >= 0.9}
                   />
                 </div>
               </div>
