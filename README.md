@@ -104,37 +104,6 @@ Open `http://localhost:3000`.
 
 Do not add a trailing slash to either origin. Never place secrets in a `NEXT_PUBLIC_` variable.
 
-## Deploying on separate servers
-
-### Backend server
-
-Set the service root directory to `backend/`, set `CORS_ORIGINS` to the deployed frontend URL, and run:
-
-```bash
-uv sync --frozen --no-dev
-uv run uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}
-```
-
-Alternatively, build `backend/Dockerfile` with `backend/` as the Docker build context.
-
-### Frontend server
-
-Set the service root directory to `frontend/`. Configure `NEXT_PUBLIC_API_URL` before the production build, then run:
-
-```bash
-npm ci
-npm run build
-npm run start
-```
-
-Alternatively, build `frontend/Dockerfile` with `frontend/` as the Docker build context and pass the backend URL at build time:
-
-```bash
-docker build --build-arg NEXT_PUBLIC_API_URL=https://api.example.com -t cipherlens-frontend frontend
-```
-
-Because `NEXT_PUBLIC_API_URL` is compiled into the browser bundle, changing it requires rebuilding the frontend.
-
 ## Quality checks
 
 Backend:

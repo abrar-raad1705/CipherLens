@@ -1,18 +1,20 @@
 # CipherLens REST API Reference
 
-The CipherLens API is a high-performance REST application layer built on FastAPI that interfaces the Next.js laboratory frontend with the computational Python imaging library (`batsignal`).
+The FastAPI application in `backend/api/` exposes the `batsignal` numerical engine to the Next.js frontend.
 
-Base URL: `http://127.0.0.1:8000/api`
-Interactive OpenAPI Docs: `http://127.0.0.1:8000/docs`
+- API base URL in local development: `http://127.0.0.1:8000/api`
+- Interactive OpenAPI documentation: `http://127.0.0.1:8000/docs`
+- Image fields accept a base64-encoded image or a `data:image/...;base64,...` URI.
+- Image responses are PNG data URIs unless a field says otherwise.
 
----
+Request validation failures return `422`. Valid requests with unsupported values or unusable image/key data generally return `400`. Unexpected processing failures return `500` with a `detail` message.
 
-## 1. Health & Benchmark Diagnostics
+## Health and samples
 
 ### `GET /api/health`
-Retrieves API operational status and computational library availability.
 
-**Response `200 OK`**:
+Returns service diagnostics.
+
 ```json
 {
   "status": "healthy",
@@ -23,16 +25,42 @@ Retrieves API operational status and computational library availability.
 ```
 
 ### `GET /api/processing/samples`
-Supplies standard research benchmarks (Cat 512, Synthetic Frequency Zone Plate, High-Contrast Checkerboard, Optical Resolution Grating) formatted as base64 PNG data URIs.
 
----
+Returns the bundled Cat 512 benchmark when available, plus generated frequency-zone-plate, checkerboard, and resolution-bar samples.
 
-## 2. Spatial Image Processing Bench
+```json
+{
+  "samples": [
+    {
+      "id": "cat512",
+      "name": "Cat Benchmark (512×512)",
+      "description": "...",
+      "image": "data:image/png;base64,...",
+      "width": 512,
+      "height": 512
+    }
+  ]
+}
+```
+
+## Image processing
+
+All processing operations return the following shape:
+
+```json
+{
+  "status": "COMPLETE",
+  "filter": "Gaussian Blur",
+  "output_image": "data:image/png;base64,...",
+  "metadata": {},
+  "latency_ms": 12.34
+}
+```
 
 ### `POST /api/processing/convolution`
-Executes spatial 2D discrete convolution with a custom kernel matrix.
 
-**Request Body**:
+Applies a custom odd-sized 2D kernel.
+
 ```json
 {
   "image": "data:image/png;base64,...",
@@ -41,25 +69,8 @@ Executes spatial 2D discrete convolution with a custom kernel matrix.
 }
 ```
 
-**Response `200 OK`**:
-```json
-{
-  "status": "COMPLETE",
-  "filter": "Custom Convolution",
-  "output_image": "data:image/png;base64,...",
-  "metadata": {
-    "kernel_shape": "3×3",
-    "normalized": false,
-    "dimensions": "512×512"
-  },
-  "latency_ms": 14.2
-}
-```
-
 ### `POST /api/processing/gaussian`
-Applies 2D Gaussian kernel smoothing.
 
-**Request Body**:
 ```json
 {
   "image": "data:image/png;base64,...",
@@ -68,10 +79,10 @@ Applies 2D Gaussian kernel smoothing.
 }
 ```
 
-### `POST /api/processing/median`
-Applies non-linear 2D rank-order median filtering.
+`kernel_size` must be a positive odd integer.
 
-**Request Body**:
+### `POST /api/processing/median`
+
 ```json
 {
   "image": "data:image/png;base64,...",
@@ -80,31 +91,38 @@ Applies non-linear 2D rank-order median filtering.
 ```
 
 ### `POST /api/processing/sobel`
-Computes gradient vector magnitude: $|G| = \sqrt{G_x^2 + G_y^2}$.
+
+```json
+{
+  "image": "data:image/png;base64,..."
+}
+```
+
+Returns the normalized Sobel gradient magnitude.
 
 ### `POST /api/processing/deconvolution`
-Executes analytical Wiener deconvolution filter restoration.
 
-**Request Body**:
+Applies Wiener deconvolution with a Gaussian or custom point-spread function.
+
 ```json
 {
   "image": "data:image/png;base64,...",
   "mode": "GAUSSIAN",
   "kernel_size": 5,
   "sigma": 1.0,
-  "K": 0.01
+  "K": 0.01,
+  "kernel": null
 }
 ```
 
----
+Use `mode: "CUSTOM"` and supply `kernel` for a custom model.
 
-## 3. Optical Cryptosystems Bench
+## Encryption and decryption
+
+Transform endpoints other than DRPE use an `action` field set to `"encrypt"` or `"decrypt"`. Their common response contains `status`, `algorithm`, `action`, `output_image`, visualization `stages`, `metadata`, and `latency_ms`. Fourier and Spectral Hybrid may also return `spectrum`.
 
 ### `POST /api/encryption/drpe/encrypt`
-Executes Double Random Phase Encoding (DRPE) through a simulated 4f coherent optical system:
-$$C(x, y) = \mathcal{F}^{-1}\left\{ \mathcal{F}\left[ f(x,y) R_1(x,y) \right] R_2(u,v) \right\}$$
 
-**Request Body**:
 ```json
 {
   "image": "data:image/png;base64,...",
@@ -113,61 +131,154 @@ $$C(x, y) = \mathcal{F}^{-1}\left\{ \mathcal{F}\left[ f(x,y) R_1(x,y) \right] R_
 }
 ```
 
-**Response `200 OK`**:
+The response includes the visual ciphertext, 4f pipeline stages, metadata, and the exact complex ciphertext package in `ciphertext_real`, `ciphertext_imag`, and `ciphertext_shape`.
+
+### `POST /api/encryption/drpe/decrypt`
+
 ```json
 {
-  "status": "COMPLETE",
-  "algorithm": "DRPE",
   "ciphertext": "data:image/png;base64,...",
-  "stages": {
-    "original": "data:image/png;base64,...",
-    "r1_phase": "data:image/png;base64,...",
-    "fourier_spectrum": "data:image/png;base64,...",
-    "r2_phase": "data:image/png;base64,...",
-    "ciphertext": "data:image/png;base64,..."
-  },
-  "metadata": {
-    "seed1": 1234,
-    "seed2": 5678,
-    "shape": "512×512",
-    "complex_stats": { ... }
-  },
-  "latency_ms": 28.5
+  "seed1": 1234,
+  "seed2": 5678,
+  "reference_image": "data:image/png;base64,..."
 }
 ```
 
-### `POST /api/encryption/drpe/decrypt`
-Decodes DRPE ciphertext using conjugate Fourier and spatial phase keys:
-$$\hat{f}(x, y) = \mathcal{F}^{-1}\left\{ \mathcal{F}[C(x,y)] R_2^*(u,v) \right\} R_1^*(x,y)$$
+`reference_image` is optional. When supplied, the response can include quality metrics and a difference heatmap.
 
 ### `POST /api/encryption/fourier`
-Applies Fourier domain coordinate shuffling with pseudorandom permutation seeds.
+
+```json
+{
+  "image": "data:image/png;base64,...",
+  "seed": 100,
+  "action": "encrypt"
+}
+```
 
 ### `POST /api/encryption/dct`
-Applies Discrete Cosine Transform 2D block coefficient scrambling.
+
+```json
+{
+  "image": "data:image/png;base64,...",
+  "seed": 42,
+  "action": "encrypt"
+}
+```
 
 ### `POST /api/encryption/arnold-xor`
-Applies periodic Arnold Cat Map matrix scrambling combined with dynamic bitwise XOR mask.
 
----
+```json
+{
+  "image": "data:image/png;base64,...",
+  "itr": 10,
+  "xor_value": 170,
+  "action": "encrypt"
+}
+```
 
-## 4. Quantitative Cryptanalysis Bench
+### `POST /api/encryption/chaos`
+
+```json
+{
+  "image": "data:image/png;base64,...",
+  "x0": 0.4,
+  "r": 3.99,
+  "action": "encrypt"
+}
+```
+
+The logistic-map key requires `0 < x0 < 1` and `3.5 <= r <= 4.0`.
+
+### `POST /api/encryption/spectral-hybrid`
+
+```json
+{
+  "image": "data:image/png;base64,...",
+  "scramble_seed": 42,
+  "mask_seed": 99,
+  "kernel_seed": 7,
+  "action": "encrypt"
+}
+```
+
+### `POST /api/encryption/feistel`
+
+```json
+{
+  "image": "data:image/png;base64,...",
+  "seed": 42,
+  "rounds": 8,
+  "action": "encrypt"
+}
+```
+
+The implementation accepts 4 through 16 rounds.
+
+### Exact-ciphertext preload endpoints
+
+The visual PNG produced by a complex or floating-point transform is not sufficient to reconstruct the exact ciphertext. CipherLens key packages therefore retain encoded numerical planes. These endpoints load those planes into the backend's process-local cache before decryption:
+
+- `POST /api/encryption/drpe/preload`
+- `POST /api/encryption/fourier/preload`
+- `POST /api/encryption/dct/preload`
+- `POST /api/encryption/spectral-hybrid/preload`
+
+DRPE, Fourier, and Spectral Hybrid accept `ciphertext_real`, `ciphertext_imag`, `ciphertext_shape`, and `visual_uri`. DCT accepts `ciphertext_real`, `ciphertext_shape`, and `visual_uri`. A successful response has `status: "CACHED"`.
+
+The cache is in memory and local to one backend process. It is not durable and is not shared between multiple workers or replicas.
+
+## Analysis
 
 ### `POST /api/analysis/entropy`
-Computes Shannon information entropy:
-$$H(m) = -\sum_{i=0}^{255} p(m_i) \log_2 p(m_i)$$
-Theoretical maximum for 8-bit uniform noise: $8.0000$ bits/pixel.
+
+Request: `{"image": "data:image/png;base64,..."}`
+
+Returns Shannon entropy, the 8-bit theoretical maximum, and latency.
 
 ### `POST /api/analysis/correlation`
-Computes Pearson correlation coefficients across horizontal, vertical, and diagonal adjacent pixel pairs:
-$$r_{xy} = \frac{\sum (x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum (x_i - \bar{x})^2 \sum (y_i - \bar{y})^2}}$$
-Also returns coordinate samples $(x_i, y_i)$ for interactive scatter plots.
+
+```json
+{
+  "image": "data:image/png;base64,...",
+  "num_samples": 1500
+}
+```
+
+Returns horizontal, vertical, and diagonal correlation coefficients plus sampled adjacent-pixel pairs.
 
 ### `POST /api/analysis/metrics`
-Evaluates reconstruction fidelity (MSE, PSNR, SSIM) and optional differential sensitivity metrics (NPCR, UACI).
+
+```json
+{
+  "original_image": "data:image/png;base64,...",
+  "target_image": "data:image/png;base64,...",
+  "differential": false
+}
+```
+
+Returns MSE, PSNR, and SSIM. With `differential: true`, it also returns NPCR and UACI between the supplied images.
 
 ### `POST /api/analysis/histogram`
-Computes 256-bin intensity counts from $0$ to $255$.
+
+Request: `{"image": "data:image/png;base64,..."}`
+
+Returns 256 intensity bins, mean, standard deviation, and latency.
 
 ### `POST /api/analysis/full`
-Unified cryptanalysis endpoint returning combined entropy, correlation, scatter samples, histograms, differential sensitivity, and recovery fidelity.
+
+```json
+{
+  "plain_image": "data:image/png;base64,...",
+  "cipher_image": "data:image/png;base64,...",
+  "recovered_image": null,
+  "diff_x": 0,
+  "diff_y": 0,
+  "algorithm": "DRPE",
+  "key_params": {"seed1": 1234, "seed2": 5678}
+}
+```
+
+`cipher_image` and `recovered_image` are optional. The response combines entropy, correlation, scatter samples, histograms, reconstruction quality, and differential statistics.
+
+The endpoint's one-pixel differential re-encryption currently supports DRPE, Fourier, DCT, and Arnold-XOR. For other algorithm names it compares against the supplied ciphertext without running a second encryption.

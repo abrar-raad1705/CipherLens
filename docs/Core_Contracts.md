@@ -1,197 +1,142 @@
 # CipherLens Core Contracts
 
-## 1. Image Representation
+This document describes the Python interfaces under `backend/src/batsignal/`. HTTP request and response contracts are documented in [API.md](API.md).
 
-Normal input and recovered images:
+## Image representation
 
-```python
-numpy.ndarray
-```
+Core functions accept two-dimensional `numpy.ndarray` images with shape `(height, width)`.
 
-```text
-dtype: uint8
-shape: (height, width)
-value range: 0–255
-image type: grayscale
-```
+- Decoded input images are grayscale `uint8` arrays in the range 0-255.
+- Processing results are returned as displayable arrays and normalized to PNG by the API service layer.
+- Ciphertext dtype is algorithm-dependent. Complex and floating-point ciphertext must not be reduced to `uint8` before decryption.
+- Decryption may return floating-point data; the service layer rounds and clips it for display.
 
-Ciphertext:
+Functions expect compatible image shapes. The API metrics service resizes a comparison target when necessary, but the core metric functions themselves do not define that HTTP-level behavior.
 
-```python
-numpy.ndarray
-```
+## Processing
 
-Ciphertext dtype may be algorithm-dependent. Do not force transform-domain ciphertext into `uint8`.
-
----
-
-## 2. Processing Contracts
-
-### Gaussian
+The public processing functions are exported by `batsignal.processing`.
 
 ```python
 import numpy as np
 
-
-def apply_gaussian(image: np.ndarray) -> np.ndarray: ...
-```
-
-### Sobel
-
-```python
-import numpy as np
-
-
-def apply_sobel(image: np.ndarray) -> np.ndarray: ...
-```
-
-### Custom 2D Kernel
-
-```python
-import numpy as np
+from batsignal.processing import (
+    apply_custom_kernel,
+    apply_deconvolution,
+    apply_gaussian,
+    apply_median_filter,
+    apply_sobel,
+)
 
 
 def apply_custom_kernel(
     image: np.ndarray,
     kernel: np.ndarray,
 ) -> np.ndarray: ...
+
+
+def apply_gaussian(
+    image: np.ndarray,
+    kernel_size: int = 5,
+    sigma: float = 1.0,
+) -> np.ndarray: ...
+
+
+def apply_median_filter(
+    image: np.ndarray,
+    kernel_size: int = 3,
+) -> np.ndarray: ...
+
+
+def apply_sobel(image: np.ndarray) -> np.ndarray: ...
+
+
+def apply_deconvolution(
+    image: np.ndarray,
+    mode: str = "GAUSSIAN",
+    kernel: np.ndarray | None = None,
+    kernel_size: int = 5,
+    sigma: float = 1.0,
+    K: float = 0.01,
+) -> np.ndarray: ...
 ```
 
----
+Convolution kernels must be two-dimensional. The API requires odd kernel dimensions and positive odd Gaussian/median sizes. Deconvolution accepts `GAUSSIAN` or `CUSTOM`; custom mode requires a kernel.
 
-## 3. Encryption Contracts
+## Encryption
 
-Every encryption algorithm must expose:
+Each algorithm module exposes `encrypt` and `decrypt`. Callers should use the module's immutable key dataclass, although several modules also normalize tuple, list, integer, or dictionary forms.
+
+| Module | Key type | Key fields | Ciphertext |
+| --- | --- | --- | --- |
+| `arnold_xor` | `ArnoldXORKey` | `itr`, `xor_value` | `uint8` |
+| `chaos` | `ChaosKey` | `x0`, `r` | `uint8` |
+| `dct` | `DCT_Key` | `seed` | floating point |
+| `drpe` | `DRPEKey` | `seed1`, `seed2` | complex |
+| `feistel` | `FeistelKey` | `seed`, `rounds` | `uint8` |
+| `fourier` | `FourierKey` | `seed` | complex |
+| `spectral_hybrid` | `SpectralHybridKey` | `scramble_seed`, `mask_seed`, `kernel_seed` | `complex128` |
+
+Representative contract:
 
 ```python
+import numpy as np
+
+
 def encrypt(image: np.ndarray, key) -> np.ndarray: ...
 
 
 def decrypt(ciphertext: np.ndarray, key) -> np.ndarray: ...
 ```
 
-### Arnold + XOR
+Feistel decryption additionally accepts an optional `target_shape` so an odd-height plaintext can be restored to its original dimensions.
 
-```python
-def encrypt(image: np.ndarray, key) -> np.ndarray: ...
+Key validation rules include:
 
+- Random seeds are non-negative.
+- Arnold-XOR requires non-negative iterations and an XOR value from 0 through 255.
+- Arnold-XOR operates on square images because the Arnold Cat Map uses one shared dimension.
+- Chaos requires `0 < x0 < 1` and `3.5 <= r <= 4.0`.
+- Feistel requires a non-negative seed and 4 through 16 rounds.
 
-def decrypt(ciphertext: np.ndarray, key) -> np.ndarray: ...
-```
+The same validated key used for encryption must be supplied for decryption. Exact DCT, DRPE, Fourier, and Spectral Hybrid ciphertext arrays must be retained; their visual magnitude PNGs are not lossless ciphertext containers.
 
-### DCT
+## Analysis
 
-```python
-def encrypt(image: np.ndarray, key) -> np.ndarray: ...
-
-
-def decrypt(ciphertext: np.ndarray, key) -> np.ndarray: ...
-```
-
-### Fourier
-
-```python
-def encrypt(image: np.ndarray, key) -> np.ndarray: ...
-
-
-def decrypt(ciphertext: np.ndarray, key) -> np.ndarray: ...
-```
-
-### DRPE
-
-```python
-def encrypt(image: np.ndarray, key) -> np.ndarray: ...
-
-
-def decrypt(ciphertext: np.ndarray, key) -> np.ndarray: ...
-```
-
----
-
-## 4. Analysis Contracts
-
-### Entropy
+The following functions are exported by `batsignal.analysis`:
 
 ```python
 import numpy as np
 
 
 def calculate_entropy(image: np.ndarray) -> float: ...
-```
-
-### Correlation
-
-```python
-import numpy as np
 
 
-def calculate_correlation(
-    image: np.ndarray,
-) -> dict[str, float]: ...
-```
-
-Expected result:
-
-```python
-{
-    "horizontal": ...,
-    "vertical": ...,
-    "diagonal": ...,
-}
-```
-
-### NPCR
-
-```python
-import numpy as np
+def calculate_correlation(image: np.ndarray) -> dict[str, float]: ...
 
 
 def calculate_npcr(
     ciphertext1: np.ndarray,
     ciphertext2: np.ndarray,
 ) -> float: ...
-```
-
-### UACI
-
-```python
-import numpy as np
 
 
 def calculate_uaci(
     ciphertext1: np.ndarray,
     ciphertext2: np.ndarray,
 ) -> float: ...
-```
-
-### MSE
-
-```python
-import numpy as np
 
 
 def calculate_mse(
     original: np.ndarray,
     recovered: np.ndarray,
 ) -> float: ...
-```
-
-### PSNR
-
-```python
-import numpy as np
 
 
 def calculate_psnr(
     original: np.ndarray,
     recovered: np.ndarray,
 ) -> float: ...
-```
-
-### SSIM
-
-```python
-import numpy as np
 
 
 def calculate_ssim(
@@ -200,102 +145,35 @@ def calculate_ssim(
 ) -> float: ...
 ```
 
----
+`calculate_correlation` returns `horizontal`, `vertical`, and `diagonal` coefficients. NPCR and UACI compare two ciphertext arrays of the same shape. MSE, PSNR, and SSIM compare a reference image with a recovered or processed image.
 
-## 5. Module Boundaries
+## Module boundaries
 
-### Processing → Encryption
-
-```python
-processed_image: np.ndarray
-```
-
-```python
-ciphertext = encrypt(processed_image, key)
-```
-
-### Encryption → Decryption
-
-```python
-recovered = decrypt(ciphertext, key)
-```
-
-### Decryption → Analysis
-
-```python
-mse = calculate_mse(processed_image, recovered)
-psnr = calculate_psnr(processed_image, recovered)
-ssim = calculate_ssim(processed_image, recovered)
-```
-
-### Ciphertext → Analysis
-
-```python
-entropy = calculate_entropy(ciphertext)
-correlation = calculate_correlation(ciphertext)
-```
-
-NPCR/UACI:
-
-```python
-npcr = calculate_npcr(ciphertext1, ciphertext2)
-uaci = calculate_uaci(ciphertext1, ciphertext2)
-```
-
----
-
-## 6. Dependency Rules
+The numerical core remains independent of transport and UI concerns:
 
 ```text
-pipeline
-   ↓
-processing / encryption / analysis
-   ↓
-NumPy / OpenCV / SciPy / scikit-image
+frontend
+   │ HTTP/JSON
+   ▼
+backend/api/routes
+   ▼
+backend/api/services
+   ▼
+batsignal.processing / encryption / analysis / io
+   ▼
+NumPy / SciPy / OpenCV / scikit-image / Pillow
 ```
 
-Allowed:
+Allowed dependencies:
 
-```text
-processing → scientific libraries
-encryption → scientific libraries
-analysis   → scientific libraries
-pipeline   → processing/encryption/analysis
-```
+- Core modules may depend on scientific Python libraries.
+- API services may depend on schemas, serialization helpers, and core modules.
+- Routes may depend on schemas and services.
+- The frontend may depend on the HTTP API contract.
 
-Not allowed:
+Disallowed dependencies:
 
-```text
-processing → encryption
-encryption → processing
-analysis → specific encryption algorithm
-analysis → specific processing algorithm
-algorithm → pipeline
-algorithm → FastAPI
-algorithm → frontend
-```
-
----
-
-## 7. Ownership
-
-### Person 1
-
-```text
-processing/
-analysis/
-```
-
-### Person 2
-
-```text
-encryption/
-```
-
-### Shared
-
-```text
-io/
-pipeline/
-tests/
-```
+- Core algorithms must not import FastAPI or frontend modules.
+- Analysis functions must not depend on a specific encryption or processing algorithm.
+- Processing and encryption modules must not depend on each other.
+- Browser state must not be introduced into backend or core code.
