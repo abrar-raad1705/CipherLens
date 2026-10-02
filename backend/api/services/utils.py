@@ -13,14 +13,25 @@ import numpy as np
 from PIL import Image
 
 DATA_URI_PATTERN = re.compile(r"^data:image/[a-zA-Z0-9.+_-]+;base64,")
+MAX_IMAGE_DIMENSION = 1536
+MAX_PAYLOAD_CHARS = 35 * 1024 * 1024  # ~25MB payload limit
 
 
-def decode_image_payload(payload: str | bytes) -> np.ndarray:
+def decode_image_payload(
+    payload: str | bytes, max_dim: int = MAX_IMAGE_DIMENSION
+) -> np.ndarray:
     """
     Decode a base64 data URI, raw base64 string, or raw image bytes into a
     2D grayscale uint8 numpy array.
+
+    Automatically downscales images that exceed `max_dim` in either dimension to
+    protect free-tier server memory from out-of-memory (OOM) termination.
     """
     if isinstance(payload, str):
+        if len(payload) > MAX_PAYLOAD_CHARS:
+            raise ValueError(
+                f"Image payload size exceeds maximum limit of {MAX_PAYLOAD_CHARS // (1024 * 1024)}MB."
+            )
         cleaned = DATA_URI_PATTERN.sub("", payload.strip())
         raw_bytes = base64.b64decode(cleaned)
     elif isinstance(payload, bytes):
@@ -32,6 +43,14 @@ def decode_image_payload(payload: str | bytes) -> np.ndarray:
     img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise ValueError("Failed to decode image data into 2D grayscale array.")
+
+    # Safeguard: proportionally resize images exceeding max_dim
+    h, w = img.shape[:2]
+    if max_dim and max(h, w) > max_dim:
+        scale = max_dim / max(h, w)
+        new_w = max(1, int(round(w * scale)))
+        new_h = max(1, int(round(h * scale)))
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
     return img.astype(np.uint8)
 
