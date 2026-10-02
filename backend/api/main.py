@@ -7,6 +7,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
+from pathlib import Path
+
+# Ensure src/ is on sys.path so 'batsignal' is importable when deployed
+_SRC_DIR = Path(__file__).resolve().parent.parent / "src"
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
